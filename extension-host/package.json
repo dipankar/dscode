@@ -1,0 +1,17 @@
+{
+  "name": "dscode-extension-host",
+  "version": "0.1.0",
+  "description": "Node.js runtime for DSCode extensions",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@types/node": "^20.11.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

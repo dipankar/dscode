@@ -1,0 +1,12 @@
+/**
+ * LSP (Language Server Protocol) Manager
+ *
+ * Manages language server processes and handles communication
+ * between the editor and language servers
+ */
+
+pub mod client;
+pub mod manager;
+
+pub use client::LspClient;
+pub use manager::LspManager;
