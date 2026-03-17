@@ -203,7 +203,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: var(--modal-overlay-bg);
     display: flex;
     justify-content: center;
     align-items: flex-start;
@@ -212,7 +212,7 @@
   }
 
   .quick-open {
-    background-color: var(--color-bg-secondary);
+    background-color: var(--modal-bg);
     border: 1px solid var(--color-border);
     border-radius: 6px;
     width: 600px;

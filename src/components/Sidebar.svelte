@@ -7,20 +7,60 @@
   import type { FileNode } from '../stores/workspace';
   import TreeNode from './TreeNode.svelte';
   import { FolderOpen } from 'lucide-svelte';
+  import { activeActivity, type ActivityId } from '../lib/activity-store';
+  import DebugView from './DebugView.svelte';
+  import GitView from './GitView.svelte';
+  import SearchView from './SearchView.svelte';
+  import ExtensionView from './ExtensionView.svelte';
 
   let fileTree: FileNode[] = [];
   let selectedFile: string | null = null;
+  let currentActivity: ActivityId = 'explorer';
+
+  interface ExtensionViewInfo {
+    id: string;
+    title: string;
+  }
+
+  let extensionViews: ExtensionViewInfo[] = [];
 
   $: {
     fileTree = $workspaceStore.fileTree;
     selectedFile = $workspaceStore.selectedFile;
   }
 
-  onMount(async () => {
-    // Auto-load current directory on startup
-    const currentDir = await invoke('get_app_version'); // Placeholder for getting cwd
-    // We'll implement proper workspace loading next
+  activeActivity.subscribe((activity) => {
+    currentActivity = activity;
   });
+
+  onMount(async () => {
+    await loadExtensionViews();
+  });
+
+  async function loadExtensionViews() {
+    try {
+      // Get extension contributions to find their views
+      const contributions = await invoke<any[]>('get_extension_contributions');
+
+      for (const contrib of contributions) {
+        if (contrib.contributes?.views) {
+          // Process each view container
+          for (const [containerId, views] of Object.entries(contrib.contributes.views)) {
+            for (const view of views as any[]) {
+              extensionViews.push({
+                id: view.id,
+                title: view.name || contrib.extension_name,
+              });
+            }
+          }
+        }
+      }
+
+      extensionViews = extensionViews; // Trigger reactivity
+    } catch (error) {
+      console.error('Failed to load extension views:', error);
+    }
+  }
 
   async function openFolder() {
     const selected = await open({
@@ -79,27 +119,42 @@
 </script>
 
 <div class="sidebar">
-  <div class="sidebar-header">
-    <h3>EXPLORER</h3>
-    <button class="open-folder-btn" on:click={openFolder} title="Open Folder">
-      <FolderOpen size={18} />
-    </button>
-  </div>
+  {#if currentActivity === 'explorer'}
+    <div class="sidebar-header">
+      <h3>EXPLORER</h3>
+      <button class="open-folder-btn" on:click={openFolder} title="Open Folder">
+        <FolderOpen size={18} />
+      </button>
+    </div>
 
-  <div class="sidebar-content">
-    {#if fileTree.length === 0}
-      <div class="empty-state">
-        <p>No folder opened</p>
-        <button on:click={openFolder}>Open Folder</button>
-      </div>
-    {:else}
-      <div class="tree-view">
-        {#each fileTree as node}
-          <TreeNode {node} {selectedFile} onFileClick={handleFileClick} onRefresh={refreshWorkspace} depth={0} />
-        {/each}
-      </div>
-    {/if}
-  </div>
+    <div class="sidebar-content">
+      {#if fileTree.length === 0}
+        <div class="empty-state">
+          <p>No folder opened</p>
+          <button on:click={openFolder}>Open Folder</button>
+        </div>
+      {:else}
+        <div class="tree-view">
+          {#each fileTree as node}
+            <TreeNode {node} {selectedFile} onFileClick={handleFileClick} onRefresh={refreshWorkspace} depth={0} />
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {:else if currentActivity === 'debug'}
+    <DebugView />
+  {:else if currentActivity === 'scm'}
+    <GitView />
+  {:else if currentActivity === 'search'}
+    <SearchView />
+  {:else}
+    <!-- Check if it's an extension view -->
+    {#each extensionViews as extView}
+      {#if currentActivity === extView.id}
+        <ExtensionView viewId={extView.id} title={extView.title} />
+      {/if}
+    {/each}
+  {/if}
 </div>
 
 <style>

@@ -19,6 +19,13 @@ import { FileSystemAPI, FileSystemWatcher } from './fs';
 import { EventEmitter, Event, Disposable } from './events';
 import { Uri } from './uri';
 import { SCMAPI, SourceControl, SourceControlResourceGroup, SourceControlResourceState, SourceControlInputBox } from './scm';
+import { MarkdownString, ThemeColor, ThemeIcon, ConfigurationTarget, ExtensionMode, CancellationToken, CancellationTokenSource, ProgressLocation, Memento, FileType, FileStat, FilePermission, FileSystemError } from './common';
+import { ProgressAPI, QuickPickItem, QuickPick, InputBox } from './progress';
+import { AuthenticationAPI, SecretStorageImpl, AuthenticationSession, AuthenticationProvider, AuthenticationProviderAuthenticationSessionsChangeEvent } from './authentication';
+import { NotebooksAPI, NotebookCell, NotebookCellKind, NotebookDocument, NotebookController, NotebookCellExecution, NotebookCellExecutionState, NotebookCellData, NotebookCellOutput, NotebookCellOutputItem } from './notebooks';
+import { CommentsAPI, CommentController, CommentThread, Comment, CommentMode, CommentThreadCollapsibleState } from './comments';
+import { TestingAPI, TestController, TestItem, TestRun, TestRunProfile, TestRunProfileKind, TestRunRequest } from './testing';
+import { FileSystemAPI as WorkspaceFSAPI, TextDocumentContentAPI, TextDocumentContentProvider } from './fileSystem';
 
 // Global API instances
 let windowAPI: WindowAPI;
@@ -35,6 +42,13 @@ let debugAPI: DebugAPI;
 let tasksAPI: TasksAPI;
 let fileSystemAPI: FileSystemAPI;
 let scmAPI: SCMAPI;
+let progressAPI: ProgressAPI;
+let authenticationAPI: AuthenticationAPI;
+let notebooksAPI: NotebooksAPI;
+let commentsAPI: CommentsAPI;
+let testingAPI: TestingAPI;
+let workspaceFSAPI: WorkspaceFSAPI;
+let textDocumentContentAPI: TextDocumentContentAPI;
 
 /**
  * Initialize the vscode API with the bridge
@@ -54,6 +68,13 @@ export function initializeAPI(bridge: ExtensionHostBridge) {
   tasksAPI = new TasksAPI(bridge);
   fileSystemAPI = new FileSystemAPI(bridge);
   scmAPI = new SCMAPI(bridge);
+  progressAPI = new ProgressAPI(bridge);
+  authenticationAPI = new AuthenticationAPI(bridge);
+  notebooksAPI = new NotebooksAPI(bridge);
+  commentsAPI = new CommentsAPI(bridge);
+  testingAPI = new TestingAPI(bridge);
+  workspaceFSAPI = new WorkspaceFSAPI(bridge);
+  textDocumentContentAPI = new TextDocumentContentAPI(bridge);
 }
 
 /**
@@ -119,6 +140,38 @@ export const window = {
   get onDidChangeActiveTerminal() {
     return terminalAPI.onDidChangeActiveTerminal;
   },
+  // Window events
+  get onDidChangeActiveTextEditor() {
+    return windowAPI.onDidChangeActiveTextEditor;
+  },
+  get onDidChangeVisibleTextEditors() {
+    return windowAPI.onDidChangeVisibleTextEditors;
+  },
+  get onDidChangeTextEditorSelection() {
+    return windowAPI.onDidChangeTextEditorSelection;
+  },
+  get onDidChangeTextEditorVisibleRanges() {
+    return windowAPI.onDidChangeTextEditorVisibleRanges;
+  },
+  get onDidChangeTextEditorOptions() {
+    return windowAPI.onDidChangeTextEditorOptions;
+  },
+  get onDidChangeTextEditorViewColumn() {
+    return windowAPI.onDidChangeTextEditorViewColumn;
+  },
+  get onDidChangeWindowState() {
+    return windowAPI.onDidChangeWindowState;
+  },
+  // Progress
+  get withProgress() {
+    return progressAPI.withProgress.bind(progressAPI);
+  },
+  get createQuickPick() {
+    return progressAPI.createQuickPick.bind(progressAPI);
+  },
+  get createInputBox() {
+    return progressAPI.createInputBox.bind(progressAPI);
+  },
 };
 
 /**
@@ -166,6 +219,42 @@ export const workspace = {
   },
   get createFileSystemWatcher() {
     return fileSystemAPI.createFileSystemWatcher.bind(fileSystemAPI);
+  },
+  // Workspace events
+  get onDidChangeTextDocument() {
+    return workspaceAPI.onDidChangeTextDocument;
+  },
+  get onDidSaveTextDocument() {
+    return workspaceAPI.onDidSaveTextDocument;
+  },
+  get onDidOpenTextDocument() {
+    return workspaceAPI.onDidOpenTextDocument;
+  },
+  get onDidCloseTextDocument() {
+    return workspaceAPI.onDidCloseTextDocument;
+  },
+  get onDidChangeWorkspaceFolders() {
+    return workspaceAPI.onDidChangeWorkspaceFolders;
+  },
+  get onDidChangeConfiguration() {
+    return workspaceAPI.onDidChangeConfiguration;
+  },
+  // Workspace FileSystem API
+  get fs() {
+    return {
+      stat: workspaceFSAPI.stat.bind(workspaceFSAPI),
+      readDirectory: workspaceFSAPI.readDirectory.bind(workspaceFSAPI),
+      createDirectory: workspaceFSAPI.createDirectory.bind(workspaceFSAPI),
+      readFile: workspaceFSAPI.readFile.bind(workspaceFSAPI),
+      writeFile: workspaceFSAPI.writeFile.bind(workspaceFSAPI),
+      delete: workspaceFSAPI.delete.bind(workspaceFSAPI),
+      rename: workspaceFSAPI.rename.bind(workspaceFSAPI),
+      copy: workspaceFSAPI.copy.bind(workspaceFSAPI),
+      isWritableFileSystem: workspaceFSAPI.isWritableFileSystem.bind(workspaceFSAPI),
+    };
+  },
+  get registerTextDocumentContentProvider() {
+    return textDocumentContentAPI.registerTextDocumentContentProvider.bind(textDocumentContentAPI);
   },
 };
 
@@ -426,6 +515,60 @@ export const scm = {
 };
 
 /**
+ * vscode.authentication namespace
+ */
+export const authentication = {
+  get onDidChangeSessions() {
+    return authenticationAPI.onDidChangeSessions;
+  },
+  get getSession() {
+    return authenticationAPI.getSession.bind(authenticationAPI);
+  },
+  get registerAuthenticationProvider() {
+    return authenticationAPI.registerAuthenticationProvider.bind(authenticationAPI);
+  },
+};
+
+/**
+ * vscode.notebooks namespace
+ */
+export const notebooks = {
+  get onDidOpenNotebookDocument() {
+    return notebooksAPI.onDidOpenNotebookDocument;
+  },
+  get onDidCloseNotebookDocument() {
+    return notebooksAPI.onDidCloseNotebookDocument;
+  },
+  get onDidSaveNotebookDocument() {
+    return notebooksAPI.onDidSaveNotebookDocument;
+  },
+  get registerNotebookContentProvider() {
+    return notebooksAPI.registerNotebookContentProvider.bind(notebooksAPI);
+  },
+  get createNotebookController() {
+    return notebooksAPI.createNotebookController.bind(notebooksAPI);
+  },
+};
+
+/**
+ * vscode.comments namespace
+ */
+export const comments = {
+  get createCommentController() {
+    return commentsAPI.createCommentController.bind(commentsAPI);
+  },
+};
+
+/**
+ * vscode.tests namespace
+ */
+export const tests = {
+  get createTestController() {
+    return testingAPI.createTestController.bind(testingAPI);
+  },
+};
+
+/**
  * Export types
  */
 export {
@@ -501,6 +644,53 @@ export {
   SourceControlResourceGroup,
   SourceControlResourceState,
   SourceControlInputBox,
+  // Common types
+  MarkdownString,
+  ThemeColor,
+  ThemeIcon,
+  ConfigurationTarget,
+  ExtensionMode,
+  CancellationToken,
+  CancellationTokenSource,
+  ProgressLocation,
+  Memento,
+  FileType,
+  FileStat,
+  FilePermission,
+  FileSystemError,
+  // Progress types
+  QuickPickItem,
+  QuickPick,
+  InputBox,
+  // Authentication types
+  AuthenticationSession,
+  AuthenticationProvider,
+  AuthenticationProviderAuthenticationSessionsChangeEvent,
+  // Notebook types
+  NotebookCell,
+  NotebookCellKind,
+  NotebookDocument,
+  NotebookController,
+  NotebookCellExecution,
+  NotebookCellExecutionState,
+  NotebookCellData,
+  NotebookCellOutput,
+  NotebookCellOutputItem,
+  // Comments types
+  CommentController,
+  CommentThread,
+  Comment,
+  CommentMode,
+  CommentThreadCollapsibleState,
+  // Testing types
+  TestController,
+  TestItem,
+  TestRun,
+  TestRunProfile,
+  TestRunProfileKind,
+  TestRunRequest,
+  // TextDocumentContentProvider
+  TextDocumentContentProvider,
 };
 
 // Version info
@@ -510,9 +700,15 @@ export const version = '1.80.0'; // Pretend we're VS Code 1.80
 export interface ExtensionContext {
   subscriptions: { dispose(): any }[];
   extensionPath: string;
-  globalState: any;
-  workspaceState: any;
+  extensionUri: Uri;
+  globalState: Memento;
+  workspaceState: Memento;
+  secrets: SecretStorageImpl;
+  extensionMode: ExtensionMode;
   asAbsolutePath(relativePath: string): string;
+  storageUri?: Uri;
+  globalStorageUri: Uri;
+  logUri: Uri;
 }
 
 // Enums for compatibility

@@ -1,7 +1,18 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
+  import { activeActivity, type ActivityId } from '../lib/activity-store';
+
   export let sidebarVisible: boolean;
 
-  const activities = [
+  interface Activity {
+    id: string;
+    icon: string;
+    title: string;
+    isExtension?: boolean;
+  }
+
+  const builtInActivities: Activity[] = [
     { id: 'explorer', icon: '📁', title: 'Explorer' },
     { id: 'search', icon: '🔍', title: 'Search' },
     { id: 'scm', icon: '🔀', title: 'Source Control' },
@@ -9,15 +20,57 @@
     { id: 'extensions', icon: '🧩', title: 'Extensions' },
   ];
 
-  let activeItem = 'explorer';
+  let activities: Activity[] = builtInActivities;
+  let currentActivity: ActivityId = 'explorer';
+
+  activeActivity.subscribe((activity) => {
+    currentActivity = activity;
+  });
+
+  onMount(async () => {
+    try {
+      const contributions = await invoke('get_extension_contributions');
+      const extensionActivities: Activity[] = [];
+
+      // Parse viewsContainers.activitybar from each extension
+      for (const contrib of contributions as any[]) {
+        if (contrib.contributes?.viewsContainers?.activitybar) {
+          for (const container of contrib.contributes.viewsContainers.activitybar) {
+            extensionActivities.push({
+              id: container.id,
+              icon: container.icon ? '🔷' : '📦', // Use generic icon for now
+              title: container.title || contrib.extension_name,
+              isExtension: true,
+            });
+          }
+        }
+      }
+
+      // Add extension activities before settings (after built-in)
+      activities = [...builtInActivities, ...extensionActivities];
+      console.log('Loaded extension activities:', extensionActivities);
+    } catch (error) {
+      console.error('Failed to load extension contributions:', error);
+    }
+  });
 
   function handleClick(id: string) {
-    if (activeItem === id) {
+    // Extensions opens as modal/overlay
+    if (id === 'extensions') {
+      window.dispatchEvent(new CustomEvent('openExtensions'));
+      return;
+    }
+
+    if (currentActivity === id) {
       sidebarVisible = !sidebarVisible;
     } else {
-      activeItem = id;
+      activeActivity.set(id as ActivityId);
       sidebarVisible = true;
     }
+  }
+
+  function handleSettingsClick() {
+    window.dispatchEvent(new CustomEvent('openSettings'));
   }
 </script>
 
@@ -25,7 +78,7 @@
   {#each activities as activity}
     <button
       class="activity-item"
-      class:active={activeItem === activity.id}
+      class:active={currentActivity === activity.id}
       on:click={() => handleClick(activity.id)}
       title={activity.title}
     >
@@ -35,7 +88,7 @@
 
   <div class="spacer"></div>
 
-  <button class="activity-item" title="Settings">
+  <button class="activity-item" title="Settings" on:click={handleSettingsClick}>
     <span class="icon">⚙️</span>
   </button>
 </div>

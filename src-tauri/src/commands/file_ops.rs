@@ -12,37 +12,53 @@ pub struct FileNode {
 
 #[tauri::command]
 pub async fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read file {}: {}", path, e))
+    tokio::task::spawn_blocking(move || {
+        fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read file {}: {}", path, e))
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]
 pub async fn write_file(path: String, content: String) -> Result<(), String> {
-    fs::write(&path, content)
-        .map_err(|e| format!("Failed to write file {}: {}", path, e))
+    tokio::task::spawn_blocking(move || {
+        fs::write(&path, content)
+            .map_err(|e| format!("Failed to write file {}: {}", path, e))
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]
 pub async fn list_directory(path: String) -> Result<Vec<String>, String> {
-    let entries = fs::read_dir(&path)
-        .map_err(|e| format!("Failed to read directory {}: {}", path, e))?;
+    tokio::task::spawn_blocking(move || {
+        let entries = fs::read_dir(&path)
+            .map_err(|e| format!("Failed to read directory {}: {}", path, e))?;
 
-    let mut files = Vec::new();
-    for entry in entries {
-        if let Ok(entry) = entry {
-            if let Some(name) = entry.file_name().to_str() {
-                files.push(name.to_string());
+        let mut files = Vec::new();
+        for entry in entries {
+            if let Ok(entry) = entry {
+                if let Some(name) = entry.file_name().to_str() {
+                    files.push(name.to_string());
+                }
             }
         }
-    }
 
-    Ok(files)
+        Ok(files)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]
 pub async fn read_directory_tree(path: String, max_depth: Option<u32>) -> Result<Vec<FileNode>, String> {
-    let max_depth = max_depth.unwrap_or(3);
-    read_dir_recursive(&path, 0, max_depth)
+    tokio::task::spawn_blocking(move || {
+        let max_depth = max_depth.unwrap_or(3);
+        read_dir_recursive(&path, 0, max_depth)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 fn read_dir_recursive(path: &str, current_depth: u32, max_depth: u32) -> Result<Vec<FileNode>, String> {
@@ -148,71 +164,91 @@ pub async fn stop_watching_file(app_handle: tauri::AppHandle, path: String) -> R
 
 #[tauri::command]
 pub async fn create_file(path: String) -> Result<(), String> {
-    // Check if file already exists
-    if Path::new(&path).exists() {
-        return Err(format!("File already exists: {}", path));
-    }
+    tokio::task::spawn_blocking(move || {
+        // Check if file already exists
+        if Path::new(&path).exists() {
+            return Err(format!("File already exists: {}", path));
+        }
 
-    // Create parent directories if they don't exist
-    if let Some(parent) = Path::new(&path).parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create parent directories: {}", e))?;
-    }
+        // Create parent directories if they don't exist
+        if let Some(parent) = Path::new(&path).parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent directories: {}", e))?;
+        }
 
-    // Create empty file
-    fs::write(&path, "")
-        .map_err(|e| format!("Failed to create file {}: {}", path, e))
+        // Create empty file
+        fs::write(&path, "")
+            .map_err(|e| format!("Failed to create file {}: {}", path, e))
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]
 pub async fn create_folder(path: String) -> Result<(), String> {
-    // Check if folder already exists
-    if Path::new(&path).exists() {
-        return Err(format!("Folder already exists: {}", path));
-    }
+    tokio::task::spawn_blocking(move || {
+        // Check if folder already exists
+        if Path::new(&path).exists() {
+            return Err(format!("Folder already exists: {}", path));
+        }
 
-    fs::create_dir_all(&path)
-        .map_err(|e| format!("Failed to create folder {}: {}", path, e))
+        fs::create_dir_all(&path)
+            .map_err(|e| format!("Failed to create folder {}: {}", path, e))
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]
 pub async fn delete_file(path: String) -> Result<(), String> {
-    if !Path::new(&path).exists() {
-        return Err(format!("File does not exist: {}", path));
-    }
+    tokio::task::spawn_blocking(move || {
+        if !Path::new(&path).exists() {
+            return Err(format!("File does not exist: {}", path));
+        }
 
-    if Path::new(&path).is_dir() {
-        return Err(format!("Path is a directory, not a file: {}", path));
-    }
+        if Path::new(&path).is_dir() {
+            return Err(format!("Path is a directory, not a file: {}", path));
+        }
 
-    fs::remove_file(&path)
-        .map_err(|e| format!("Failed to delete file {}: {}", path, e))
+        fs::remove_file(&path)
+            .map_err(|e| format!("Failed to delete file {}: {}", path, e))
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]
 pub async fn delete_folder(path: String) -> Result<(), String> {
-    if !Path::new(&path).exists() {
-        return Err(format!("Folder does not exist: {}", path));
-    }
+    tokio::task::spawn_blocking(move || {
+        if !Path::new(&path).exists() {
+            return Err(format!("Folder does not exist: {}", path));
+        }
 
-    if !Path::new(&path).is_dir() {
-        return Err(format!("Path is not a directory: {}", path));
-    }
+        if !Path::new(&path).is_dir() {
+            return Err(format!("Path is not a directory: {}", path));
+        }
 
-    fs::remove_dir_all(&path)
-        .map_err(|e| format!("Failed to delete folder {}: {}", path, e))
+        fs::remove_dir_all(&path)
+            .map_err(|e| format!("Failed to delete folder {}: {}", path, e))
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]
 pub async fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
-    if !Path::new(&old_path).exists() {
-        return Err(format!("Path does not exist: {}", old_path));
-    }
+    tokio::task::spawn_blocking(move || {
+        if !Path::new(&old_path).exists() {
+            return Err(format!("Path does not exist: {}", old_path));
+        }
 
-    if Path::new(&new_path).exists() {
-        return Err(format!("Destination path already exists: {}", new_path));
-    }
+        if Path::new(&new_path).exists() {
+            return Err(format!("Destination path already exists: {}", new_path));
+        }
 
-    fs::rename(&old_path, &new_path)
-        .map_err(|e| format!("Failed to rename {} to {}: {}", old_path, new_path, e))
+        fs::rename(&old_path, &new_path)
+            .map_err(|e| format!("Failed to rename {} to {}: {}", old_path, new_path, e))
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }

@@ -1,31 +1,34 @@
 use lsp_types::*;
-use serde_json::Value;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::io::{BufRead, BufReader, Write};
-use tokio::sync::mpsc;
+use crate::extension_host::nng_ipc::NngExtensionIpc;
 
 #[derive(Debug)]
 pub struct LspClient {
     process: Arc<Mutex<Option<Child>>>,
+    ipc: Arc<Mutex<Option<Arc<NngExtensionIpc>>>>,
     language_id: String,
     server_command: String,
     server_args: Vec<String>,
     request_id: Arc<Mutex<i32>>,
+    ipc_url: String,
 }
 
 impl LspClient {
     pub fn new(language_id: String, server_command: String, server_args: Vec<String>) -> Self {
+        let ipc_url = format!("ipc:///tmp/dscode-lsp-{}.ipc", language_id);
         Self {
             process: Arc::new(Mutex::new(None)),
+            ipc: Arc::new(Mutex::new(None)),
             language_id,
             server_command,
             server_args,
             request_id: Arc::new(Mutex::new(0)),
+            ipc_url,
         }
     }
 
-    pub fn start(&self) -> Result<(), String> {
+    pub async fn start(&self) -> Result<(), String> {
         let mut process_guard = self.process.lock().unwrap();
 
         // Check if already running
@@ -33,18 +36,29 @@ impl LspClient {
             return Ok(());
         }
 
-        // Spawn language server process
+        // Spawn language server process with NNG IPC URL
         let child = Command::new(&self.server_command)
             .args(&self.server_args)
+            .env("LSP_IPC_URL", &self.ipc_url)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("Failed to start language server {}: {}", self.language_id, e))?;
 
-        println!("[LSP] Started {} language server ({})", self.language_id, self.server_command);
+        println!("[LSP] Started {} language server ({}) on {}", self.language_id, self.server_command, self.ipc_url);
 
         *process_guard = Some(child);
+        drop(process_guard);
+
+        // Wait for LSP server to bind
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        // Connect NNG IPC
+        let ipc = NngExtensionIpc::new(&self.ipc_url)?;
+        *self.ipc.lock().unwrap() = Some(Arc::new(ipc));
+
+        println!("[LSP] Connected NNG IPC for {}", self.language_id);
         Ok(())
     }
 
@@ -169,9 +183,22 @@ impl LspClient {
             "params": params,
         });
 
-        // TODO: Implement actual JSON-RPC communication
-        // For now, return error
-        Err(format!("LSP request not yet implemented: {}", method))
+        // Send via NNG IPC
+        let ipc_guard = self.ipc.lock().unwrap();
+        let ipc = ipc_guard.as_ref()
+            .ok_or("LSP client not connected via NNG")?;
+
+        let response = ipc.request("lsp:request", request).await?;
+
+        // Parse LSP response
+        if let Some(result) = response.get("result") {
+            serde_json::from_value(result.clone())
+                .map_err(|e| format!("Failed to parse LSP response: {}", e))
+        } else if let Some(error) = response.get("error") {
+            Err(format!("LSP error: {}", error))
+        } else {
+            Err("Invalid LSP response".to_string())
+        }
     }
 
     async fn send_notification<P: serde::Serialize>(
@@ -185,8 +212,12 @@ impl LspClient {
             "params": params,
         });
 
-        // TODO: Implement actual JSON-RPC communication
-        Ok(())
+        // Send via NNG IPC (notifications don't wait for response)
+        let ipc_guard = self.ipc.lock().unwrap();
+        let ipc = ipc_guard.as_ref()
+            .ok_or("LSP client not connected via NNG")?;
+
+        ipc.send("lsp:notification", notification).await
     }
 }
 

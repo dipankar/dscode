@@ -13,11 +13,12 @@ tauri-build = { version = "2.1", features = [] }
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "2.1", features = [] }
+tauri = { version = "2.1", features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = "2.0"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 thiserror = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
 
 # Text processing
 ropey = "1.6"
@@ -30,12 +31,15 @@ lsp-types = "0.94"
 # Git
 git2 = "0.18"
 
-# IPC (for backend services)
-nng = "1.0"
-rkyv = "0.7"
-
 # File watching
 notify = "6.1"
+
+# Search (ripgrep-based)
+ignore = "0.4"
+grep-searcher = "0.1"
+grep-matcher = "0.1"
+grep-regex = "0.1"
+regex = "1.10"
 
 # Async runtime
 async-trait = "0.1"
@@ -43,5 +47,29 @@ async-trait = "0.1"
 # System monitoring
 sysinfo = "0.30"
 
+# Extension management
+zip = "2.1"
+reqwest = { version = "0.11", features = ["json", "blocking"] }
+tempfile = "3.8"
+
+# Terminal (PTY)
+portable-pty = "0.8"
+
+# Security & Sandboxing
+keyring = "2.3"
+governor = "0.6"
+which = "6.0"
+libc = "0.2"
+
+# IPC with extension host
+nng = "1.0"
+
+# Memory allocators
+tikv-jemallocator = { version = "0.5", optional = true }
+mimalloc = { version = "0.1", optional = true }
+
 [features]
-default = []
+default = ["jemalloc"]
+jemalloc = ["tikv-jemallocator"]
+mimalloc-allocator = ["mimalloc"]
+system-allocator = []

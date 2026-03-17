@@ -5,6 +5,7 @@
  */
 
 import { ExtensionHostBridge } from '../bridge';
+import { Event, EventEmitter } from './events';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -17,9 +18,52 @@ export interface WorkspaceFolder {
 export class WorkspaceAPI {
   private workspaceFolders: WorkspaceFolder[] = [];
 
+  // Event emitters
+  private _onDidChangeTextDocument = new EventEmitter<any>();
+  private _onDidSaveTextDocument = new EventEmitter<any>();
+  private _onDidOpenTextDocument = new EventEmitter<any>();
+  private _onDidCloseTextDocument = new EventEmitter<any>();
+  private _onDidChangeWorkspaceFolders = new EventEmitter<any>();
+  private _onDidChangeConfiguration = new EventEmitter<any>();
+
+  // Events
+  readonly onDidChangeTextDocument = this._onDidChangeTextDocument.event;
+  readonly onDidSaveTextDocument = this._onDidSaveTextDocument.event;
+  readonly onDidOpenTextDocument = this._onDidOpenTextDocument.event;
+  readonly onDidCloseTextDocument = this._onDidCloseTextDocument.event;
+  readonly onDidChangeWorkspaceFolders = this._onDidChangeWorkspaceFolders.event;
+  readonly onDidChangeConfiguration = this._onDidChangeConfiguration.event;
+
   constructor(private bridge: ExtensionHostBridge) {
     // Request workspace folders from main app
     this.loadWorkspaceFolders();
+    this.setupEventListeners();
+  }
+
+  private setupEventListeners(): void {
+    this.bridge.on('textDocumentChanged', (data: any) => {
+      this._onDidChangeTextDocument.fire(data);
+    });
+
+    this.bridge.on('textDocumentSaved', (data: any) => {
+      this._onDidSaveTextDocument.fire(data);
+    });
+
+    this.bridge.on('textDocumentOpened', (data: any) => {
+      this._onDidOpenTextDocument.fire(data);
+    });
+
+    this.bridge.on('textDocumentClosed', (data: any) => {
+      this._onDidCloseTextDocument.fire(data);
+    });
+
+    this.bridge.on('workspaceFoldersChanged', (data: any) => {
+      this._onDidChangeWorkspaceFolders.fire(data);
+    });
+
+    this.bridge.on('configurationChanged', (data: any) => {
+      this._onDidChangeConfiguration.fire(data);
+    });
   }
 
   private async loadWorkspaceFolders() {
@@ -135,7 +179,7 @@ export class WorkspaceAPI {
       },
       update: async (key: string, value: any, configurationTarget?: any) => {
         // TODO: Implement configuration update
-        console.log(`[Workspace] Update config: ${key} = ${value}`);
+        console.error(`[Workspace] Update config: ${key} = ${value}`);
       },
     };
   }

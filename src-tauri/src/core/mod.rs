@@ -7,5 +7,6 @@
 pub mod text_buffer;
 pub mod syntax;
 
-pub use text_buffer::*;
-pub use syntax::*;
+// Uncomment when these modules are used
+// pub use text_buffer::*;
+// pub use syntax::*;

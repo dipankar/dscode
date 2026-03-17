@@ -5,9 +5,94 @@
     <link rel="icon" type="image/svg+xml" href="/vscode-icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DSCode</title>
+
+    <!-- Preload critical resources -->
+    <link rel="modulepreload" href="/src/main.ts" />
+    <link rel="modulepreload" href="/src/App.svelte" />
+
+    <!-- Inline critical CSS for instant render -->
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body, html, #app {
+        width: 100%;
+        height: 100%;
+        background-color: #1e1e1e;
+        color: #cccccc;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        overflow: hidden;
+      }
+
+      /* Loading skeleton - shows immediately */
+      .app-skeleton {
+        display: flex;
+        height: 100vh;
+        width: 100vw;
+      }
+
+      .skeleton-activity-bar {
+        width: 48px;
+        background-color: #333333;
+        border-right: 1px solid #3e3e42;
+      }
+
+      .skeleton-sidebar {
+        width: 250px;
+        background-color: #252526;
+        border-right: 1px solid #3e3e42;
+      }
+
+      .skeleton-main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background-color: #1e1e1e;
+      }
+
+      .skeleton-editor {
+        flex: 1;
+        background-color: #1e1e1e;
+      }
+
+      .skeleton-status {
+        height: 22px;
+        background-color: #007acc;
+        border-top: 1px solid #3e3e42;
+      }
+
+      /* Pulse animation for skeleton */
+      .skeleton-pulse {
+        animation: pulse 1.5s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+
+      /* Hide skeleton when app loads */
+      #app:not(:empty) + .app-skeleton {
+        display: none;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
+
+    <!-- Static skeleton - renders instantly while JS loads -->
+    <div class="app-skeleton skeleton-pulse">
+      <div class="skeleton-activity-bar"></div>
+      <div class="skeleton-sidebar"></div>
+      <div class="skeleton-main">
+        <div class="skeleton-editor"></div>
+        <div class="skeleton-status"></div>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

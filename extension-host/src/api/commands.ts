@@ -36,7 +36,7 @@ export class CommandsAPI {
    * Register a command handler
    */
   registerCommand(command: string, callback: CommandHandler): { dispose: () => void } {
-    console.log(`[Commands] Registering: ${command}`);
+    console.error(`[Commands] Registering: ${command}`);
 
     if (this.commands.has(command)) {
       console.warn(`[Commands] Command already registered: ${command}`);
@@ -71,7 +71,7 @@ export class CommandsAPI {
    * Execute a command
    */
   async executeCommand<T = any>(command: string, ...args: any[]): Promise<T> {
-    console.log(`[Commands] Executing: ${command}`);
+    console.error(`[Commands] Executing: ${command}`);
 
     // Check if it's a local command first
     const localHandler = this.commands.get(command);

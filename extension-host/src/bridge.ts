@@ -1,12 +1,12 @@
 /**
  * IPC Bridge between Extension Host and Main App
  *
- * Uses stdio for cross-platform IPC (same as VS Code).
- * Messages are sent via stdout and received via stdin.
+ * Uses NNG (nanomsg-next-generation) for IPC.
+ * Extension host listens on REP socket, Tauri connects with REQ socket.
  */
 
 import { EventEmitter } from 'events';
-import * as readline from 'readline';
+import { NngIPC } from './nng-ipc';
 
 export interface IPCMessage {
   id: string;
@@ -15,41 +15,30 @@ export interface IPCMessage {
 }
 
 export class ExtensionHostBridge extends EventEmitter {
-  private messageId = 0;
-  private pendingRequests = new Map<string, { resolve: Function; reject: Function }>();
+  private nng: NngIPC;
   private isConnected = false;
-  private rl?: readline.Interface;
+  private ipcUrl: string;
 
   constructor() {
     super();
+    this.nng = new NngIPC();
+    // Get IPC URL from environment variable or use default
+    this.ipcUrl = process.env.DSCODE_IPC_URL || 'ipc:///tmp/dscode-extension-host.ipc';
   }
 
   async connect() {
     try {
-      console.error('[Bridge] Connecting via stdio...');
+      console.error('[Bridge] Connecting via NNG...');
+      console.error('[Bridge] IPC URL:', this.ipcUrl);
 
-      // Create readline interface for stdin
-      this.rl = readline.createInterface({
-        input: process.stdin,
-        output: undefined, // Don't echo to stdout
-        terminal: false,
-      });
-
-      // Listen for messages from main app
-      this.rl.on('line', (line: string) => {
-        try {
-          const message: IPCMessage = JSON.parse(line);
-          this.handleMessage(message);
-        } catch (error) {
-          console.error('[Bridge] Error parsing message:', error);
-        }
-      });
-
+      // Start listening for requests from Tauri
+      this.nng.listen(this.ipcUrl);
       this.isConnected = true;
-      console.error('[Bridge] Connected successfully');
 
-      // Send ready signal
-      await this.send('ready', {});
+      // Register message handlers
+      this.setupHandlers();
+
+      console.error('[Bridge] Connected successfully on', this.ipcUrl);
     } catch (error) {
       console.error('[Bridge] Connection failed:', error);
       throw error;
@@ -58,94 +47,65 @@ export class ExtensionHostBridge extends EventEmitter {
 
   async disconnect() {
     this.isConnected = false;
-
-    if (this.rl) {
-      this.rl.close();
-      this.rl = undefined;
-    }
-
+    this.nng.close();
     console.error('[Bridge] Disconnected');
   }
 
   /**
-   * Send a one-way message to the main app
+   * Setup NNG message handlers
+   */
+  private setupHandlers() {
+    // Handle tree view requests
+    this.nng.on('treeView:getChildren', async (payload: any) => {
+      console.error('[Bridge] Received treeView:getChildren request:', payload);
+
+      return new Promise((resolve) => {
+        // Emit event for extension manager to handle
+        this.emit('treeView:getChildren', payload, (response: any) => {
+          resolve(response);
+        });
+      });
+    });
+
+    // Handle command execution requests
+    this.nng.on('executeCommand', async (payload: any) => {
+      console.error('[Bridge] Received executeCommand request:', payload);
+
+      return new Promise((resolve) => {
+        // Emit event for extension manager to handle
+        this.emit('executeCommand', payload, (response: any) => {
+          resolve(response);
+        });
+      });
+    });
+  }
+
+  /**
+   * Send a one-way message to Tauri
+   * Note: Not supported with current REQ/REP pattern.
+   * TODO: Add second socket for extension-host-initiated messages
    */
   async send(type: string, payload: any): Promise<void> {
-    const message: IPCMessage = {
-      id: `msg_${this.messageId++}`,
-      type,
-      payload,
-    };
-
-    this.sendMessage(message);
+    console.error('[Bridge] Warning: send() not supported with NNG REQ/REP pattern');
+    console.error('[Bridge] Attempted to send:', type, payload);
+    // TODO: Implement with second socket (REQ from extension host side)
   }
 
   /**
-   * Send a request and wait for response
+   * Send a request to Tauri and wait for response
+   * Note: Not supported with current REQ/REP pattern.
+   * TODO: Add second socket for extension-host-initiated requests
    */
   async request(type: string, payload: any): Promise<any> {
-    if (!this.isConnected) {
-      throw new Error('Bridge not connected');
-    }
-
-    const id = `req_${this.messageId++}`;
-
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error(`Request timeout: ${type}`));
-      }, 30000);
-
-      this.pendingRequests.set(id, {
-        resolve: (result: any) => {
-          clearTimeout(timeoutId);
-          this.pendingRequests.delete(id);
-          resolve(result);
-        },
-        reject: (error: any) => {
-          clearTimeout(timeoutId);
-          this.pendingRequests.delete(id);
-          reject(error);
-        },
-      });
-
-      const message: IPCMessage = { id, type, payload };
-      this.sendMessage(message);
-    });
+    console.error('[Bridge] Warning: request() not supported with NNG REQ/REP pattern');
+    console.error('[Bridge] Attempted to request:', type, payload);
+    // TODO: Implement with second socket (REQ from extension host side)
+    return null;
   }
 
   /**
-   * Handle incoming messages
+   * Note: Current NNG REQ/REP pattern allows Tauri to initiate requests to extension host,
+   * but not vice versa. For full bidirectional communication, we need to add a second
+   * socket pair where extension host has REQ and Tauri has REP.
    */
-  private handleMessage(message: IPCMessage) {
-    // Check if this is a response to a pending request
-    const pending = this.pendingRequests.get(message.id);
-    if (pending) {
-      if (message.type.endsWith('-error')) {
-        pending.reject(new Error(message.payload.error || 'Unknown error'));
-      } else {
-        pending.resolve(message.payload);
-      }
-      return;
-    }
-
-    // Otherwise, emit as event for handlers
-    this.emit(message.type, message.payload, (response: any) => {
-      // Send response back
-      const responseMessage: IPCMessage = {
-        id: message.id,
-        type: `${message.type}-response`,
-        payload: response,
-      };
-      this.sendMessage(responseMessage);
-    });
-  }
-
-  /**
-   * Send a message via stdout
-   */
-  private sendMessage(message: IPCMessage) {
-    const json = JSON.stringify(message);
-    process.stdout.write(json + '\n');
-  }
 }

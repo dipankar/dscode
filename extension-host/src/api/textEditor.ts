@@ -165,7 +165,7 @@ export class TextEditor {
 
   setDecorations(decorationType: any, rangesOrOptions: Range[] | any[]): void {
     // TODO: Implement decorations
-    console.log('[TextEditor] setDecorations not yet implemented');
+    console.error('[TextEditor] setDecorations not yet implemented');
   }
 
   revealRange(range: Range, revealType?: number): void {
@@ -212,7 +212,7 @@ export class TextEditorEdit {
 
   setEndOfLine(endOfLine: number): void {
     // TODO: Implement end of line setting
-    console.log('[TextEditorEdit] setEndOfLine not yet implemented');
+    console.error('[TextEditorEdit] setEndOfLine not yet implemented');
   }
 
   getEdits(): TextEdit[] {

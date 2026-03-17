@@ -3,6 +3,15 @@
 @tailwind utilities;
 
 :root {
+  /* Modal/Overlay */
+  --modal-overlay-bg: rgba(0, 0, 0, 0.85);
+  --modal-bg: var(--color-bg-secondary);
+  --modal-border: var(--color-border);
+}
+
+/* Dark Theme (Default) */
+:root,
+.theme-dark {
   /* VS Code Dark+ theme colors */
   --color-bg: #1e1e1e;
   --color-bg-secondary: #252526;
@@ -22,6 +31,56 @@
   --editor-fg: #d4d4d4;
   --editor-selection: #264f78;
   --editor-line-number: #858585;
+}
+
+/* Light Theme */
+.theme-light {
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f3f3f3;
+  --color-bg-tertiary: #e8e8e8;
+  --color-border: #cccccc;
+  --color-text: #333333;
+  --color-text-secondary: #616161;
+  --color-accent: #007acc;
+  --color-accent-hover: #005a9e;
+
+  /* Activity bar */
+  --activity-bar-bg: #2c2c2c;
+  --activity-bar-item-hover: #3e3e42;
+
+  /* Editor */
+  --editor-bg: #ffffff;
+  --editor-fg: #000000;
+  --editor-selection: #add6ff;
+  --editor-line-number: #237893;
+
+  /* Modal overlay for light theme */
+  --modal-overlay-bg: rgba(0, 0, 0, 0.6);
+}
+
+/* High Contrast Theme */
+.theme-high-contrast {
+  --color-bg: #000000;
+  --color-bg-secondary: #000000;
+  --color-bg-tertiary: #1a1a1a;
+  --color-border: #6fc3df;
+  --color-text: #ffffff;
+  --color-text-secondary: #ffffff;
+  --color-accent: #0e639c;
+  --color-accent-hover: #007acc;
+
+  /* Activity bar */
+  --activity-bar-bg: #000000;
+  --activity-bar-item-hover: #2b2b2b;
+
+  /* Editor */
+  --editor-bg: #000000;
+  --editor-fg: #ffffff;
+  --editor-selection: #ffffff40;
+  --editor-line-number: #ffffff;
+
+  /* Modal overlay for high contrast */
+  --modal-overlay-bg: rgba(0, 0, 0, 0.9);
 }
 
 * {

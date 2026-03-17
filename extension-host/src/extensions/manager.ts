@@ -64,7 +64,7 @@ export class ExtensionManager {
     const extensionsDir = await this.bridge.request('get-extensions-dir', {});
 
     if (!fs.existsSync(extensionsDir)) {
-      console.log('[ExtensionManager] Extensions directory does not exist:', extensionsDir);
+      console.error('[ExtensionManager] Extensions directory does not exist:', extensionsDir);
       return;
     }
 
@@ -80,7 +80,7 @@ export class ExtensionManager {
       }
     }
 
-    console.log(`[ExtensionManager] Loaded ${this.extensions.size} extensions`);
+    console.error(`[ExtensionManager] Loaded ${this.extensions.size} extensions`);
   }
 
   /**
@@ -106,7 +106,7 @@ export class ExtensionManager {
       isActive: false,
     });
 
-    console.log(`[ExtensionManager] Loaded: ${extensionId}`);
+    console.error(`[ExtensionManager] Loaded: ${extensionId}`);
 
     // Auto-activate extensions with "*" activation event
     if (manifest.activationEvents?.includes('*')) {
@@ -125,11 +125,11 @@ export class ExtensionManager {
     }
 
     if (extension.isActive) {
-      console.log(`[ExtensionManager] Extension already active: ${extensionId}`);
+      console.error(`[ExtensionManager] Extension already active: ${extensionId}`);
       return;
     }
 
-    console.log(`[ExtensionManager] Activating: ${extensionId}`);
+    console.error(`[ExtensionManager] Activating: ${extensionId}`);
 
     try {
       // Load the extension's main file
@@ -140,17 +140,30 @@ export class ExtensionManager {
         const context: vscodeAPI.ExtensionContext = {
           subscriptions: [],
           extensionPath: extension.extensionPath,
+          extensionUri: { fsPath: extension.extensionPath, scheme: 'file' } as any,
           globalState: {
             get: (key: string) => undefined,
             update: (key: string, value: any) => Promise.resolve(),
+            keys: () => [],
           },
           workspaceState: {
             get: (key: string) => undefined,
             update: (key: string, value: any) => Promise.resolve(),
+            keys: () => [],
           },
+          secrets: {
+            get: async (key: string) => undefined,
+            store: async (key: string, value: string) => {},
+            delete: async (key: string) => {},
+            onDidChange: (() => ({ dispose: () => {} })) as any,
+          } as any,
+          extensionMode: 1, // Production
           asAbsolutePath: (relativePath: string) => {
             return path.join(extension.extensionPath, relativePath);
           },
+          storageUri: undefined,
+          globalStorageUri: { fsPath: extension.extensionPath, scheme: 'file' } as any,
+          logUri: { fsPath: extension.extensionPath, scheme: 'file' } as any,
         };
 
         // Load and activate the extension
@@ -161,7 +174,7 @@ export class ExtensionManager {
           extension.context = context;
           extension.isActive = true;
 
-          console.log(`[ExtensionManager] Activated: ${extensionId}`);
+          console.error(`[ExtensionManager] Activated: ${extensionId}`);
         } else {
           console.warn(`[ExtensionManager] No activate function: ${extensionId}`);
         }
@@ -182,7 +195,7 @@ export class ExtensionManager {
       return;
     }
 
-    console.log(`[ExtensionManager] Deactivating: ${extensionId}`);
+    console.error(`[ExtensionManager] Deactivating: ${extensionId}`);
 
     try {
       // Call deactivate if available
@@ -203,7 +216,7 @@ export class ExtensionManager {
       }
 
       extension.isActive = false;
-      console.log(`[ExtensionManager] Deactivated: ${extensionId}`);
+      console.error(`[ExtensionManager] Deactivated: ${extensionId}`);
     } catch (error) {
       console.error(`[ExtensionManager] Failed to deactivate ${extensionId}:`, error);
     }

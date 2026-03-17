@@ -35,34 +35,10 @@
     }
 
     try {
-      // Get document symbols from Monaco
-      const documentSymbols = await monaco.languages.getDocumentSymbols(model);
-
-      const flatSymbols: Symbol[] = [];
-      const queryLower = query.toLowerCase();
-
-      function flattenSymbols(symbols: monaco.languages.DocumentSymbol[], containerName?: string) {
-        for (const symbol of symbols) {
-          if (symbol.name.toLowerCase().includes(queryLower)) {
-            flatSymbols.push({
-              name: symbol.name,
-              kind: symbol.kind,
-              containerName: containerName,
-              location: {
-                uri: model.uri.path,
-                range: symbol.range,
-              },
-            });
-          }
-
-          if (symbol.children && symbol.children.length > 0) {
-            flattenSymbols(symbol.children, symbol.name);
-          }
-        }
-      }
-
-      flattenSymbols(documentSymbols);
-      symbols = flatSymbols.slice(0, 50); // Limit to 50 results
+      // TODO: Implement proper document symbol search
+      // Monaco's executeDocumentSymbolProvider is only available via editor extensions
+      // For now, return empty results - symbol search needs proper language server integration
+      symbols = [];
       selectedIndex = 0;
     } catch (error) {
       console.error('Error searching symbols:', error);
@@ -209,7 +185,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: var(--modal-overlay-bg);
     display: flex;
     justify-content: center;
     padding-top: 100px;
@@ -219,8 +195,8 @@
   .symbol-search-container {
     width: 600px;
     max-height: 500px;
-    background-color: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
+    background-color: var(--modal-bg);
+    border: 1px solid var(--modal-border);
     border-radius: 6px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     display: flex;

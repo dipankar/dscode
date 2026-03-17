@@ -10,48 +10,57 @@ import { ExtensionManager } from './extensions/manager';
 
 class ExtensionHost {
   private bridge: ExtensionHostBridge;
-  private extensionManager: ExtensionManager;
+  private extensionManager?: ExtensionManager;
 
   constructor() {
     this.bridge = new ExtensionHostBridge();
-    this.extensionManager = new ExtensionManager(this.bridge);
   }
 
   async start() {
-    console.log('[Extension Host] Starting...');
+    console.error('[ExtensionHost] Starting...');
 
-    // Initialize IPC bridge
+    // Initialize IPC bridge first
     await this.bridge.connect();
-    console.log('[Extension Host] Bridge connected');
+    console.error('[ExtensionHost] Bridge connected');
+
+    // Now create the ExtensionManager after bridge is connected
+    this.extensionManager = new ExtensionManager(this.bridge);
+    console.error('[ExtensionHost] Extension manager initialized');
 
     // Set up message handlers
     this.setupMessageHandlers();
 
     // Load installed extensions
     await this.extensionManager.loadExtensions();
-    console.log('[Extension Host] Extensions loaded');
+    console.error('[ExtensionHost] Extensions loaded');
 
-    console.log('[Extension Host] Ready');
+    console.error('[ExtensionHost] Ready');
   }
 
   private setupMessageHandlers() {
     this.bridge.on('activate-extension', async (extensionId: string) => {
-      await this.extensionManager.activateExtension(extensionId);
+      if (this.extensionManager) {
+        await this.extensionManager.activateExtension(extensionId);
+      }
     });
 
     this.bridge.on('deactivate-extension', async (extensionId: string) => {
-      await this.extensionManager.deactivateExtension(extensionId);
+      if (this.extensionManager) {
+        await this.extensionManager.deactivateExtension(extensionId);
+      }
     });
 
     this.bridge.on('execute-command', async (command: string, args: any[]) => {
       // Command execution will be handled by vscode.commands API
-      console.log(`[Extension Host] Execute command: ${command}`, args);
+      console.error(`[ExtensionHost] Execute command: ${command}`, args);
     });
   }
 
   async shutdown() {
-    console.log('[Extension Host] Shutting down...');
-    await this.extensionManager.deactivateAll();
+    console.error('[ExtensionHost] Shutting down...');
+    if (this.extensionManager) {
+      await this.extensionManager.deactivateAll();
+    }
     await this.bridge.disconnect();
   }
 }

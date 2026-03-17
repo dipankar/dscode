@@ -26,11 +26,11 @@ impl LspManager {
         println!("[LSP Manager] Registered language server for {}", language_id);
     }
 
-    pub fn start_server(&self, language_id: &str) -> Result<(), String> {
+    pub async fn start_server(&self, language_id: &str) -> Result<(), String> {
         let clients = self.clients.lock().unwrap();
 
         if let Some(client) = clients.get(language_id) {
-            client.start()?;
+            client.start().await?;
             Ok(())
         } else {
             Err(format!("No language server registered for {}", language_id))

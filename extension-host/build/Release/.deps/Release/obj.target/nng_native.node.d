@@ -1,0 +1,1 @@
+cmd_Release/obj.target/nng_native.node := g++ -o Release/obj.target/nng_native.node -shared -pthread -rdynamic -m64  -Wl,-soname=nng_native.node -Wl,--start-group Release/obj.target/nng_native/src/native/nng_binding.o -Wl,--end-group -lnng

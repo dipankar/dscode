@@ -2,15 +2,20 @@
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
-  import * as monaco from 'monaco-editor';
   import { editorStore } from '../stores/editor';
+  import { settingsStore } from '../lib/settings-store';
+  import { debugStore } from '../stores/debug';
   import { File, FileCode, FileJson, FileText } from 'lucide-svelte';
+  import { initializeMonaco } from '../main';
 
   let editorContainer: HTMLDivElement;
-  let editor: monaco.editor.IStandaloneCodeEditor;
+  let editor: any = null; // Will be monaco.editor.IStandaloneCodeEditor
+  let monaco: any = null; // Loaded dynamically
   let fileWatchUnlisten: (() => void) | null = null;
   let isProgrammaticChange = false;
   let autoSaveTimeout: number | null = null;
+  let monacoLoading = true;
+  let breakpointDecorations: string[] = [];
 
   $: tabs = $editorStore.tabs;
   $: activeTabId = $editorStore.activeTabId;
@@ -35,6 +40,16 @@
   }
 
   onMount(async () => {
+    // Lazy load Monaco Editor
+    try {
+      await initializeMonaco();
+      monaco = await import('monaco-editor');
+      monacoLoading = false;
+    } catch (error) {
+      console.error('Failed to load Monaco Editor:', error);
+      return;
+    }
+
     // Configure TypeScript/JavaScript language defaults
     monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
       target: monaco.languages.typescript.ScriptTarget.ES2020,
@@ -72,24 +87,40 @@
       diagnosticCodesToIgnore: [],
     });
 
+    // Get current settings
+    const currentSettings = $settingsStore;
+
+    // Map theme setting to Monaco theme
+    const getMonacoTheme = (theme: string) => {
+      switch (theme) {
+        case 'light': return 'vs-light';
+        case 'dark': return 'vs-dark';
+        case 'high-contrast': return 'hc-black';
+        default: return 'vs-dark';
+      }
+    };
+
     // Configure Monaco Editor
     editor = monaco.editor.create(editorContainer, {
       value: '',
       language: 'typescript',
-      theme: 'vs-dark',
+      theme: getMonacoTheme(currentSettings.theme.colorTheme),
       automaticLayout: true,
-      fontSize: 14,
+      fontSize: currentSettings.editor.fontSize,
+      fontFamily: currentSettings.editor.fontFamily,
       minimap: {
-        enabled: true,
+        enabled: currentSettings.editor.minimap,
       },
-      lineNumbers: 'on',
+      lineNumbers: currentSettings.editor.lineNumbers,
+      rulers: currentSettings.editor.rulers,
       roundedSelection: false,
       scrollBeyondLastLine: false,
       readOnly: false,
       cursorStyle: 'line',
-      wordWrap: 'off',
-      tabSize: 2,
-      insertSpaces: true,
+      wordWrap: currentSettings.editor.wordWrap,
+      tabSize: currentSettings.editor.tabSize,
+      insertSpaces: currentSettings.editor.insertSpaces,
+      glyphMargin: true,
       // Enable IntelliSense features
       suggestOnTriggerCharacters: true,
       quickSuggestions: true,
@@ -128,8 +159,65 @@
     // Store Monaco instance in store
     editorStore.setMonacoInstance(editor);
 
+    // Subscribe to settings changes and update editor
+    settingsStore.subscribe((settings) => {
+      if (!editor) return;
+
+      // Update editor options
+      editor.updateOptions({
+        fontSize: settings.editor.fontSize,
+        fontFamily: settings.editor.fontFamily,
+        tabSize: settings.editor.tabSize,
+        insertSpaces: settings.editor.insertSpaces,
+        wordWrap: settings.editor.wordWrap,
+        lineNumbers: settings.editor.lineNumbers,
+        minimap: {
+          enabled: settings.editor.minimap,
+        },
+        rulers: settings.editor.rulers,
+      });
+
+      // Update theme
+      const monacoTheme = getMonacoTheme(settings.theme.colorTheme);
+      monaco.editor.setTheme(monacoTheme);
+    });
+
+    // Subscribe to breakpoint changes and update decorations
+    debugStore.subscribe((debugState) => {
+      if (!editor || !activeTab) return;
+
+      const fileBreakpoints = debugState.breakpoints.get(activeTab.path) || [];
+
+      // Create decorations for breakpoints
+      const decorations = fileBreakpoints.map(bp => ({
+        range: new monaco.Range(bp.line, 1, bp.line, 1),
+        options: {
+          isWholeLine: false,
+          glyphMarginClassName: bp.enabled ? 'breakpoint-glyph' : 'breakpoint-glyph-disabled',
+          glyphMarginHoverMessage: { value: bp.enabled ? 'Breakpoint' : 'Disabled breakpoint' },
+        }
+      }));
+
+      // Update decorations
+      breakpointDecorations = editor.deltaDecorations(breakpointDecorations, decorations);
+    });
+
+    // Add glyph margin click handler for toggling breakpoints
+    editor.onMouseDown((e: any) => {
+      const target = e.target;
+      if (target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+        if (activeTab) {
+          const lineNumber = target.position.lineNumber;
+          debugStore.toggleBreakpoint(activeTab.path, lineNumber);
+
+          // Sync with backend
+          syncBreakpointsWithBackend(activeTab.path);
+        }
+      }
+    });
+
     // Listen for content changes
-    editor.onDidChangeModelContent((e) => {
+    editor.onDidChangeModelContent((_e: any) => {
       // Ignore programmatic changes (like when opening/switching files)
       if (isProgrammaticChange) {
         return;
@@ -181,13 +269,6 @@
       const { path } = event.payload;
       await handleFileChanged(path);
     });
-
-    return () => {
-      editor.dispose();
-      if (fileWatchUnlisten) {
-        fileWatchUnlisten();
-      }
-    };
   });
 
   async function handleFileChanged(changedPath: string) {
@@ -237,6 +318,16 @@
   }
 
   onDestroy(() => {
+    // Dispose Monaco editor
+    if (editor) {
+      editor.dispose();
+    }
+
+    // Clean up file watch listener
+    if (fileWatchUnlisten) {
+      fileWatchUnlisten();
+    }
+
     // Clean up auto-save timeout
     if (autoSaveTimeout !== null) {
       clearTimeout(autoSaveTimeout);
@@ -321,6 +412,26 @@
     // Close the tab
     editorStore.closeTab(tabId, true);
   }
+
+  async function syncBreakpointsWithBackend(filePath: string) {
+    try {
+      const breakpoints = debugStore.getBreakpoints(filePath);
+      const backendBreakpoints = breakpoints.map(bp => ({
+        line: bp.line,
+        condition: bp.condition || null,
+      }));
+
+      // Call backend to set breakpoints for this file
+      await invoke('set_breakpoints', {
+        filePath,
+        breakpoints: backendBreakpoints,
+      });
+
+      console.log('[Debug] Synced breakpoints for', filePath, backendBreakpoints);
+    } catch (error) {
+      console.error('[Debug] Failed to sync breakpoints:', error);
+    }
+  }
 </script>
 
 <div class="editor-area">
@@ -382,7 +493,14 @@
     </div>
   {/if}
 
-  <div class="editor-container" bind:this={editorContainer}></div>
+  <div class="editor-container" bind:this={editorContainer}>
+    {#if monacoLoading}
+      <div class="editor-loading">
+        <div class="loading-spinner"></div>
+        <p>Loading editor...</p>
+      </div>
+    {/if}
+  </div>
 
   {#if activeFile && activeFile.isDirty}
     <div class="save-indicator">
@@ -553,6 +671,55 @@
   .breadcrumb-separator {
     margin: 0 6px;
     color: var(--color-text-secondary);
+    opacity: 0.5;
+  }
+
+  .editor-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 16px;
+  }
+
+  .loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  .editor-loading p {
+    color: var(--color-text-secondary);
+    font-size: 14px;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Breakpoint glyph margin styles */
+  :global(.breakpoint-glyph) {
+    background: #e51400;
+    width: 10px !important;
+    height: 10px !important;
+    border-radius: 50%;
+    margin-left: 4px;
+    margin-top: 6px;
+  }
+
+  :global(.breakpoint-glyph-disabled) {
+    background: #888;
+    width: 10px !important;
+    height: 10px !important;
+    border-radius: 50%;
+    margin-left: 4px;
+    margin-top: 6px;
     opacity: 0.5;
   }
 </style>

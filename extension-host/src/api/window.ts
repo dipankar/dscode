@@ -5,6 +5,7 @@
  */
 
 import { ExtensionHostBridge } from '../bridge';
+import { Event, EventEmitter } from './events';
 
 export enum MessageType {
   Info = 'info',
@@ -13,13 +14,63 @@ export enum MessageType {
 }
 
 export class WindowAPI {
-  constructor(private bridge: ExtensionHostBridge) {}
+  // Event emitters
+  private _onDidChangeActiveTextEditor = new EventEmitter<any>();
+  private _onDidChangeVisibleTextEditors = new EventEmitter<any[]>();
+  private _onDidChangeTextEditorSelection = new EventEmitter<any>();
+  private _onDidChangeTextEditorVisibleRanges = new EventEmitter<any>();
+  private _onDidChangeTextEditorOptions = new EventEmitter<any>();
+  private _onDidChangeTextEditorViewColumn = new EventEmitter<any>();
+  private _onDidChangeWindowState = new EventEmitter<any>();
+
+  // Events
+  readonly onDidChangeActiveTextEditor = this._onDidChangeActiveTextEditor.event;
+  readonly onDidChangeVisibleTextEditors = this._onDidChangeVisibleTextEditors.event;
+  readonly onDidChangeTextEditorSelection = this._onDidChangeTextEditorSelection.event;
+  readonly onDidChangeTextEditorVisibleRanges = this._onDidChangeTextEditorVisibleRanges.event;
+  readonly onDidChangeTextEditorOptions = this._onDidChangeTextEditorOptions.event;
+  readonly onDidChangeTextEditorViewColumn = this._onDidChangeTextEditorViewColumn.event;
+  readonly onDidChangeWindowState = this._onDidChangeWindowState.event;
+
+  constructor(private bridge: ExtensionHostBridge) {
+    this.setupEventListeners();
+  }
+
+  private setupEventListeners(): void {
+    this.bridge.on('activeTextEditorChanged', (data: any) => {
+      this._onDidChangeActiveTextEditor.fire(data);
+    });
+
+    this.bridge.on('visibleTextEditorsChanged', (data: any) => {
+      this._onDidChangeVisibleTextEditors.fire(data);
+    });
+
+    this.bridge.on('textEditorSelectionChanged', (data: any) => {
+      this._onDidChangeTextEditorSelection.fire(data);
+    });
+
+    this.bridge.on('textEditorVisibleRangesChanged', (data: any) => {
+      this._onDidChangeTextEditorVisibleRanges.fire(data);
+    });
+
+    this.bridge.on('textEditorOptionsChanged', (data: any) => {
+      this._onDidChangeTextEditorOptions.fire(data);
+    });
+
+    this.bridge.on('textEditorViewColumnChanged', (data: any) => {
+      this._onDidChangeTextEditorViewColumn.fire(data);
+    });
+
+    this.bridge.on('windowStateChanged', (data: any) => {
+      this._onDidChangeWindowState.fire(data);
+    });
+  }
 
   /**
    * Show an information message
    */
   async showInformationMessage(message: string, ...items: string[]): Promise<string | undefined> {
-    console.log('[Window] Info:', message);
+    console.error('[Window] Info:', message);
 
     if (items.length === 0) {
       // Just show the message
@@ -44,7 +95,7 @@ export class WindowAPI {
    * Show a warning message
    */
   async showWarningMessage(message: string, ...items: string[]): Promise<string | undefined> {
-    console.log('[Window] Warning:', message);
+    console.error('[Window] Warning:', message);
 
     if (items.length === 0) {
       await this.bridge.send('window-show-message', {

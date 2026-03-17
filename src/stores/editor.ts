@@ -200,6 +200,32 @@ function createEditorStore() {
 
       unsubscribe();
     },
+
+    navigateToLine: (line: number, column: number = 1) => {
+      let state: EditorState;
+      const unsubscribe = subscribe((s) => { state = s; });
+
+      if (state!.monacoInstance) {
+        // Reveal the line in the center
+        state!.monacoInstance.revealLineInCenter(line);
+
+        // Set cursor position
+        state!.monacoInstance.setPosition({ lineNumber: line, column });
+
+        // Focus the editor
+        state!.monacoInstance.focus();
+
+        // Optionally, select the whole line for highlighting
+        state!.monacoInstance.setSelection({
+          startLineNumber: line,
+          startColumn: 1,
+          endLineNumber: line,
+          endColumn: state!.monacoInstance.getModel()?.getLineMaxColumn(line) || 1,
+        });
+      }
+
+      unsubscribe();
+    },
   };
 }
 
