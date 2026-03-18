@@ -11,6 +11,7 @@
   import { enableWindowPersistence } from './lib/window-persistence';
   import { settingsStore } from './lib/settings-store';
   import ToastContainer from './components/ToastContainer.svelte';
+  import { initializeSession } from './stores/session';
 
   $: theme = $settingsStore.theme.colorTheme;
 
@@ -197,6 +198,11 @@
   }
 
   onMount(() => {
+    // Initialize session manager (handles extension state and events)
+    initializeSession().catch(err => {
+      console.error('Failed to initialize session:', err);
+    });
+
     window.addEventListener('keydown', handleKeydown);
     window.addEventListener('toggleSidebar', handleToggleSidebar);
     window.addEventListener('togglePanel', handleTogglePanel);

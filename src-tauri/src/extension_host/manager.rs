@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
@@ -52,6 +52,9 @@ pub struct ExtensionHostManager {
     secret_storage: Arc<SecretStorage>,
     rate_limiter: Arc<RateLimiter>,
     pub extension_id: String,
+
+    // Command registry
+    registered_commands: Arc<RwLock<Vec<String>>>,
 }
 
 impl ExtensionHostManager {
@@ -66,6 +69,7 @@ impl ExtensionHostManager {
             secret_storage: Arc::new(SecretStorage::new()),
             rate_limiter: Arc::new(RateLimiter::new()),
             extension_id,
+            registered_commands: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -82,8 +86,13 @@ impl ExtensionHostManager {
         self.start_with_ipc(extension_host_path, "")
     }
 
-    /// Start the extension host process with NNG IPC
+    /// Start the extension host process with NNG IPC (bidirectional)
     pub fn start_with_ipc(&mut self, extension_host_path: &str, ipc_url: &str) -> Result<(), String> {
+        self.start_with_bidirectional_ipc(extension_host_path, ipc_url, "")
+    }
+
+    /// Start the extension host process with bidirectional NNG IPC
+    pub fn start_with_bidirectional_ipc(&mut self, extension_host_path: &str, outgoing_ipc_url: &str, incoming_ipc_url: &str) -> Result<(), String> {
         println!("[ExtensionHost] Starting extension host from: {}", extension_host_path);
 
         let mut cmd = Command::new("node");
@@ -92,10 +101,16 @@ impl ExtensionHostManager {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        // Set IPC URL as environment variable if provided
-        if !ipc_url.is_empty() {
-            cmd.env("DSCODE_IPC_URL", ipc_url);
-            println!("[ExtensionHost] Set DSCODE_IPC_URL={}", ipc_url);
+        // Set outgoing IPC URL (ExtHost listens, Tauri connects)
+        if !outgoing_ipc_url.is_empty() {
+            cmd.env("DSCODE_IPC_URL", outgoing_ipc_url);
+            println!("[ExtensionHost] Set DSCODE_IPC_URL={}", outgoing_ipc_url);
+        }
+
+        // Set incoming IPC URL (Tauri listens, ExtHost connects)
+        if !incoming_ipc_url.is_empty() {
+            cmd.env("DSCODE_INCOMING_IPC_URL", incoming_ipc_url);
+            println!("[ExtensionHost] Set DSCODE_INCOMING_IPC_URL={}", incoming_ipc_url);
         }
 
         // Apply sandboxing
@@ -137,6 +152,7 @@ impl ExtensionHostManager {
         let secret_storage = Arc::clone(&self.secret_storage);
         let rate_limiter = Arc::clone(&self.rate_limiter);
         let extension_id = self.extension_id.clone();
+        let registered_commands = Arc::clone(&self.registered_commands);
 
         thread::spawn(move || {
             let reader = BufReader::new(stdout);
@@ -165,6 +181,7 @@ impl ExtensionHostManager {
                         &secret_storage,
                         &rate_limiter,
                         &extension_id,
+                        &registered_commands,
                     ) {
                         eprintln!("[ExtensionHost] Error handling message: {}", e);
                     }
@@ -215,6 +232,7 @@ impl ExtensionHostManager {
         secret_storage: &Arc<SecretStorage>,
         rate_limiter: &Arc<RateLimiter>,
         extension_id: &str,
+        registered_commands: &Arc<RwLock<Vec<String>>>,
     ) -> Result<(), String> {
         let message: IPCMessage = serde_json::from_str(line)
             .map_err(|e| format!("Failed to parse message: {}", e))?;
@@ -248,6 +266,7 @@ impl ExtensionHostManager {
             let secrets_clone = Arc::clone(secret_storage);
             let ext_id = extension_id.to_string();
 
+            let cmds_clone = Arc::clone(registered_commands);
             tokio::spawn(async move {
                 if let Err(e) = Self::handle_request(
                     &msg,
@@ -256,6 +275,7 @@ impl ExtensionHostManager {
                     &perms_clone,
                     &secrets_clone,
                     &ext_id,
+                    &cmds_clone,
                 ).await {
                     eprintln!("[ExtensionHost] Request error: {}", e);
 
@@ -282,10 +302,22 @@ impl ExtensionHostManager {
         permissions: &Arc<Mutex<ExtensionPermissions>>,
         secret_storage: &Arc<SecretStorage>,
         extension_id: &str,
+        registered_commands: &Arc<RwLock<Vec<String>>>,
     ) -> Result<(), String> {
         let response_payload = match message.r#type.as_str() {
             "ready" => {
                 println!("[ExtensionHost] Extension host is ready");
+                serde_json::json!({ "status": "ok" })
+            },
+
+            // Command registration
+            "command-registered" => {
+                let command = message.payload.get("command")
+                    .and_then(|c| c.as_str())
+                    .ok_or("Missing command name")?;
+
+                registered_commands.write().unwrap().push(command.to_string());
+                println!("[ExtensionHost] Registered command: {}", command);
                 serde_json::json!({ "status": "ok" })
             },
 
@@ -592,10 +624,20 @@ impl ExtensionHostManager {
                 serde_json::json!(null)
             },
 
+            // Extensions directory
+            "get-extensions-dir" => {
+                // Return the extensions directory path
+                let extensions_dir = std::env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .join("extensions");
+                println!("[ExtensionHost] Extensions directory: {:?}", extensions_dir);
+                serde_json::json!(extensions_dir.to_string_lossy().to_string())
+            },
+
             // ========== Stubs for other operations ==========
             "openTextDocument" | "saveDocument" | "workspace-save-document" |
             "applyEdits" | "insertSnippet" | "workspace-find-files" |
-            "workspace-get-folders" | "get-extensions-dir" |
+            "workspace-get-folders" |
             "debugCustomRequest" | "debugGetProtocolBreakpoint" | "startDebugging" | "stopDebugging" |
             "fetchTasks" | "executeTask" | "getTerminalProcessId" | "execute-command-request" |
             "authGetSession" |
@@ -711,6 +753,11 @@ impl ExtensionHostManager {
     /// Check if the extension host is running
     pub fn is_running(&self) -> bool {
         self.child.is_some()
+    }
+
+    /// Get list of registered commands
+    pub fn get_registered_commands(&self) -> Vec<String> {
+        self.registered_commands.read().unwrap().clone()
     }
 
     /// Stop the extension host

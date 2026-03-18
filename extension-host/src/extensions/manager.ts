@@ -108,8 +108,9 @@ export class ExtensionManager {
 
     console.error(`[ExtensionManager] Loaded: ${extensionId}`);
 
-    // Auto-activate extensions with "*" activation event
-    if (manifest.activationEvents?.includes('*')) {
+    // Auto-activate extensions with "*" or "onStartupFinished" activation event
+    if (manifest.activationEvents?.includes('*') ||
+        manifest.activationEvents?.includes('onStartupFinished')) {
       await this.activateExtension(extensionId);
     }
   }

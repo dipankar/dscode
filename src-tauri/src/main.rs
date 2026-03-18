@@ -21,6 +21,7 @@ mod lsp;
 mod marketplace;
 mod terminal;
 mod debug;
+mod session;
 
 use commands::*;
 use watcher::FileWatcherState;
@@ -29,7 +30,9 @@ use monitoring::ResourceMonitor;
 use lsp::LspManager;
 use terminal::TerminalManager;
 use debug::DebugManager;
-use std::sync::Mutex;
+use session::SessionManager;
+use std::sync::{Mutex, Arc};
+use tokio::sync::RwLock;
 use tauri::{Manager, menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, image::Image};
 
 fn main() {
@@ -92,6 +95,26 @@ fn main() {
                     }
                 })
                 .build(app)?;
+
+            // Initialize Session Manager
+            let extensions_dir = std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join("extensions");
+
+            let session_manager = Arc::new(RwLock::new(
+                SessionManager::new(app.handle().clone(), extensions_dir)
+            ));
+
+            // Store in app state
+            app.manage(session_manager.clone());
+
+            // Initialize session asynchronously
+            let session = session_manager.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = session.read().await.initialize().await {
+                    eprintln!("[App] Failed to initialize session: {}", e);
+                }
+            });
 
             Ok(())
         })
@@ -159,6 +182,15 @@ fn main() {
             git_delete_branch,
             extension_tree_get_children,
             extension_execute_command,
+            initialize_session,
+            get_session_state,
+            get_installed_extensions,
+            get_active_extensions,
+            session_load_extension,
+            session_unload_extension,
+            session_delete_extension,
+            add_workspace_folder,
+            remove_workspace_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

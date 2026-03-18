@@ -15,10 +15,12 @@ export interface IPCMessage {
 
 export class NngIPC {
   private listening = false;
+  private connected = false;
   private messageHandlers: Map<string, (payload: any) => Promise<any>> = new Map();
+  private messageId = 0;
 
   /**
-   * Start listening on the IPC endpoint
+   * Start listening on the IPC endpoint (REP socket)
    */
   listen(url: string): void {
     if (this.listening) {
@@ -34,10 +36,57 @@ export class NngIPC {
   }
 
   /**
-   * Register a message handler
+   * Connect to IPC endpoint (REQ socket)
+   */
+  connect(url: string): void {
+    if (this.connected) {
+      throw new Error('Already connected');
+    }
+
+    nngNative.connect(url);
+    this.connected = true;
+    console.log(`[NNG IPC] Connected to ${url}`);
+  }
+
+  /**
+   * Register a message handler (for incoming requests)
    */
   on(messageType: string, handler: (payload: any) => Promise<any>): void {
     this.messageHandlers.set(messageType, handler);
+  }
+
+  /**
+   * Send a request to Tauri and wait for response (REQ socket)
+   */
+  async request(msgType: string, payload: any): Promise<any> {
+    if (!this.connected) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+
+    // Generate unique message ID
+    this.messageId++;
+    const id = `req_${this.messageId}`;
+
+    const message: IPCMessage = {
+      id,
+      type: msgType,
+      payload,
+    };
+
+    // Serialize and send
+    const messageStr = JSON.stringify(message);
+    const responseStr = nngNative.request(messageStr);
+
+    // Parse response
+    const response: IPCMessage = JSON.parse(responseStr);
+
+    // Check for error response
+    if (response.type.endsWith('-error')) {
+      const error = response.payload.error || 'Unknown error';
+      throw new Error(error);
+    }
+
+    return response.payload;
   }
 
   /**
@@ -114,11 +163,17 @@ export class NngIPC {
   }
 
   /**
-   * Close the IPC connection
+   * Close the IPC connections
    */
   close(): void {
-    this.listening = false;
-    nngNative.close();
-    console.log('[NNG IPC] Connection closed');
+    if (this.listening) {
+      this.listening = false;
+      nngNative.close();
+    }
+    if (this.connected) {
+      this.connected = false;
+      nngNative.closeReq();
+    }
+    console.log('[NNG IPC] Connections closed');
   }
 }

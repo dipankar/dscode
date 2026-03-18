@@ -18,27 +18,34 @@ export class ExtensionHostBridge extends EventEmitter {
   private nng: NngIPC;
   private isConnected = false;
   private ipcUrl: string;
+  private incomingIpcUrl: string;
 
   constructor() {
     super();
     this.nng = new NngIPC();
-    // Get IPC URL from environment variable or use default
+    // Get IPC URLs from environment variables or use defaults
     this.ipcUrl = process.env.DSCODE_IPC_URL || 'ipc:///tmp/dscode-extension-host.ipc';
+    this.incomingIpcUrl = process.env.DSCODE_INCOMING_IPC_URL || 'ipc:///tmp/dscode-incoming-extension-host.ipc';
   }
 
   async connect() {
     try {
       console.error('[Bridge] Connecting via NNG...');
-      console.error('[Bridge] IPC URL:', this.ipcUrl);
+      console.error('[Bridge] Outgoing IPC URL (ExtHost listens):', this.ipcUrl);
+      console.error('[Bridge] Incoming IPC URL (ExtHost connects):', this.incomingIpcUrl);
 
-      // Start listening for requests from Tauri
+      // Start listening for requests from Tauri (REP socket)
       this.nng.listen(this.ipcUrl);
+
+      // Connect to Tauri for sending requests (REQ socket)
+      this.nng.connect(this.incomingIpcUrl);
+
       this.isConnected = true;
 
       // Register message handlers
       this.setupHandlers();
 
-      console.error('[Bridge] Connected successfully on', this.ipcUrl);
+      console.error('[Bridge] Bidirectional connection established');
     } catch (error) {
       console.error('[Bridge] Connection failed:', error);
       throw error;
@@ -81,31 +88,37 @@ export class ExtensionHostBridge extends EventEmitter {
   }
 
   /**
-   * Send a one-way message to Tauri
-   * Note: Not supported with current REQ/REP pattern.
-   * TODO: Add second socket for extension-host-initiated messages
+   * Send a one-way message to Tauri (fire and forget)
+   * For one-way messages, we still use request() but ignore the response
    */
   async send(type: string, payload: any): Promise<void> {
-    console.error('[Bridge] Warning: send() not supported with NNG REQ/REP pattern');
-    console.error('[Bridge] Attempted to send:', type, payload);
-    // TODO: Implement with second socket (REQ from extension host side)
+    if (!this.isConnected) {
+      throw new Error('Bridge not connected');
+    }
+
+    try {
+      // For one-way messages, we still need to wait for ack due to REQ/REP pattern
+      await this.nng.request(type, payload);
+    } catch (error) {
+      console.error('[Bridge] Failed to send message:', error);
+      throw error;
+    }
   }
 
   /**
    * Send a request to Tauri and wait for response
-   * Note: Not supported with current REQ/REP pattern.
-   * TODO: Add second socket for extension-host-initiated requests
    */
   async request(type: string, payload: any): Promise<any> {
-    console.error('[Bridge] Warning: request() not supported with NNG REQ/REP pattern');
-    console.error('[Bridge] Attempted to request:', type, payload);
-    // TODO: Implement with second socket (REQ from extension host side)
-    return null;
-  }
+    if (!this.isConnected) {
+      throw new Error('Bridge not connected');
+    }
 
-  /**
-   * Note: Current NNG REQ/REP pattern allows Tauri to initiate requests to extension host,
-   * but not vice versa. For full bidirectional communication, we need to add a second
-   * socket pair where extension host has REQ and Tauri has REP.
-   */
+    try {
+      const response = await this.nng.request(type, payload);
+      return response;
+    } catch (error) {
+      console.error('[Bridge] Request failed:', error);
+      throw error;
+    }
+  }
 }

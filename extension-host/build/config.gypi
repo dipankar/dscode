@@ -426,15 +426,15 @@
     "nodedir": "/home/dipankar/.cache/node-gyp/20.19.4",
     "python": "/usr/bin/python3",
     "standalone_static_library": 1,
-    "user_agent": "npm/10.8.2 node/v20.19.4 linux x64 workspaces/false",
-    "userconfig": "/home/dipankar/.npmrc",
-    "local_prefix": "/home/dipankar/Github/dscode/extension-host",
-    "prefix": "/home/dipankar/.local/share/mise/installs/node/20.19.4",
-    "npm_version": "10.8.2",
-    "cache": "/home/dipankar/.npm",
-    "node_gyp": "/home/dipankar/.local/share/mise/installs/node/20.19.4/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js",
-    "globalconfig": "/home/dipankar/.local/share/mise/installs/node/20.19.4/etc/npmrc",
+    "global_prefix": "/home/dipankar/.local/share/mise/installs/node/20.19.4",
     "init_module": "/home/dipankar/.npm-init.js",
-    "global_prefix": "/home/dipankar/.local/share/mise/installs/node/20.19.4"
+    "globalconfig": "/home/dipankar/.local/share/mise/installs/node/20.19.4/etc/npmrc",
+    "node_gyp": "/home/dipankar/.local/share/mise/installs/node/20.19.4/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js",
+    "cache": "/home/dipankar/.npm",
+    "npm_version": "10.8.2",
+    "prefix": "/home/dipankar/.local/share/mise/installs/node/20.19.4",
+    "local_prefix": "/home/dipankar/Github/dscode/extension-host",
+    "userconfig": "/home/dipankar/.npmrc",
+    "user_agent": "npm/10.8.2 node/v20.19.4 linux x64 workspaces/false"
   }
 }

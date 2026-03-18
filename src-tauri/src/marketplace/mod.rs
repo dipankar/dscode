@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use zip::ZipArchive;
 
 const MARKETPLACE_API_URL: &str = "https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery";
 const MARKETPLACE_API_VERSION: &str = "3.0-preview.1";
@@ -326,15 +327,31 @@ pub async fn download_extension(
         publisher, extension_name, version
     );
 
-    // Download the .vsix file
+    println!("[Marketplace] Downloading from: {}", download_url);
+
+    // Download the .vsix file with proper headers
     let response = client
         .get(&download_url)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) VSCode/1.80.0")
+        .header("Accept", "*/*")
         .send()
         .await
         .map_err(|e| format!("Failed to download extension: {}", e))?;
 
+    println!("[Marketplace] Response status: {}", response.status());
+
     if !response.status().is_success() {
         return Err(format!("Download failed with status: {}", response.status()));
+    }
+
+    // Validate Content-Type (should be application/octet-stream or application/zip)
+    if let Some(content_type) = response.headers().get("content-type") {
+        let ct = content_type.to_str().unwrap_or("");
+        if !ct.contains("application/octet-stream")
+            && !ct.contains("application/zip")
+            && !ct.contains("binary/octet-stream") {
+            eprintln!("[Marketplace] Warning: Unexpected content-type: {}", ct);
+        }
     }
 
     // Save to temporary file
@@ -348,8 +365,40 @@ pub async fn download_extension(
         .await
         .map_err(|e| format!("Failed to read response bytes: {}", e))?;
 
+    println!("[Marketplace] Downloaded {} bytes", bytes.len());
+
+    // Validate minimum file size (VSIX should be at least a few KB)
+    if bytes.len() < 1024 {
+        return Err(format!("Downloaded file is too small ({} bytes), likely invalid", bytes.len()));
+    }
+
+    // Validate ZIP magic number (PK\x03\x04 for ZIP files)
+    if bytes.len() >= 4 && (&bytes[0..2] != b"PK") {
+        // Log first bytes for debugging
+        let preview = if bytes.len() >= 200 {
+            String::from_utf8_lossy(&bytes[0..200])
+        } else {
+            String::from_utf8_lossy(&bytes)
+        };
+        eprintln!("[Marketplace] ERROR: File is not a ZIP. First bytes: {:?}", &bytes[0..std::cmp::min(16, bytes.len())]);
+        eprintln!("[Marketplace] Preview: {}", preview);
+        return Err(format!("Downloaded file is not a valid ZIP archive (invalid magic number). This usually means the marketplace API returned an error page instead of the extension file."));
+    }
+
     std::fs::write(&vsix_path, bytes)
         .map_err(|e| format!("Failed to write .vsix file: {}", e))?;
+
+    // Verify the written file is a valid ZIP
+    match std::fs::File::open(&vsix_path) {
+        Ok(f) => {
+            if let Err(e) = zip::ZipArchive::new(f) {
+                return Err(format!("Downloaded file is not a valid VSIX archive: {}", e));
+            }
+        }
+        Err(e) => {
+            return Err(format!("Failed to open downloaded file for validation: {}", e));
+        }
+    }
 
     // Persist the temp directory by keeping it
     // This prevents it from being deleted when temp_dir goes out of scope
