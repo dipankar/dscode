@@ -13,6 +13,8 @@ use nng::{Protocol, Socket};
 use nng::options::Options;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -80,7 +82,7 @@ impl NngExtensionIpc {
         let socket = self.socket.lock().await;
 
         socket.send(msg_bytes)
-            .map_err(|(_, e)| format!("Failed to send message: {}", e))?;
+            .map_err(|(_, e)| format!("Failed to send message: {:?}", e))?;
 
         // Wait for response
         let response_msg = socket.recv()
@@ -126,7 +128,7 @@ impl NngExtensionIpc {
         let socket = self.socket.lock().await;
 
         socket.send(json.as_bytes())
-            .map_err(|(_, e)| format!("Failed to send message: {}", e))?;
+            .map_err(|(_, e)| format!("Failed to send message: {:?}", e))?;
 
         // For one-way messages, we still need to receive the ack since we're using REQ/REP
         let _ = socket.recv()
@@ -137,7 +139,7 @@ impl NngExtensionIpc {
 }
 
 /// Handler function type for incoming requests
-pub type IncomingRequestHandler = Arc<dyn Fn(String, Value) -> Result<Value, String> + Send + Sync>;
+pub type IncomingRequestHandler = Arc<dyn Fn(String, Value) -> Pin<Box<dyn Future<Output = Result<Value, String>> + Send>> + Send + Sync>;
 
 /// NNG IPC for handling incoming requests from Extension Host
 pub struct NngIncomingIpc {
@@ -231,7 +233,7 @@ impl NngIncomingIpc {
                 };
 
                 // Handle request
-                let response_payload = match handler(request.r#type.clone(), request.payload.clone()) {
+                let response_payload = match handler(request.r#type.clone(), request.payload.clone()).await {
                     Ok(payload) => payload,
                     Err(e) => {
                         // Send error response

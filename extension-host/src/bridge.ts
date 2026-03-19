@@ -23,9 +23,18 @@ export class ExtensionHostBridge extends EventEmitter {
   constructor() {
     super();
     this.nng = new NngIPC();
-    // Get IPC URLs from environment variables or use defaults
-    this.ipcUrl = process.env.DSCODE_IPC_URL || 'ipc:///tmp/dscode-extension-host.ipc';
-    this.incomingIpcUrl = process.env.DSCODE_INCOMING_IPC_URL || 'ipc:///tmp/dscode-incoming-extension-host.ipc';
+    // Get IPC URLs from environment variables or use platform-safe defaults
+    const windowsPipeRoot = '\\.\pipe\\';
+    const defaultOutgoing =
+      process.platform === 'win32'
+        ? `ipc://${windowsPipeRoot}dscode-extension-host`
+        : 'ipc:///tmp/dscode-extension-host.ipc';
+    const defaultIncoming =
+      process.platform === 'win32'
+        ? `ipc://${windowsPipeRoot}dscode-incoming-extension-host`
+        : 'ipc:///tmp/dscode-incoming-extension-host.ipc';
+    this.ipcUrl = process.env.DSCODE_IPC_URL || defaultOutgoing;
+    this.incomingIpcUrl = process.env.DSCODE_INCOMING_IPC_URL || defaultIncoming;
   }
 
   async connect() {

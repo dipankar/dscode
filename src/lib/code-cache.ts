@@ -63,89 +63,17 @@ export function scheduleBackgroundCompilation() {
   }
 }
 
-// Strategy 5: Persistent module state (like V8 snapshot)
-interface ModuleState {
-  timestamp: number;
-  exports: any;
-  signature: string;
-}
-
+// Strategy 5: Persistent module state is intentionally simplified
+// We rely on the runtime module cache instead of serialising exports to IndexedDB
 export async function loadOrCacheModule(
   modulePath: string,
   loader: () => Promise<any>
 ): Promise<any> {
-  const cacheKey = `module_state_${modulePath}`;
-
-  try {
-    // Try IndexedDB for persistent caching
-    if ('indexedDB' in window) {
-      const cached = await getFromIndexedDB<ModuleState>(cacheKey);
-      if (cached && Date.now() - cached.timestamp < 86400000) { // 24hr
-        console.log(`[CodeCache] Restored ${modulePath} from persistent cache`);
-        return cached.exports;
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to load from IndexedDB:', e);
+  if (moduleCache.has(modulePath)) {
+    return moduleCache.get(modulePath);
   }
 
-  // Load fresh
   const module = await loader();
-
-  // Cache for next time
-  try {
-    await saveToIndexedDB(cacheKey, {
-      timestamp: Date.now(),
-      exports: module,
-      signature: JSON.stringify(module),
-    });
-  } catch (e) {
-    console.warn('Failed to save to IndexedDB:', e);
-  }
-
+  moduleCache.set(modulePath, module);
   return module;
-}
-
-// IndexedDB helpers
-async function getFromIndexedDB<T>(key: string): Promise<T | null> {
-  return new Promise((resolve) => {
-    const request = indexedDB.open('DSCodeCache', 1);
-
-    request.onerror = () => resolve(null);
-
-    request.onsuccess = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      const transaction = db.transaction(['modules'], 'readonly');
-      const store = transaction.objectStore('modules');
-      const getRequest = store.get(key);
-
-      getRequest.onsuccess = () => resolve(getRequest.result);
-      getRequest.onerror = () => resolve(null);
-    };
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains('modules')) {
-        db.createObjectStore('modules');
-      }
-    };
-  });
-}
-
-async function saveToIndexedDB(key: string, value: any): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('DSCodeCache', 1);
-
-    request.onerror = () => reject(request.error);
-
-    request.onsuccess = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      const transaction = db.transaction(['modules'], 'readwrite');
-      const store = transaction.objectStore('modules');
-      const putRequest = store.put(value, key);
-
-      putRequest.onsuccess = () => resolve();
-      putRequest.onerror = () => reject(putRequest.error);
-    };
-  });
 }

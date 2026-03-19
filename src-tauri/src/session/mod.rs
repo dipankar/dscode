@@ -12,10 +12,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio::time::{sleep, Duration};
 use serde::{Serialize, Deserialize};
-use tauri::{AppHandle, Emitter};
+use uuid::Uuid;
+use tauri::{AppHandle, Emitter, Manager};
 
-use crate::extension_host::{ExtensionHostPool, HostAllocationStrategy};
+use crate::extension_host::{ExtensionHostManager, NngIpcManager};
 use crate::lsp::{LspServerPool, LspServerStrategy};
 use crate::debug::DebugAdapterPool;
 
@@ -72,7 +74,8 @@ pub enum SessionEvent {
 pub struct SessionManager {
     app_handle: AppHandle,
     state: Arc<RwLock<SessionState>>,
-    extension_pool: Arc<ExtensionHostPool>,
+    extension_host: Arc<tokio::sync::Mutex<ExtensionHostManager>>,
+    nng_manager: Arc<NngIpcManager>,
     lsp_pool: Arc<RwLock<LspServerPool>>,
     debug_pool: Arc<RwLock<DebugAdapterPool>>,
     extensions_dir: PathBuf,
@@ -87,11 +90,14 @@ impl SessionManager {
             workspace_folders: Vec::new(),
             active_extensions: Vec::new(),
             installed_extensions: Vec::new(),
-        }));
+        })
+    });
 
-        let extension_pool = Arc::new(ExtensionHostPool::new(
-            HostAllocationStrategy::Shared { max_extensions_per_host: 10 }
+        let extension_host = Arc::new(tokio::sync::Mutex::new(
+            ExtensionHostManager::new("main".to_string())
         ));
+
+        let nng_manager = Arc::new(NngIpcManager::new());
 
         let lsp_pool = Arc::new(RwLock::new(LspServerPool::new(LspServerStrategy::OnePerLanguage)));
         let debug_pool = Arc::new(RwLock::new(DebugAdapterPool::new()));
@@ -99,7 +105,8 @@ impl SessionManager {
         Self {
             app_handle,
             state,
-            extension_pool,
+            extension_host,
+            nng_manager,
             lsp_pool,
             debug_pool,
             extensions_dir,
@@ -113,9 +120,13 @@ impl SessionManager {
         }
     }
 
-    /// Initialize the session - scan and load extensions
+    /// Initialize the session - start Extension Host and load extensions
     pub async fn initialize(&self) -> Result<(), String> {
         println!("[SessionManager] Initializing session...");
+
+        // Start the single Extension Host with NNG IPC
+        println!("[SessionManager] Starting Extension Host with NNG IPC...");
+        self.start_extension_host().await?;
 
         // Scan for installed extensions
         self.scan_extensions().await?;
@@ -130,6 +141,168 @@ impl SessionManager {
         println!("[SessionManager] Session initialized");
         Ok(())
     }
+
+    /// Start the Extension Host with bidirectional NNG IPC
+    async fn start_extension_host(&self) -> Result<(), String> {
+        let session_id = Uuid::new_v4();
+        let outgoing_ipc_url = Self::build_ipc_url("ext-out", &session_id)?;
+        let incoming_ipc_url = Self::build_ipc_url("ext-in", &session_id)?;
+
+        let session_manager = self.clone_for_handler();
+        let handler = Arc::new(move |msg_type: String, payload: serde_json::Value| {
+            let sm = session_manager.clone();
+            Box::pin(async move { sm.handle_incoming_request(&msg_type, payload).await })
+        })
+    };
+
+        self
+            .nng_manager
+            .setup_incoming("main", &incoming_ipc_url, handler)
+            .await?;
+
+        let extension_host_main = self.resolve_extension_host_entry()?;
+        let extension_host_main_str = extension_host_main.to_string_lossy().to_string();
+
+        let mut manager = self.extension_host.lock().await;
+        if manager.is_running() {
+            println!("[SessionManager] Extension Host already running");
+        } else {
+            manager.start_with_nng(
+                &extension_host_main_str,
+                &outgoing_ipc_url,
+                &incoming_ipc_url,
+            )?;
+        }
+        drop(manager);
+
+        const MAX_ATTEMPTS: u8 = 10;
+        for attempt in 1..=MAX_ATTEMPTS {
+            if self.nng_manager.is_connected("main").await {
+                break;
+            }
+
+            match self.nng_manager.connect_outgoing("main", &outgoing_ipc_url).await {
+                Ok(_) => break,
+                Err(err) if attempt == MAX_ATTEMPTS => {
+                    return Err(format!("Failed to connect to extension host: {}", err));
+                }
+                Err(err) => {
+                    let backoff = Duration::from_millis((attempt as u64) * 200);
+                    println!(
+                        "[SessionManager] Outgoing connect attempt {} failed: {}. Retrying in {:?}",
+                        attempt, err, backoff
+                    );
+                    sleep(backoff).await;
+                }
+            }
+        }
+
+        println!("[SessionManager] Extension Host started successfully");
+        Ok(())
+    }
+
+
+    /// Clone for handler callback
+    fn clone_for_handler(&self) -> Arc<Self> {
+        Arc::new(Self {
+            app_handle: self.app_handle.clone(),
+            state: Arc::clone(&self.state),
+            extension_host: Arc::clone(&self.extension_host),
+            nng_manager: Arc::clone(&self.nng_manager),
+            lsp_pool: Arc::clone(&self.lsp_pool),
+            debug_pool: Arc::clone(&self.debug_pool),
+            extensions_dir: self.extensions_dir.clone(),
+        })
+    }
+
+    fn resolve_extension_host_entry(&self) -> Result<PathBuf, String> {
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        let resolver = self.app_handle.path_resolver();
+
+        if let Some(path) = resolver.resolve_resource("extension-host/dist/main.js") {
+            candidates.push(path);
+        }
+
+        if let Some(path) = resolver.resolve_resource("extension-host/main.js") {
+            candidates.push(path);
+        }
+
+        if let Some(parent_dir) = self.extensions_dir.parent() {
+            candidates.push(parent_dir.join("extension-host/dist/main.js"));
+            candidates.push(parent_dir.join("extension-host/main.js"));
+        }
+
+        if let Ok(cwd) = std::env::current_dir() {
+            candidates.push(cwd.join("extension-host/dist/main.js"));
+            candidates.push(cwd.join("extension-host/main.js"));
+        }
+
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(parent) = exe_path.parent() {
+                candidates.push(parent.join("extension-host/dist/main.js"));
+            }
+        }
+
+        for candidate in candidates {
+            if candidate.exists() {
+                println!("[SessionManager] Resolved extension host entry to {:?}", candidate);
+                return Ok(candidate);
+            }
+        }
+
+        Err("Unable to locate extension host entry point".to_string())
+    }
+
+    fn build_ipc_url(kind: &str, session_id: &Uuid) -> Result<String, String> {
+        #[cfg(target_family = "unix")]
+        {
+            use std::fs;
+
+            let socket_path = std::env::temp_dir().join(format!("dscode-{}-{}.sock", kind, session_id));
+            if socket_path.exists() {
+                if let Err(err) = fs::remove_file(&socket_path) {
+                    eprintln!("[SessionManager] Failed to remove stale socket {:?}: {}", socket_path, err);
+                }
+            }
+
+            return Ok(format!("ipc://{}", socket_path.to_string_lossy()));
+        }
+
+        #[cfg(target_family = "windows")]
+        {
+            return Ok(format!("ipc://\\.\pipe\dscode-{}-{}", kind, session_id));
+        }
+
+        #[allow(unreachable_code)]
+        {
+            Err("Unsupported platform for IPC".to_string())
+        }
+    }
+    /// Handle incoming requests from Extension Host
+    async fn handle_incoming_request(&self, msg_type: &str, payload: serde_json::Value) -> Result<serde_json::Value, String> {
+        println!("[SessionManager] Handling incoming request: {}", msg_type);
+
+        match msg_type {
+            "get-extensions-dir" => {
+                let extensions_dir = self.extensions_dir.canonicalize()
+                    .unwrap_or_else(|_| self.extensions_dir.clone());
+                println!("[SessionManager] Extensions directory: {:?}", extensions_dir);
+                Ok(serde_json::json!(extensions_dir.to_string_lossy().to_string()))
+            },
+            "workspace-get-folders" => {
+                let state = self.state.read().await;
+                let folders: Vec<String> = state.workspace_folders.iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                Ok(serde_json::json!(folders))
+            },
+            _ => {
+                println!("[SessionManager] Unhandled request type: {}", msg_type);
+                Err(format!("Unhandled request type: {}", msg_type))
+            }
+        }
+    }
+
 
     /// Scan extensions directory for installed extensions
     async fn scan_extensions(&self) -> Result<(), String> {
@@ -209,6 +382,7 @@ impl SessionManager {
             active: false,
         })
     }
+    }
 
     /// Load extensions that should auto-start
     async fn load_auto_start_extensions(&self) -> Result<(), String> {
@@ -237,7 +411,8 @@ impl SessionManager {
         self.mark_extension_active(extension_id, true).await;
         self.emit_event(SessionEvent::ExtensionLoaded {
             extension_id: extension_id.to_string()
-        });
+        })
+    };
 
         Ok(())
     }
@@ -252,12 +427,9 @@ impl SessionManager {
 
         println!("[SessionManager] Loading extension: {}", extension_id);
 
-        // Load into extension host pool
-        self.extension_pool.load_extension(
-            extension_id,
-            extension_path.to_str().ok_or("Invalid path")?,
-            None, // workspace
-        ).await?;
+        // Send activate-extension request to Extension Host via NNG
+        let payload = serde_json::json!({ "extensionId": extension_id });
+        self.nng_manager.request("main", "activate-extension", payload).await?;
 
         Ok(())
     }
@@ -266,14 +438,16 @@ impl SessionManager {
     pub async fn unload_extension(&self, extension_id: &str) -> Result<(), String> {
         println!("[SessionManager] Unloading extension: {}", extension_id);
 
-        // Unload from extension host pool
-        self.extension_pool.unload_extension(extension_id).await?;
+        // Send deactivate-extension request to Extension Host via NNG
+        let payload = serde_json::json!({ "extensionId": extension_id });
+        self.nng_manager.request("main", "deactivate-extension", payload).await?;
 
         // Update state and emit event
         self.mark_extension_active(extension_id, false).await;
         self.emit_event(SessionEvent::ExtensionUnloaded {
             extension_id: extension_id.to_string()
-        });
+        })
+    };
 
         Ok(())
     }
@@ -302,7 +476,8 @@ impl SessionManager {
         // Emit events
         self.emit_event(SessionEvent::ExtensionDeleted {
             extension_id: extension_id.to_string()
-        });
+        })
+    };
         self.emit_event(SessionEvent::ExtensionsChanged { extensions });
 
         Ok(())
@@ -386,16 +561,17 @@ impl SessionManager {
             let _ = self.unload_extension(&ext.id).await;
         }
 
-        // Shutdown extension host pool
-        self.extension_pool.shutdown_all().await?;
+        // Shutdown Extension Host
+        let mut manager = self.extension_host.lock().await;
+        manager.shutdown();
 
         println!("[SessionManager] Session shutdown complete");
         Ok(())
     }
 
-    /// Get reference to extension pool
-    pub fn extension_pool(&self) -> &Arc<ExtensionHostPool> {
-        &self.extension_pool
+    /// Get reference to NNG manager
+    pub fn nng_manager(&self) -> &Arc<NngIpcManager> {
+        &self.nng_manager
     }
 
     /// Get reference to LSP pool

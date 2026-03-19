@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -66,11 +66,8 @@ impl TerminalManager {
                 .unwrap_or_else(|_| "/".to_string())
         });
 
-        // Create PTY system
-        let pty_system = native_pty_system();
-
-        // Create PTY pair with initial size
-        let pair = pty_system
+        // Create PTY system and open pair with initial size
+        let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 24,
                 cols: 80,
@@ -79,22 +76,25 @@ impl TerminalManager {
             })
             .map_err(|e| format!("Failed to create PTY: {}", e))?;
 
+        let portable_pty::PtyPair { mut master, slave } = pair;
+
         // Create command
         let mut cmd = CommandBuilder::new(&shell_cmd);
         cmd.cwd(&working_dir);
 
         // Spawn the shell
-        let _child = pair
-            .slave
+        let _child = slave
             .spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
-        // Get reader and writer
-        let mut reader = pair
-            .master
+        // Prepare IO handles
+        let mut reader = master
             .try_clone_reader()
             .map_err(|e| format!("Failed to clone reader: {}", e))?;
-        let writer = pair.master.take_writer().map_err(|e| format!("Failed to get writer: {}", e))?;
+        let writer = master
+            .take_writer()
+            .map_err(|e| format!("Failed to get writer: {}", e))?;
+        let master = Arc::new(Mutex::new(master));
 
         // Create terminal info
         let terminal_name = name.unwrap_or_else(|| format!("Terminal {}", id));
@@ -112,6 +112,7 @@ impl TerminalManager {
         let terminal_instance = TerminalInstance {
             info: info.clone(),
             writer,
+            master: Arc::clone(&master),
             start_sender: Some(start_tx),
         };
 
@@ -178,12 +179,20 @@ impl TerminalManager {
     }
 
     pub fn resize_terminal(&self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
-        // Note: portable-pty doesn't expose resize directly on the writer/reader
-        // We would need to keep a reference to the PtyPair to resize
-        // For now, we'll return Ok but this is a limitation
-        println!("[Terminal] Resize request for {} to {}x{}", id, cols, rows);
-        // TODO: Implement proper resize by keeping PtyPair reference
-        Ok(())
+        let mut terminals = self.terminals.lock().unwrap();
+        let terminal = terminals
+            .get_mut(id)
+            .ok_or_else(|| format!("Terminal {} not found", id))?;
+
+        let mut master = terminal.master.lock().unwrap();
+        master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("Failed to resize terminal: {}", e))
     }
 
     pub fn close_terminal(&self, id: &str) -> Result<(), String> {

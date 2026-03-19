@@ -54,6 +54,65 @@ class ExtensionHost {
       // Command execution will be handled by vscode.commands API
       console.error(`[ExtensionHost] Execute command: ${command}`, args);
     });
+
+    // Extension listing - return all loaded extensions
+    this.bridge.on('list-extensions', async (payload: any, respond: Function) => {
+      if (!this.extensionManager) {
+        respond({ extensions: [] });
+        return;
+      }
+
+      const extensions = this.extensionManager.getAllExtensions().map(ext => ({
+        id: ext.id,
+        name: ext.manifest.name,
+        displayName: ext.manifest.displayName || ext.manifest.name,
+        version: ext.manifest.version,
+        publisher: ext.manifest.publisher,
+        description: ext.manifest.description || null,
+        path: ext.extensionPath,
+        isActive: ext.isActive,
+        activationEvents: ext.manifest.activationEvents || [],
+        contributes: ext.manifest.contributes || {}
+      }));
+
+      respond({ extensions });
+    });
+
+    // Reload extensions (after installation)
+    this.bridge.on('reload-extensions', async (payload: any, respond: Function) => {
+      if (!this.extensionManager) {
+        respond({ success: false, error: 'Extension manager not initialized' });
+        return;
+      }
+
+      try {
+        await this.extensionManager.reloadExtensions();
+        respond({ success: true });
+      } catch (error: any) {
+        respond({ success: false, error: error.message });
+      }
+    });
+
+    // Uninstall extension
+    this.bridge.on('uninstall-extension', async (payload: any, respond: Function) => {
+      if (!this.extensionManager) {
+        respond({ success: false, error: 'Extension manager not initialized' });
+        return;
+      }
+
+      const { extensionId } = payload;
+      if (!extensionId) {
+        respond({ success: false, error: 'Extension ID is required' });
+        return;
+      }
+
+      try {
+        await this.extensionManager.uninstallExtension(extensionId);
+        respond({ success: true });
+      } catch (error: any) {
+        respond({ success: false, error: error.message });
+      }
+    });
   }
 
   async shutdown() {

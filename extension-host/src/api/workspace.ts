@@ -68,7 +68,9 @@ export class WorkspaceAPI {
 
   private async loadWorkspaceFolders() {
     try {
-      const folders = await this.bridge.request('workspace-get-folders', {});
+      const response = await this.bridge.request('workspace-get-folders', {});
+      // Handle response - it's already an array from Tauri
+      const folders = Array.isArray(response) ? response : [];
       this.workspaceFolders = folders.map((folderPath: string, index: number) => ({
         uri: {
           fsPath: folderPath,

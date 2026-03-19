@@ -321,11 +321,50 @@ pub async fn download_extension(
 ) -> Result<PathBuf, String> {
     let client = reqwest::Client::new();
 
-    // Construct download URL using the marketplace API
-    let download_url = format!(
-        "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/{}/vsextensions/{}/{}/vspackage",
-        publisher, extension_name, version
-    );
+    // First, get the extension details to find the actual download URL
+    let marketplace_query = MarketplaceQuery {
+        filters: vec![Filter {
+            criteria: vec![
+                Criterion {
+                    filter_type: 7, // ExtensionName
+                    value: format!("{}.{}", publisher, extension_name),
+                },
+            ],
+            page_number: 1,
+            page_size: 1,
+            sort_by: 0,
+            sort_order: 0,
+        }],
+        flags: 0x192, // IncludeVersions | IncludeFiles | IncludeStatistics
+    };
+
+    let details_response = client
+        .post(MARKETPLACE_API_URL)
+        .header("Accept", format!("application/json;api-version={}", MARKETPLACE_API_VERSION))
+        .header("Content-Type", "application/json")
+        .json(&marketplace_query)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to query marketplace for download URL: {}", e))?;
+
+    let marketplace_response: MarketplaceResponse = details_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse marketplace response: {}", e))?;
+
+    // Get the VSIX download URL from the response
+    let download_url = marketplace_response
+        .results
+        .first()
+        .and_then(|r| r.extensions.first())
+        .and_then(|ext| ext.versions.first())
+        .and_then(|v| {
+            v.files
+                .iter()
+                .find(|f| f.asset_type == "Microsoft.VisualStudio.Services.VSIXPackage")
+                .map(|f| f.source.clone())
+        })
+        .ok_or("Could not find VSIX download URL in marketplace response")?;
 
     println!("[Marketplace] Downloading from: {}", download_url);
 

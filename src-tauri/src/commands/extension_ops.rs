@@ -9,61 +9,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zip::ZipArchive;
 
+// Note: Extension host is now started by SessionManager on app initialization.
+// This command is kept for backward compatibility but is now a no-op.
 #[tauri::command]
 pub async fn start_extension_host(
-    ext_host: State<'_, Mutex<ExtensionHostManager>>,
-    nng_manager: State<'_, NngIpcManager>,
+    _ext_host: State<'_, Mutex<ExtensionHostManager>>,
+    _nng_manager: State<'_, NngIpcManager>,
 ) -> Result<(), String> {
-    // Generate unique IPC URL for this extension host
-    let ext_host_id = {
-        let host = ext_host.lock().unwrap();
-        host.extension_id.clone()
-    };
-    let ipc_url = format!("ipc:///tmp/dscode-ext-host-{}.ipc", ext_host_id);
-
-    println!("[ExtensionHost] Using IPC URL: {}", ipc_url);
-
-    // Get the extension host path
-    // In development, it's at extension-host/dist/main.js
-    // In production, we'll bundle it with the app
-    let extension_host_path = if cfg!(debug_assertions) {
-        // Development path
-        std::env::current_dir()
-            .map_err(|e| e.to_string())?
-            .parent()
-            .ok_or("Failed to get parent directory")?
-            .join("extension-host/dist/main.js")
-            .to_str()
-            .ok_or("Failed to convert path to string")?
-            .to_string()
-    } else {
-        // Production path (will need to bundle extension host with app)
-        // For now, use the same path
-        std::env::current_dir()
-            .map_err(|e| e.to_string())?
-            .parent()
-            .ok_or("Failed to get parent directory")?
-            .join("extension-host/dist/main.js")
-            .to_str()
-            .ok_or("Failed to convert path to string")?
-            .to_string()
-    };
-
-    // Start extension host with IPC URL as environment variable
-    {
-        let mut host = ext_host.lock().unwrap();
-        host.start_with_ipc(&extension_host_path, &ipc_url)?;
-    }
-
-    // Wait for extension host to bind to the socket (give it 2 seconds)
-    println!("[ExtensionHost] Waiting for extension host to bind to socket...");
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-    // Connect to the extension host from Tauri side
-    println!("[ExtensionHost] Connecting to extension host via NNG...");
-    nng_manager.connect(&ext_host_id, &ipc_url).await?;
-
-    println!("[ExtensionHost] Successfully connected to extension host");
+    println!("[ExtensionHost] start_extension_host called - extension host is managed by SessionManager");
     Ok(())
 }
 
@@ -112,7 +65,7 @@ pub struct ExtensionManifest {
     pub dev_dependencies: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct InstalledExtension {
     pub id: String,
     pub name: String,
@@ -120,6 +73,8 @@ pub struct InstalledExtension {
     pub publisher: String,
     pub description: Option<String>,
     pub path: String,
+    #[serde(default)]
+    pub contributes: Option<serde_json::Value>,
 }
 
 /// Install a .vsix extension package
@@ -168,9 +123,17 @@ pub async fn install_extension(vsix_path: String) -> Result<InstalledExtension, 
         let extension_id = format!("{}.{}", manifest.publisher, manifest.name);
         let install_path = PathBuf::from(&extensions_dir).join(&extension_id);
 
-        // Check if extension already exists
+        // Check if extension already exists - if so, just return it (reload will pick it up)
         if install_path.exists() {
-            return Err(format!("Extension {} is already installed", extension_id));
+            return Ok(InstalledExtension {
+                id: extension_id.clone(),
+                name: manifest.name.clone(),
+                version: manifest.version.clone(),
+                publisher: manifest.publisher.clone(),
+                description: manifest.description.clone(),
+                path: install_path.to_string_lossy().to_string(),
+                contributes: manifest.contributes.clone().map(|c| serde_json::to_value(c).unwrap_or(serde_json::Value::Null)),
+            });
         }
 
         // Create extension directory
@@ -220,6 +183,7 @@ pub async fn install_extension(vsix_path: String) -> Result<InstalledExtension, 
             publisher: manifest.publisher.clone(),
             description: manifest.description.clone(),
             path: install_path.to_string_lossy().to_string(),
+            contributes: manifest.contributes.clone().map(|c| serde_json::to_value(c).unwrap_or(serde_json::Value::Null)),
         })
     })
     .await
@@ -228,78 +192,47 @@ pub async fn install_extension(vsix_path: String) -> Result<InstalledExtension, 
 
 /// Uninstall an extension
 #[tauri::command]
-pub async fn uninstall_extension(extension_id: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let extensions_dir = get_extensions_dir()?;
-        let extension_path = PathBuf::from(&extensions_dir).join(&extension_id);
+pub async fn uninstall_extension(
+    nng_manager: State<'_, NngIpcManager>,
+    extension_id: String
+) -> Result<(), String> {
+    // Request Extension Host to uninstall the extension
+    let response = nng_manager.request("main", "uninstall-extension", serde_json::json!({
+        "extensionId": extension_id
+    })).await?;
 
-        if !extension_path.exists() {
-            return Err(format!("Extension {} is not installed", extension_id));
-        }
+    let success = response.get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
-        fs::remove_dir_all(&extension_path)
-            .map_err(|e| format!("Failed to uninstall extension: {}", e))?;
+    if !success {
+        let error = response.get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown error");
+        return Err(error.to_string());
+    }
 
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("Task failed: {}", e))?
+    Ok(())
 }
 
 /// List all installed extensions
 #[tauri::command]
-pub async fn list_extensions() -> Result<Vec<InstalledExtension>, String> {
-    tokio::task::spawn_blocking(move || {
-        let extensions_dir = get_extensions_dir()?;
-        let extensions_path = PathBuf::from(&extensions_dir);
+pub async fn list_extensions(
+    nng_manager: State<'_, NngIpcManager>
+) -> Result<Vec<InstalledExtension>, String> {
+    // Request extension list from Extension Host via IPC
+    let ipc = nng_manager.get_outgoing("main").await
+        .ok_or("Extension host not connected via NNG")?;
 
-        if !extensions_path.exists() {
-            return Ok(Vec::new());
-        }
+    let response = ipc.request("list-extensions", serde_json::json!({})).await?;
 
-        let mut extensions = Vec::new();
+    let extensions_data = response.get("extensions")
+        .ok_or("Invalid response: missing extensions field")?;
 
-        for entry in fs::read_dir(&extensions_path)
-            .map_err(|e| format!("Failed to read extensions directory: {}", e))?
-        {
-            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-            let path = entry.path();
+    let extensions: Vec<InstalledExtension> = serde_json::from_value(extensions_data.clone())
+        .map_err(|e| format!("Failed to parse extensions: {}", e))?;
 
-            if path.is_dir() {
-                let manifest_path = path.join("package.json");
-
-                if manifest_path.exists() {
-                    match fs::read_to_string(&manifest_path) {
-                        Ok(contents) => {
-                            match serde_json::from_str::<ExtensionManifest>(&contents) {
-                                Ok(manifest) => {
-                                    let extension_id = format!("{}.{}", manifest.publisher, manifest.name);
-                                    extensions.push(InstalledExtension {
-                                        id: extension_id,
-                                        name: manifest.name.clone(),
-                                        version: manifest.version.clone(),
-                                        publisher: manifest.publisher.clone(),
-                                        description: manifest.description.clone(),
-                                        path: path.to_string_lossy().to_string(),
-                                    });
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to parse manifest for {}: {}", path.display(), e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to read manifest for {}: {}", path.display(), e);
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(extensions)
-    })
-    .await
-    .map_err(|e| format!("Task failed: {}", e))?
+    Ok(extensions)
 }
 
 /// Get extension contributions (for activity bar, commands, views, etc.)
@@ -311,57 +244,36 @@ pub struct ExtensionContribution {
 }
 
 #[tauri::command]
-pub async fn get_extension_contributions() -> Result<Vec<ExtensionContribution>, String> {
-    tokio::task::spawn_blocking(move || {
-        let extensions_dir = get_extensions_dir()?;
-        let extensions_path = PathBuf::from(&extensions_dir);
+pub async fn get_extension_contributions(
+    nng_manager: State<'_, NngIpcManager>
+) -> Result<Vec<ExtensionContribution>, String> {
+    // Request extension list from Extension Host via IPC
+    let ipc = nng_manager.get_outgoing("main").await
+        .ok_or("Extension host not connected via NNG")?;
 
-        if !extensions_path.exists() {
-            return Ok(Vec::new());
-        }
+    let response = ipc.request("list-extensions", serde_json::json!({})).await?;
 
-        let mut contributions = Vec::new();
+    let extensions_data = response.get("extensions")
+        .ok_or("Invalid response: missing extensions field")?;
 
-        for entry in fs::read_dir(&extensions_path)
-            .map_err(|e| format!("Failed to read extensions directory: {}", e))?
-        {
-            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-            let path = entry.path();
+    let extensions: Vec<InstalledExtension> = serde_json::from_value(extensions_data.clone())
+        .map_err(|e| format!("Failed to parse extensions: {}", e))?;
 
-            if path.is_dir() {
-                let manifest_path = path.join("package.json");
+    // Extract contributions from extensions
+    let contributions = extensions
+        .into_iter()
+        .filter_map(|ext| {
+            // Only include extensions that have contributions
+            let contributes = ext.contributes.clone()?;
+            Some(ExtensionContribution {
+                extension_id: ext.id,
+                extension_name: ext.name,
+                contributes: Some(contributes),
+            })
+        })
+        .collect();
 
-                if manifest_path.exists() {
-                    match fs::read_to_string(&manifest_path) {
-                        Ok(contents) => {
-                            match serde_json::from_str::<ExtensionManifest>(&contents) {
-                                Ok(manifest) => {
-                                    if manifest.contributes.is_some() {
-                                        let extension_id = format!("{}.{}", manifest.publisher, manifest.name);
-                                        contributions.push(ExtensionContribution {
-                                            extension_id,
-                                            extension_name: manifest.display_name.clone().unwrap_or(manifest.name.clone()),
-                                            contributes: manifest.contributes.clone(),
-                                        });
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to parse manifest for {}: {}", path.display(), e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to read manifest for {}: {}", path.display(), e);
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(contributions)
-    })
-    .await
-    .map_err(|e| format!("Task failed: {}", e))?
+    Ok(contributions)
 }
 
 /// Validate extension manifest
@@ -436,6 +348,7 @@ pub async fn get_marketplace_extension(
 /// Download and install extension from marketplace
 #[tauri::command]
 pub async fn install_from_marketplace(
+    nng_manager: State<'_, NngIpcManager>,
     publisher: String,
     name: String,
     version: String,
@@ -447,9 +360,19 @@ pub async fn install_from_marketplace(
     // Install it
     let result = install_extension(vsix_path.to_string_lossy().to_string()).await;
 
-    // Clean up the downloaded file
-    if let Err(e) = std::fs::remove_file(&vsix_path) {
-        eprintln!("Failed to clean up downloaded .vsix file: {}", e);
+    // Clean up the downloaded file (non-blocking)
+    let vsix_path_clone = vsix_path.clone();
+    tokio::task::spawn_blocking(move || {
+        if let Err(e) = std::fs::remove_file(&vsix_path_clone) {
+            eprintln!("Failed to clean up downloaded .vsix file: {}", e);
+        }
+    });
+
+    // Notify Extension Host to reload extensions
+    if result.is_ok() {
+        if let Some(ipc) = nng_manager.get_outgoing("main").await {
+            let _ = ipc.request("reload-extensions", serde_json::json!({})).await;
+        }
     }
 
     result
@@ -460,19 +383,13 @@ pub async fn install_from_marketplace(
 /// Get children from extension tree view
 #[tauri::command]
 pub async fn extension_tree_get_children(
-    ext_host: State<'_, Mutex<ExtensionHostManager>>,
+    _ext_host: State<'_, Mutex<ExtensionHostManager>>,
     nng_manager: State<'_, NngIpcManager>,
     view_id: String,
     element: Option<Value>,
 ) -> Result<Vec<Value>, String> {
-    // Get extension host ID
-    let ext_host_id = {
-        let host = ext_host.lock().unwrap();
-        host.extension_id.clone()
-    };
-
-    // Get IPC connection
-    let ipc = nng_manager.get(&ext_host_id).await
+    // Get IPC connection for the main extension host
+    let ipc = nng_manager.get_outgoing("main").await
         .ok_or("Extension host not connected via NNG")?;
 
     let payload = serde_json::json!({
@@ -493,19 +410,13 @@ pub async fn extension_tree_get_children(
 /// Execute an extension command
 #[tauri::command]
 pub async fn extension_execute_command(
-    ext_host: State<'_, Mutex<ExtensionHostManager>>,
+    _ext_host: State<'_, Mutex<ExtensionHostManager>>,
     nng_manager: State<'_, NngIpcManager>,
     command: String,
     args: Vec<Value>,
 ) -> Result<Value, String> {
-    // Get extension host ID
-    let ext_host_id = {
-        let host = ext_host.lock().unwrap();
-        host.extension_id.clone()
-    };
-
-    // Get IPC connection
-    let ipc = nng_manager.get(&ext_host_id).await
+    // Get IPC connection for the main extension host
+    let ipc = nng_manager.get_outgoing("main").await
         .ok_or("Extension host not connected via NNG")?;
 
     let payload = serde_json::json!({

@@ -63,6 +63,13 @@ fn apply_bubblewrap_sandbox(original_command: &mut Command, config: &SandboxConf
         .map(|s| s.to_string_lossy().to_string())
         .collect();
 
+    // Extract environment variables from original command
+    let envs: Vec<(String, String)> = original_command.get_envs()
+        .filter_map(|(k, v)| {
+            v.map(|val| (k.to_string_lossy().to_string(), val.to_string_lossy().to_string()))
+        })
+        .collect();
+
     // Clear original command and replace with bwrap
     let mut bwrap = Command::new("bwrap");
 
@@ -77,8 +84,9 @@ fn apply_bubblewrap_sandbox(original_command: &mut Command, config: &SandboxConf
     bwrap.args(&["--proc", "/proc"]);
     bwrap.args(&["--dev", "/dev"]);
 
-    // Tmpfs for /tmp
-    bwrap.args(&["--tmpfs", "/tmp"]);
+    // Bind /tmp from host so IPC sockets work
+    // Extension host needs to create sockets that Tauri can connect to
+    bwrap.args(&["--bind", "/tmp", "/tmp"]);
 
     // Home directory (read-only unless write is allowed)
     if let Some(home) = std::env::var_os("HOME") {
@@ -95,8 +103,8 @@ fn apply_bubblewrap_sandbox(original_command: &mut Command, config: &SandboxConf
         bwrap.arg("--unshare-net");
     }
 
-    // Unshare IPC, PID, UTS
-    bwrap.args(&["--unshare-ipc", "--unshare-pid", "--unshare-uts"]);
+    // Unshare PID, UTS (but NOT IPC - we need IPC namespace sharing for NNG sockets)
+    bwrap.args(&["--unshare-pid", "--unshare-uts"]);
 
     // Die with parent
     bwrap.arg("--die-with-parent");
@@ -105,6 +113,11 @@ fn apply_bubblewrap_sandbox(original_command: &mut Command, config: &SandboxConf
     bwrap.arg("--");
     bwrap.arg(program);
     bwrap.args(args);
+
+    // Restore environment variables
+    for (key, value) in envs {
+        bwrap.env(key, value);
+    }
 
     *original_command = bwrap;
 

@@ -12,6 +12,7 @@ import * as vscodeAPI from '../api/vscode';
 export interface ExtensionManifest {
   name: string;
   displayName?: string;
+  description?: string;
   version: string;
   publisher: string;
   main?: string;
@@ -61,19 +62,26 @@ export class ExtensionManager {
    */
   async loadExtensions() {
     // Get extensions directory from main app
+    console.error('[ExtensionManager] Requesting extensions directory...');
     const extensionsDir = await this.bridge.request('get-extensions-dir', {});
+    console.error('[ExtensionManager] Received extensions directory:', extensionsDir);
+    console.error('[ExtensionManager] Type of extensionsDir:', typeof extensionsDir);
 
     if (!fs.existsSync(extensionsDir)) {
       console.error('[ExtensionManager] Extensions directory does not exist:', extensionsDir);
       return;
     }
 
+    console.error('[ExtensionManager] Reading directory contents...');
     const extensionDirs = fs.readdirSync(extensionsDir, { withFileTypes: true })
       .filter(dirent => dirent.isDirectory())
       .map(dirent => dirent.name);
 
+    console.error('[ExtensionManager] Found extension directories:', extensionDirs);
+
     for (const dir of extensionDirs) {
       try {
+        console.error(`[ExtensionManager] Loading extension: ${dir}`);
         await this.loadExtension(path.join(extensionsDir, dir));
       } catch (error) {
         console.error(`[ExtensionManager] Failed to load extension ${dir}:`, error);
@@ -247,5 +255,46 @@ export class ExtensionManager {
    */
   getExtension(extensionId: string): LoadedExtension | undefined {
     return this.extensions.get(extensionId);
+  }
+
+  /**
+   * Reload extensions from disk (e.g., after installing a new one)
+   */
+  async reloadExtensions(): Promise<void> {
+    console.error('[ExtensionManager] Reloading extensions...');
+    await this.loadExtensions();
+  }
+
+  /**
+   * Uninstall an extension (deactivate and remove from filesystem)
+   */
+  async uninstallExtension(extensionId: string): Promise<void> {
+    const extension = this.extensions.get(extensionId);
+    if (!extension) {
+      throw new Error(`Extension ${extensionId} not found`);
+    }
+
+    // Deactivate if active
+    if (extension.isActive) {
+      await this.deactivateExtension(extensionId);
+    }
+
+    // Remove from filesystem
+    const fs = require('fs');
+    const path = require('path');
+
+    try {
+      // Remove extension directory
+      await fs.promises.rm(extension.extensionPath, { recursive: true, force: true });
+      console.error(`[ExtensionManager] Removed extension directory: ${extension.extensionPath}`);
+
+      // Remove from loaded extensions map
+      this.extensions.delete(extensionId);
+
+      console.error(`[ExtensionManager] Successfully uninstalled extension: ${extensionId}`);
+    } catch (error) {
+      console.error(`[ExtensionManager] Failed to uninstall extension: ${error}`);
+      throw new Error(`Failed to uninstall extension: ${error}`);
+    }
   }
 }

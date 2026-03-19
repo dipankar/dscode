@@ -49,9 +49,7 @@ impl NngIpcManager {
         println!("[NNG Manager] Setting up incoming for extension host '{}' at {}", ext_host_id, ipc_url);
 
         let mut ipc = NngIncomingIpc::new(ipc_url)?;
-        ipc.set_handler(move |msg_type, payload| {
-            handler(msg_type, payload)
-        });
+        ipc.set_handler(handler);
 
         let ipc_arc = Arc::new(ipc);
         ipc_arc.start().await?;
@@ -99,5 +97,13 @@ impl NngIpcManager {
     pub async fn is_connected(&self, ext_host_id: &str) -> bool {
         let conns = self.outgoing.read().await;
         conns.contains_key(ext_host_id)
+    }
+
+    /// Send a request to an extension host
+    pub async fn request(&self, ext_host_id: &str, msg_type: &str, payload: serde_json::Value) -> Result<serde_json::Value, String> {
+        let ipc = self.get_outgoing(ext_host_id).await
+            .ok_or_else(|| format!("Extension host '{}' not connected", ext_host_id))?;
+
+        ipc.request(msg_type, payload).await
     }
 }
