@@ -602,3 +602,30 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## License
 
 MIT License - See [LICENSE](LICENSE) file for details.
+
+### 3.x Extension Compatibility Parity (Multi-phase)
+
+**Milestone 3.1 – Activation & Commands**
+- Implement full activation event handling (onLanguage, onCommand, file system events, view/debug triggers).
+- Route command registration/execution across Tauri ↔ Node, expose registered commands to the UI, respect enable/disable scopes & workspace trust.
+- Deliverable: Marketplace extensions that activate on language/command events run their command implementations inside DSCode.
+
+**Milestone 3.2 – UI & Contribution Surface**
+- Support contributed views (activity bar, tree views, status items), quick pick/input, notifications, output channels, webviews.
+- Emit session events for contributed UI so Svelte renders them; provide default containers for tree views and webviews.
+- Deliverable: Extensions like GitLens show their explorer panes/menus and react to user interaction.
+
+**Milestone 3.3 – Languages & Debug**
+- Bridge Monaco to extension-provided language configuration/grammar, wire languages API callbacks, connect LSP pool to extension host.
+- Integrate Debug Adapter Protocol and Tasks so debug/launch configurations execute via the host.
+- Deliverable: language packs and debug adapters from VS Code run with parity.
+
+**Milestone 3.4 – Marketplace Lifecycle**
+- Add version negotiation/update checks, dependency version pinning, signature/hash validation, download caching.
+- Expose marketplace metadata (categories, ratings, filters) and implement upgrade/uninstall w/ rollback.
+- Deliverable: Marketplace UX mirrors VS Code including updates and safe installs.
+
+**Milestone 3.5 – Persistence & Telemetry**
+- Complete secret/global/workspace storage policies, log routing, telemetry opt-in plumbing.
+- Add backups, binary storage support, and log viewers in the UI.
+- Deliverable: extensions relying on persistent state and telemetry behave predictably.

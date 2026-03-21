@@ -22,6 +22,7 @@ mod marketplace;
 mod terminal;
 mod debug;
 mod session;
+mod config;
 
 use commands::*;
 use watcher::FileWatcherState;
@@ -31,6 +32,7 @@ use lsp::LspManager;
 use terminal::TerminalManager;
 use debug::DebugManager;
 use session::SessionManager;
+use config::AppDirectories;
 use std::sync::{Mutex, Arc};
 use tokio::sync::RwLock;
 use tauri::{Manager, menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, image::Image};
@@ -50,6 +52,10 @@ fn main() {
         .manage(Mutex::new(TerminalManager::new()))
         .manage(Mutex::new(DebugManager::new()))
         .setup(|app| {
+            let app_dirs = AppDirectories::from_app_config(app.config())
+                .map_err(|e| Box::<dyn std::error::Error>::from(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            app.manage(app_dirs.clone());
+
             // Load tray icon from PNG bytes
             let icon_bytes = include_bytes!("../icons/tray-icon.png");
             let icon = Image::from_bytes(icon_bytes)
@@ -97,12 +103,8 @@ fn main() {
                 .build(app)?;
 
             // Initialize Session Manager
-            let extensions_dir = std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                .join("extensions");
-
             let session_manager = Arc::new(RwLock::new(
-                SessionManager::new(app.handle().clone(), extensions_dir)
+                SessionManager::new(app.handle().clone(), app_dirs.clone())
             ));
 
             // Store in app state
@@ -152,6 +154,9 @@ fn main() {
             minimize_to_tray,
             restore_from_tray,
             is_window_visible,
+            window_message_action,
+            window_quick_pick_select,
+            window_input_box_submit,
             create_debug_session,
             get_debug_session,
             list_debug_sessions,
@@ -181,7 +186,9 @@ fn main() {
             git_checkout_branch,
             git_delete_branch,
             extension_tree_get_children,
+            extension_tree_get_item,
             extension_execute_command,
+            extension_tree_notify_event,
             initialize_session,
             get_session_state,
             get_installed_extensions,
@@ -191,6 +198,8 @@ fn main() {
             session_delete_extension,
             add_workspace_folder,
             remove_workspace_folder,
+            editor_selection_changed,
+            editor_visible_ranges_changed,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

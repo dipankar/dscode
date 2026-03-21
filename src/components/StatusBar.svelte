@@ -3,6 +3,12 @@
   import { invoke } from '@tauri-apps/api/core';
   import { editorStore } from '../stores/editor';
   import { workspaceStore } from '../stores/workspace';
+  import {
+    leftStatusBarItems as leftStatusBarStore,
+    rightStatusBarItems as rightStatusBarStore,
+    type StatusBarItemState,
+  } from '../stores/statusbar';
+  import statusBarMessageStore, { type StatusBarTransientMessage } from '../stores/statusBarMessage';
 
   let branch = 'main';
   let line = 1;
@@ -13,6 +19,11 @@
   let warningCount = 0;
   let updateInterval: number;
   let cursorUpdateUnsubscribe: { dispose: () => void } | null = null;
+  let dynamicLeft: StatusBarItemState[] = [];
+  let dynamicRight: StatusBarItemState[] = [];
+  let transientMessage: StatusBarTransientMessage | null = null;
+  const itemKey = (item: StatusBarItemState) => `${item.owner}:${item.id}`;
+  $: transientMessage = $statusBarMessageStore;
 
   async function updateProblemCounts() {
     const editor = $editorStore.monacoInstance;
@@ -59,6 +70,21 @@
     }
   }
 
+  async function handleStatusBarCommand(item: StatusBarItemState) {
+    if (!item.command?.id) {
+      return;
+    }
+
+    try {
+      await invoke('extension_execute_command', {
+        command: item.command.id,
+        args: item.command.arguments || [],
+      });
+    } catch (error) {
+      console.error('[StatusBar] Failed to execute status bar command:', error);
+    }
+  }
+
   function updateCursorPosition() {
     const editor = $editorStore.monacoInstance;
     if (!editor) return;
@@ -102,6 +128,9 @@
     }
   });
 
+  $: dynamicLeft = $leftStatusBarStore;
+  $: dynamicRight = $rightStatusBarStore;
+
   $: if ($editorStore.monacoInstance) {
     updateProblemCounts();
     updateCursorPosition();
@@ -122,6 +151,25 @@
 
 <div class="status-bar">
   <div class="status-left">
+    {#if transientMessage}
+      <div class="status-message">
+        {transientMessage.text}
+      </div>
+    {/if}
+
+    {#each dynamicLeft as item (itemKey(item))}
+      <button
+        class="status-item"
+        class:extension={item.owner !== '__core__'}
+        class:has-command={!!item.command}
+        title={item.tooltip ?? item.text}
+        style={`color: ${item.color ?? 'inherit'}`}
+        on:click={() => handleStatusBarCommand(item)}
+      >
+        {item.text}
+      </button>
+    {/each}
+
     {#if branch}
       <button class="status-item" title="Source Control">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -155,6 +203,19 @@
   </div>
 
   <div class="status-right">
+    {#each dynamicRight as item (itemKey(item))}
+      <button
+        class="status-item"
+        class:extension={item.owner !== '__core__'}
+        class:has-command={!!item.command}
+        title={item.tooltip ?? item.text}
+        style={`color: ${item.color ?? 'inherit'}`}
+        on:click={() => handleStatusBarCommand(item)}
+      >
+        {item.text}
+      </button>
+    {/each}
+
     <button class="status-item" title="Go to Line/Column">
       Ln {line}, Col {column}
     </button>
@@ -194,6 +255,13 @@
     gap: 8px;
   }
 
+  .status-message {
+    padding: 0 6px;
+    color: var(--color-text);
+    opacity: 0.85;
+    white-space: nowrap;
+  }
+
   .status-item {
     background: none;
     border: none;
@@ -204,6 +272,16 @@
     display: flex;
     align-items: center;
     white-space: nowrap;
+  }
+
+  .status-item.extension {
+    display: inline-flex;
+    align-items: center;
+    cursor: default;
+  }
+
+  .status-item.extension.has-command {
+    cursor: pointer;
   }
 
   .status-item:hover {

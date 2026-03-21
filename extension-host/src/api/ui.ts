@@ -37,6 +37,7 @@ class StatusBarItemImpl implements StatusBarItem {
 
   constructor(
     private bridge: ExtensionHostBridge,
+    private owner: string,
     public readonly alignment: StatusBarAlignment,
     public readonly priority?: number,
     private id?: string
@@ -87,25 +88,39 @@ class StatusBarItemImpl implements StatusBarItem {
 
   hide(): void {
     this._visible = false;
-    this.bridge.send('hideStatusBarItem', { id: this.id });
+    this.bridge.send('hideStatusBarItem', { id: this.id, owner: this.owner, visible: false });
   }
 
   dispose(): void {
-    this.bridge.send('disposeStatusBarItem', { id: this.id });
+    this.bridge.send('disposeStatusBarItem', { id: this.id, owner: this.owner });
   }
 
   private update(): void {
     if (this._visible) {
       this.bridge.send('updateStatusBarItem', {
         id: this.id,
+        owner: this.owner,
         alignment: this.alignment,
         priority: this.priority,
         text: this._text,
-        tooltip: this._tooltip,
+        tooltip: this.serializeTooltip(),
         color: this._color,
-        command: this._command
+        command: this._command,
+        visible: true,
       });
     }
+  }
+
+  private serializeTooltip(): string | undefined {
+    if (typeof this._tooltip === 'string') {
+      return this._tooltip;
+    }
+
+    if (this._tooltip && typeof this._tooltip === 'object') {
+      return this._tooltip.value;
+    }
+
+    return undefined;
   }
 }
 
@@ -171,7 +186,8 @@ class TreeViewImpl<T> implements TreeView<T> {
   constructor(
     private bridge: ExtensionHostBridge,
     private viewId: string,
-    private dataProvider: TreeDataProvider<T>
+    private dataProvider: TreeDataProvider<T>,
+    private owner: string
   ) {
     this.registerProvider();
   }
@@ -186,23 +202,8 @@ class TreeViewImpl<T> implements TreeView<T> {
 
   private registerProvider(): void {
     this.bridge.send('registerTreeDataProvider', {
-      viewId: this.viewId
-    });
-
-    this.bridge.on(`treeView:${this.viewId}:getChildren`, async (data: any) => {
-      const children = await this.dataProvider.getChildren(data.element);
-      this.bridge.send('treeViewChildrenResult', {
-        requestId: data.requestId,
-        children
-      });
-    });
-
-    this.bridge.on(`treeView:${this.viewId}:getTreeItem`, async (data: any) => {
-      const item = await this.dataProvider.getTreeItem(data.element);
-      this.bridge.send('treeViewItemResult', {
-        requestId: data.requestId,
-        item
-      });
+      viewId: this.viewId,
+      owner: this.owner,
     });
   }
 
@@ -220,6 +221,27 @@ class TreeViewImpl<T> implements TreeView<T> {
     this._onDidChangeSelection.dispose();
     this._onDidChangeVisibility.dispose();
     this.bridge.send('disposeTreeView', { viewId: this.viewId });
+  }
+
+  handleHostEvent(event: string, payload: any): void {
+    switch (event) {
+      case 'didExpand':
+        this._onDidExpandElement.fire({ element: payload.element });
+        break;
+      case 'didCollapse':
+        this._onDidCollapseElement.fire({ element: payload.element });
+        break;
+      case 'didChangeSelection':
+        this._selection = Array.isArray(payload.selection) ? payload.selection : [];
+        this._onDidChangeSelection.fire({ selection: this._selection });
+        break;
+      case 'didChangeVisibility':
+        this._visible = !!payload.visible;
+        this._onDidChangeVisibility.fire({ visible: this._visible });
+        break;
+      default:
+        break;
+    }
   }
 }
 
@@ -364,8 +386,91 @@ class WebviewPanelImpl implements WebviewPanel {
 }
 
 // UI API
+type TreeProviderEntry = {
+  provider: TreeDataProvider<any>;
+  owner: string;
+  view: TreeViewImpl<any>;
+};
+
 export class UIAPI {
-  constructor(private bridge: ExtensionHostBridge) {}
+  private currentExtensionId = '__core__';
+  private treeProviders = new Map<string, TreeProviderEntry>();
+
+  constructor(private bridge: ExtensionHostBridge) {
+    this.bridge.on('treeView:getChildren', async (payload: any, respond: Function) => {
+      respond(await this.handleTreeGetChildren(payload));
+    });
+
+    this.bridge.on('treeView:getTreeItem', async (payload: any, respond: Function) => {
+      respond(await this.handleTreeGetItem(payload));
+    });
+
+    this.bridge.on('treeView:event', async (payload: any, respond: Function) => {
+      respond(await this.handleTreeEvent(payload));
+    });
+  }
+
+  async runWithExtension<T>(extensionId: string, callback: () => Promise<T>): Promise<T> {
+    const previous = this.currentExtensionId;
+    this.currentExtensionId = extensionId || '__core__';
+    try {
+      return await callback();
+    } finally {
+      this.currentExtensionId = previous;
+    }
+  }
+
+  private currentOwner(): string {
+    return this.currentExtensionId || '__core__';
+  }
+
+  private async handleTreeGetChildren(payload: any) {
+    const entry = this.treeProviders.get(payload.viewId);
+    if (!entry) {
+      return { success: false, error: `Tree view ${payload.viewId} not registered` };
+    }
+
+    try {
+      const children = await this.runWithExtension(entry.owner, async () =>
+        entry.provider.getChildren(payload.element)
+      );
+      return { success: true, children: children ?? [] };
+    } catch (error: any) {
+      return { success: false, error: error?.message ?? String(error) };
+    }
+  }
+
+  private async handleTreeGetItem(payload: any) {
+    const entry = this.treeProviders.get(payload.viewId);
+    if (!entry) {
+      return { success: false, error: `Tree view ${payload.viewId} not registered` };
+    }
+
+    try {
+      const item = await this.runWithExtension(entry.owner, async () =>
+        entry.provider.getTreeItem(payload.element)
+      );
+      return { success: true, item };
+    } catch (error: any) {
+      return { success: false, error: error?.message ?? String(error) };
+    }
+  }
+
+  private async handleTreeEvent(payload: any) {
+    const entry = this.treeProviders.get(payload.viewId);
+    if (!entry) {
+      return { success: false, error: `Tree view ${payload.viewId} not registered` };
+    }
+
+    try {
+      await this.runWithExtension(entry.owner, async () => {
+        entry.view.handleHostEvent(payload.event, payload);
+      });
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error?.message ?? String(error) };
+    }
+  }
 
   createStatusBarItem(alignment?: StatusBarAlignment, priority?: number): StatusBarItem;
   createStatusBarItem(id: string, alignment?: StatusBarAlignment, priority?: number): StatusBarItem;
@@ -374,9 +479,12 @@ export class UIAPI {
     alignmentOrPriority?: StatusBarAlignment | number,
     priority?: number
   ): StatusBarItem {
+    const owner = this.currentOwner();
+
     if (typeof alignmentOrId === 'string') {
       return new StatusBarItemImpl(
         this.bridge,
+        owner,
         alignmentOrPriority as StatusBarAlignment || StatusBarAlignment.Left,
         priority,
         alignmentOrId
@@ -384,13 +492,24 @@ export class UIAPI {
     }
     return new StatusBarItemImpl(
       this.bridge,
+      owner,
       alignmentOrId || StatusBarAlignment.Left,
       alignmentOrPriority as number
     );
   }
 
   createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T> {
-    return new TreeViewImpl(this.bridge, viewId, options.treeDataProvider);
+    const owner = this.currentOwner();
+    const treeView = new TreeViewImpl(this.bridge, viewId, options.treeDataProvider, owner);
+    this.treeProviders.set(viewId, { provider: options.treeDataProvider, owner, view: treeView });
+
+    const originalDispose = treeView.dispose.bind(treeView);
+    treeView.dispose = () => {
+      this.treeProviders.delete(viewId);
+      originalDispose();
+    };
+
+    return treeView;
   }
 
   createWebviewPanel(

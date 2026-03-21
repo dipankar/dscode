@@ -11,6 +11,12 @@
   import { enableWindowPersistence } from './lib/window-persistence';
   import { settingsStore } from './lib/settings-store';
   import ToastContainer from './components/ToastContainer.svelte';
+  import WindowPromptModal from './components/WindowPromptModal.svelte';
+  import QuickPickModal from './components/QuickPickModal.svelte';
+  import InputBoxModal from './components/InputBoxModal.svelte';
+  import { windowPromptStore } from './stores/windowPrompt';
+  import { quickPickStore } from './stores/quickPick';
+  import { inputBoxStore } from './stores/inputBox';
   import { initializeSession } from './stores/session';
 
   $: theme = $settingsStore.theme.colorTheme;
@@ -286,6 +292,18 @@
   <StatusBar />
 
   <ToastContainer />
+
+  {#if $windowPromptStore}
+    <WindowPromptModal prompt={$windowPromptStore} />
+  {/if}
+
+  {#if $quickPickStore}
+    <QuickPickModal request={$quickPickStore} />
+  {/if}
+
+  {#if $inputBoxStore}
+    <InputBoxModal request={$inputBoxStore} />
+  {/if}
 
   {#if componentsLoaded}
     <svelte:component

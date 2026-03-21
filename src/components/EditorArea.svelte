@@ -16,6 +16,10 @@
   let autoSaveTimeout: number | null = null;
   let monacoLoading = true;
   let breakpointDecorations: string[] = [];
+  const decorationCache = new Map<string, Map<string, any[]>>();
+  const decorationHandles = new Map<string, string[]>();
+  let decorationsListener: ((event: Event) => void) | null = null;
+  let lastActivePath: string | null = null;
 
   $: tabs = $editorStore.tabs;
   $: activeTabId = $editorStore.activeTabId;
@@ -217,11 +221,11 @@
     });
 
     // Listen for content changes
-    editor.onDidChangeModelContent((_e: any) => {
-      // Ignore programmatic changes (like when opening/switching files)
-      if (isProgrammaticChange) {
-        return;
-      }
+  editor.onDidChangeModelContent((_e: any) => {
+    // Ignore programmatic changes (like when opening/switching files)
+    if (isProgrammaticChange) {
+      return;
+    }
 
       if (activeTab) {
         const content = editor.getValue();
@@ -264,11 +268,29 @@
       }
     });
 
+    decorationsListener = (event: Event) => {
+      handleDecorationEvent(event as CustomEvent<any>);
+    };
+    window.addEventListener('editor-decorations', decorationsListener as EventListener);
+
     // Listen for file change events
     fileWatchUnlisten = await listen('file-changed', async (event: any) => {
       const { path } = event.payload;
       await handleFileChanged(path);
     });
+
+    if (activeTab) {
+      applyDecorationsForPath(activeTab.path);
+      lastActivePath = activeTab.path;
+    }
+  });
+
+  editor.onDidChangeCursorSelection((e: any) => {
+    emitSelectionChanged(e);
+  });
+
+  editor.onDidScrollChange(() => {
+    emitVisibleRangesChanged();
   });
 
   async function handleFileChanged(changedPath: string) {
@@ -317,11 +339,29 @@
     }
   }
 
+  $: if (editor) {
+    const currentPath = activeTab?.path ?? null;
+    if (currentPath !== lastActivePath) {
+      clearAllDecorations();
+      if (currentPath) {
+        applyDecorationsForPath(currentPath);
+      }
+      lastActivePath = currentPath;
+    }
+  }
+
   onDestroy(() => {
     // Dispose Monaco editor
     if (editor) {
       editor.dispose();
     }
+
+    if (decorationsListener) {
+      window.removeEventListener('editor-decorations', decorationsListener as EventListener);
+      decorationsListener = null;
+    }
+
+    clearAllDecorations();
 
     // Clean up file watch listener
     if (fileWatchUnlisten) {
@@ -431,6 +471,110 @@
     } catch (error) {
       console.error('[Debug] Failed to sync breakpoints:', error);
     }
+  }
+
+  function getSelectionPayload(selection: any) {
+    return {
+      start: { line: selection.startLineNumber - 1, character: selection.startColumn - 1 },
+      end: { line: selection.endLineNumber - 1, character: selection.endColumn - 1 },
+      anchor: { line: selection.selectionStartLineNumber - 1, character: selection.selectionStartColumn - 1 },
+      active: { line: selection.positionLineNumber - 1, character: selection.positionColumn - 1 },
+      isReversed: selection.direction === monaco.SelectionDirection.RTL,
+    };
+  }
+
+  function emitSelectionChanged(event: any) {
+    if (!activeTab) return;
+    const primary = getSelectionPayload(event.selection);
+    const secondary = event.secondarySelections?.map(getSelectionPayload) ?? [];
+
+    invoke('editor_selection_changed', {
+      uri: activeTab.path,
+      selection: primary,
+      selections: [primary, ...secondary],
+    }).catch((err) => console.error('Failed to send selection change:', err));
+  }
+
+  function emitVisibleRangesChanged() {
+    if (!activeTab || !editor) return;
+    const model = editor.getModel();
+    if (!model) return;
+
+    const ranges = editor.getVisibleRanges().map((range: any) => ({
+      start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+      end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+    }));
+
+    invoke('editor_visible_ranges_changed', {
+      uri: activeTab.path,
+      ranges,
+    }).catch((err) => console.error('Failed to send visible ranges:', err));
+  }
+
+  function handleDecorationEvent(event: CustomEvent<any>) {
+    const detail = event.detail;
+    if (!detail || !detail.uri || !detail.key) {
+      return;
+    }
+
+    const entries = Array.isArray(detail.decorations) ? detail.decorations : [];
+    let cacheForFile = decorationCache.get(detail.uri);
+    if (!cacheForFile) {
+      cacheForFile = new Map();
+      decorationCache.set(detail.uri, cacheForFile);
+    }
+
+    cacheForFile.set(detail.key, entries);
+
+    if (activeTab && activeTab.path === detail.uri) {
+      applyDecorationKey(detail.key, entries);
+    }
+  }
+
+  function applyDecorationsForPath(path: string) {
+    if (!path) return;
+    const cacheForFile = decorationCache.get(path);
+    if (!cacheForFile) {
+      return;
+    }
+
+    for (const [key, entries] of cacheForFile.entries()) {
+      applyDecorationKey(key, entries);
+    }
+  }
+
+  function applyDecorationKey(key: string, entries: any[]) {
+    if (!editor || !monaco) return;
+    const decorations = (entries || [])
+      .map((entry) => {
+        const rangeData = entry.range ?? entry;
+        if (!rangeData || !rangeData.start || !rangeData.end) {
+          return null;
+        }
+        const options = entry.renderOptions ?? entry.options ?? {};
+        return {
+          range: new monaco.Range(
+            rangeData.start.line + 1,
+            rangeData.start.character + 1,
+            rangeData.end.line + 1,
+            rangeData.end.character + 1
+          ),
+          options,
+        };
+      })
+      .filter(Boolean);
+
+    const existing = decorationHandles.get(key) ?? [];
+    const newHandles = editor.deltaDecorations(existing, decorations);
+    decorationHandles.set(key, newHandles);
+  }
+
+  function clearAllDecorations() {
+    if (!editor) return;
+    decorationHandles.forEach((handles, key) => {
+      const cleared = editor.deltaDecorations(handles, []);
+      decorationHandles.set(key, cleared);
+    });
   }
 </script>
 

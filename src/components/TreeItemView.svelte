@@ -1,42 +1,63 @@
 <script lang="ts">
-  import type { TreeItem } from './ExtensionView.svelte';
+  import type { TreeNode } from './ExtensionView.svelte';
 
-  export let item: TreeItem;
+  export let node: TreeNode;
   export let depth: number;
-  export let onItemClick: (item: TreeItem) => void;
+  export let onItemClick: (node: TreeNode) => void;
+  export let isItemSelected: (node: TreeNode) => boolean = () => false;
 
-  function getLabel(item: TreeItem): string {
+  function getLabel(target: TreeNode): string {
+    const item = target.item;
     if (!item.label) return 'Unnamed';
     if (typeof item.label === 'string') return item.label;
     return item.label.label;
+  }
+
+  function getItemKey(target: TreeNode): string {
+    const item = target.item;
+    if (item.id) return item.id;
+    return getLabel(target);
+  }
+
+  function getRenderKey(target: TreeNode, index: number): string {
+    return `${getItemKey(target)}::${index}`;
   }
 </script>
 
 <div class="tree-item-wrapper">
   <div
     class="tree-item"
+    class:selected={isItemSelected(node)}
     style="padding-left: {depth * 12 + 8}px"
-    on:click|stopPropagation={() => onItemClick(item)}
+    data-tree-item={getItemKey(node)}
+    title={node.item.tooltip ?? getLabel(node)}
+    on:click|stopPropagation={() => onItemClick(node)}
     role="button"
     tabindex="0"
-    on:keydown={(e) => e.key === 'Enter' && onItemClick(item)}
+    aria-selected={isItemSelected(node)}
+    on:keydown={(e) => e.key === 'Enter' && onItemClick(node)}
   >
     <span class="icon">
-      {#if item.collapsibleState === 1}
+      {#if node.item.collapsibleState === 1}
         ▸
-      {:else if item.collapsibleState === 2}
+      {:else if node.item.collapsibleState === 2}
         ▾
       {/if}
     </span>
-    <span class="label">{getLabel(item)}</span>
-    {#if item.description}
-      <span class="description">{item.description}</span>
+    <span class="label">{getLabel(node)}</span>
+    {#if node.item.description}
+      <span class="description">{node.item.description}</span>
     {/if}
   </div>
 
-  {#if item.collapsibleState === 2 && item.children}
-    {#each item.children as child (child.id || child.label)}
-      <svelte:self item={child} depth={depth + 1} {onItemClick} />
+  {#if node.item.collapsibleState === 2 && node.children}
+    {#each node.children as child, idx (getRenderKey(child, idx))}
+      <svelte:self
+        node={child}
+        depth={depth + 1}
+        {onItemClick}
+        {isItemSelected}
+      />
     {/each}
   {/if}
 </div>
@@ -57,6 +78,11 @@
 
   .tree-item:hover {
     background-color: var(--color-hover);
+  }
+
+  .tree-item.selected {
+    background-color: var(--color-selection, rgba(255, 255, 255, 0.08));
+    color: var(--color-selection-foreground, var(--color-text));
   }
 
   .icon {

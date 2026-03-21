@@ -9,17 +9,18 @@ import { ExtensionHostBridge } from '../bridge';
 type CommandHandler = (...args: any[]) => any;
 
 export class CommandsAPI {
-  private commands = new Map<string, CommandHandler>();
+  private commands = new Map<string, { owner: string; handler: CommandHandler }>();
+  private currentExtensionId: string | null = null;
 
   constructor(private bridge: ExtensionHostBridge) {
     // Listen for command execution requests from main app
-    this.bridge.on('execute-command', async (payload: any, respond: Function) => {
+    this.bridge.on('executeCommand', async (payload: any, respond: Function) => {
       const { command, args } = payload;
 
-      const handler = this.commands.get(command);
-      if (handler) {
+      const record = this.commands.get(command);
+      if (record) {
         try {
-          const result = await handler(...(args || []));
+          const result = await this.runWithExtension(record.owner, async () => record.handler(...(args || [])));
           respond({ success: true, result });
         } catch (error: any) {
           console.error(`[Commands] Error executing ${command}:`, error);
@@ -38,19 +39,22 @@ export class CommandsAPI {
   registerCommand(command: string, callback: CommandHandler): { dispose: () => void } {
     console.error(`[Commands] Registering: ${command}`);
 
+    const owner = this.currentExtensionId ?? '__core__';
+
     if (this.commands.has(command)) {
       console.warn(`[Commands] Command already registered: ${command}`);
     }
 
-    this.commands.set(command, callback);
+    this.commands.set(command, { owner, handler: callback });
 
     // Notify main app that command is available
-    this.bridge.send('command-registered', { command });
+    this.bridge.send('command-registered', { command, owner });
 
     return {
       dispose: () => {
-        this.commands.delete(command);
-        this.bridge.send('command-unregistered', { command });
+        if (this.commands.delete(command)) {
+          this.bridge.send('command-unregistered', { command, owner });
+        }
       },
     };
   }
@@ -74,13 +78,13 @@ export class CommandsAPI {
     console.error(`[Commands] Executing: ${command}`);
 
     // Check if it's a local command first
-    const localHandler = this.commands.get(command);
-    if (localHandler) {
-      return await localHandler(...args);
+    const record = this.commands.get(command);
+    if (record) {
+      return this.runWithExtension(record.owner, async () => record.handler(...args));
     }
 
     // Otherwise, ask main app to execute it
-    const result = await this.bridge.request('execute-command-request', {
+    const result = await this.bridge.request('executeCommandRequest', {
       command,
       args,
     });
@@ -97,5 +101,15 @@ export class CommandsAPI {
    */
   getCommands(filterInternal?: boolean): Promise<string[]> {
     return Promise.resolve(Array.from(this.commands.keys()));
+  }
+
+  async runWithExtension<T>(extensionId: string, callback: () => T | Promise<T>): Promise<T> {
+    const previous = this.currentExtensionId;
+    this.currentExtensionId = extensionId;
+    try {
+      return await callback();
+    } finally {
+      this.currentExtensionId = previous;
+    }
   }
 }

@@ -1,6 +1,20 @@
 import { writable, derived } from 'svelte/store';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { setStatusBarItems, type StatusBarItemState } from './statusbar';
+import { toastStore } from '../lib/error-handler';
+import { showWindowPrompt } from './windowPrompt';
+import { showQuickPick } from './quickPick';
+import { showInputBox } from './inputBox';
+import { showStatusBarMessage, clearStatusBarMessage } from './statusBarMessage';
+import { editorStore } from './editor';
+import {
+    registerOutputChannel,
+    appendOutputChannel,
+    clearOutputChannel,
+    disposeOutputChannel,
+    setOutputChannelVisibility,
+} from './outputChannels';
 
 export interface ExtensionInfo {
     id: string;
@@ -10,12 +24,19 @@ export interface ExtensionInfo {
     description?: string;
     enabled: boolean;
     active: boolean;
+    categories?: string[];
+    dependencies?: string[];
+    repository?: string | null;
+    activation_events?: string[];
+    commands?: string[];
 }
 
 export interface SessionState {
     workspace_folders: string[];
     active_extensions: ExtensionInfo[];
     installed_extensions: ExtensionInfo[];
+    available_commands: string[];
+    status_bar_items: StatusBarItemState[];
 }
 
 // Session state store
@@ -23,6 +44,8 @@ export const sessionState = writable<SessionState>({
     workspace_folders: [],
     active_extensions: [],
     installed_extensions: [],
+    available_commands: [],
+    status_bar_items: [],
 });
 
 // Loading state
@@ -43,6 +66,7 @@ export async function initializeSession() {
         // Load initial state
         const state = await invoke<SessionState>('get_session_state');
         sessionState.set(state);
+        setStatusBarItems(state.status_bar_items || []);
 
         console.log('[Session] Initial state loaded:', state);
 
@@ -55,6 +79,7 @@ export async function initializeSession() {
             switch (type) {
                 case 'StateChanged':
                     sessionState.set(data.state);
+                    setStatusBarItems(data.state.status_bar_items || []);
                     console.log('[Session] State updated:', data.state);
                     break;
 
@@ -81,6 +106,107 @@ export async function initializeSession() {
 
                 case 'ExtensionInstalled':
                     console.log('[Session] Extension installed:', data.extension_id);
+                    break;
+
+                case 'CommandsChanged':
+                    sessionState.update(s => ({
+                        ...s,
+                        available_commands: data.commands || [],
+                    }));
+                    console.log('[Session] Commands updated');
+                    break;
+
+                case 'StatusBarItems':
+                    sessionState.update(s => ({
+                        ...s,
+                        status_bar_items: data.items || [],
+                    }));
+                    setStatusBarItems(data.items || []);
+                    console.log('[Session] Status bar items updated');
+                    break;
+
+                case 'StatusBarMessageShown':
+                    showStatusBarMessage(data.id, data.text);
+                    break;
+
+                case 'StatusBarMessageCleared':
+                    clearStatusBarMessage(data.id);
+                    break;
+
+                case 'OutputChannelRegistered':
+                    registerOutputChannel(data.channel);
+                    break;
+
+                case 'OutputChannelAppended':
+                    appendOutputChannel(data.channel, data.value ?? '');
+                    break;
+
+                case 'OutputChannelCleared':
+                    clearOutputChannel(data.channel);
+                    break;
+
+                case 'OutputChannelDisposed':
+                    disposeOutputChannel(data.channel);
+                    break;
+
+                case 'OutputChannelVisibility':
+                    setOutputChannelVisibility(data.channel, !!data.visible);
+                    break;
+
+                case 'TreeViewReveal':
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('extensionTreeReveal', { detail: data }));
+                    }
+                    break;
+
+                case 'ConfigurationChanged':
+                    console.log('[Session] Configuration changed:', data.section, data.key);
+                    break;
+
+                case 'DocumentChanged':
+                    editorStore.updateContent(data.path, data.content);
+                    editorStore.markClean(data.path);
+                    break;
+
+                case 'EditorDecorations':
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('editor-decorations', { detail: data }));
+                    }
+                    break;
+
+                case 'WindowMessage':
+                    {
+                        const level = (data.level || 'info') as 'info' | 'warning' | 'error';
+                        const actions = Array.isArray(data.actions) ? data.actions : [];
+                        const message = actions.length
+                            ? `${data.message} (Actions: ${actions.join(', ')})`
+                            : data.message;
+
+                        toastStore.show({
+                            type: level,
+                            message,
+                            duration: actions.length ? 0 : 4000,
+                        });
+
+                        console.log('[Session] Window message:', data.message, actions);
+                    }
+                    break;
+
+                case 'WindowActionRequest':
+                    showWindowPrompt({
+                        id: data.id,
+                        level: (data.level || 'info') as 'info' | 'warning' | 'error',
+                        message: data.message,
+                        actions: data.actions || [],
+                    });
+                    break;
+
+                case 'QuickPickRequest':
+                    showQuickPick(data);
+                    break;
+
+                case 'InputBoxRequest':
+                    showInputBox(data);
                     break;
 
                 case 'WorkspaceFolderAdded':
@@ -121,10 +247,15 @@ export const workspaceFolders = derived(
     $state => $state.workspace_folders
 );
 
+export const availableCommands = derived(
+    sessionState,
+    $state => $state.available_commands
+);
+
 // Extension operations
 export async function loadExtension(id: string): Promise<void> {
     try {
-        await invoke('session_load_extension', { extensionId: id });
+        await invoke('session_load_extension', { extension_id: id });
         console.log('[Session] Extension load requested:', id);
     } catch (error) {
         console.error('[Session] Failed to load extension:', error);
@@ -134,7 +265,7 @@ export async function loadExtension(id: string): Promise<void> {
 
 export async function unloadExtension(id: string): Promise<void> {
     try {
-        await invoke('session_unload_extension', { extensionId: id });
+        await invoke('session_unload_extension', { extension_id: id });
         console.log('[Session] Extension unload requested:', id);
     } catch (error) {
         console.error('[Session] Failed to unload extension:', error);
@@ -144,7 +275,7 @@ export async function unloadExtension(id: string): Promise<void> {
 
 export async function deleteExtension(id: string): Promise<void> {
     try {
-        await invoke('session_delete_extension', { extensionId: id });
+        await invoke('session_delete_extension', { extension_id: id });
         console.log('[Session] Extension delete requested:', id);
         // UI will auto-update via session events
     } catch (error) {

@@ -90,7 +90,7 @@
 
   async function uninstallExtension(extensionId: string) {
     try {
-      await invoke('uninstall_extension', { extensionId });
+      await invoke('uninstall_extension', { extension_id: extensionId });
       await loadInstalledExtensions();
       error = null;
     } catch (e) {

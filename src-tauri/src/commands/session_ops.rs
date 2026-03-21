@@ -88,3 +88,26 @@ pub async fn remove_workspace_folder(
     let session = session.read().await;
     session.remove_workspace_folder(&std::path::PathBuf::from(path)).await
 }
+
+/// Notify selection change from editor
+#[tauri::command]
+pub async fn editor_selection_changed(
+    session: State<'_, Arc<RwLock<SessionManager>>>,
+    uri: String,
+    selection: serde_json::Value,
+    selections: serde_json::Value,
+) -> Result<(), String> {
+    let session = session.read().await;
+    session.notify_editor_selection(&uri, selection, selections).await
+}
+
+/// Notify visible ranges change from editor
+#[tauri::command]
+pub async fn editor_visible_ranges_changed(
+    session: State<'_, Arc<RwLock<SessionManager>>>,
+    uri: String,
+    ranges: serde_json::Value,
+) -> Result<(), String> {
+    let session = session.read().await;
+    session.notify_editor_visible_ranges(&uri, ranges).await
+}

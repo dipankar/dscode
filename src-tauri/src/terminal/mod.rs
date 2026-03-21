@@ -17,6 +17,7 @@ pub struct TerminalInfo {
 pub struct TerminalInstance {
     pub info: TerminalInfo,
     writer: Box<dyn Write + Send>,
+    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     start_sender: Option<Sender<()>>,
 }
 

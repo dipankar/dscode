@@ -4,9 +4,10 @@
   import OutputPanel from './OutputPanel.svelte';
   import DebugConsole from './DebugConsole.svelte';
   import Terminal from './Terminal.svelte';
-  import { editorStore } from '../stores/editor';
-  import { invoke } from '@tauri-apps/api/core';
-  import { Plus, X } from 'lucide-svelte';
+import { editorStore } from '../stores/editor';
+import { invoke } from '@tauri-apps/api/core';
+import { Plus, X } from 'lucide-svelte';
+import { outputChannelReveal } from '../stores/outputChannels';
 
   let activePanel = 'terminal';
 
@@ -53,6 +54,10 @@
     // Create initial terminal
     createNewTerminal();
   });
+
+  $: if ($outputChannelReveal && activePanel !== 'output') {
+    activePanel = 'output';
+  }
 </script>
 
 <div class="panel-area">

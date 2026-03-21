@@ -108,6 +108,9 @@ export const window = {
   get setStatusBarMessage() {
     return windowAPI.setStatusBarMessage.bind(windowAPI);
   },
+  get createTextEditorDecorationType() {
+    return textEditorAPI.createDecorationType.bind(textEditorAPI);
+  },
   // UI Components
   get createStatusBarItem() {
     return uiAPI.createStatusBarItem.bind(uiAPI);
@@ -191,6 +194,12 @@ export const commands = {
     return commandsAPI.getCommands.bind(commandsAPI);
   },
 };
+
+export function __withExtensionActivation<T>(extensionId: string, callback: () => Promise<T>): Promise<T> {
+  return commandsAPI.runWithExtension(extensionId, () =>
+    uiAPI.runWithExtension(extensionId, callback)
+  );
+}
 
 /**
  * vscode.workspace namespace

@@ -109,6 +109,23 @@ export interface TextEditorDecorationType {
   dispose(): void;
 }
 
+class TextEditorDecorationTypeImpl implements TextEditorDecorationType {
+  constructor(
+    private bridge: ExtensionHostBridge,
+    public readonly key: string,
+    private options: any
+  ) {
+    void this.bridge.send('registerDecorationType', {
+      key: this.key,
+      options: this.options || {}
+    });
+  }
+
+  dispose(): void {
+    void this.bridge.send('disposeDecorationType', { key: this.key });
+  }
+}
+
 export interface DecorationOptions {
   range: Range;
   hoverMessage?: string | { value: string }[];
@@ -134,10 +151,14 @@ export class TextEditor {
     callback(editBuilder);
 
     try {
-      await this.bridge.request('applyEdits', {
+      const result = await this.bridge.request('applyEdits', {
         uri: this.document.uri.fsPath,
-        edits: editBuilder.getEdits()
+        edits: editBuilder.getEdits(),
+        endOfLine: editBuilder.getEndOfLine()
       });
+      if (result?.content) {
+        this.document.updateContent(result.content, result?.version);
+      }
       return true;
     } catch (error) {
       console.error('[TextEditor] Edit failed:', error);
@@ -151,11 +172,14 @@ export class TextEditor {
   ): Promise<boolean> {
     try {
       const snippetText = typeof snippet === 'string' ? snippet : snippet.value;
-      await this.bridge.request('insertSnippet', {
+      const result = await this.bridge.request('insertSnippet', {
         uri: this.document.uri.fsPath,
         snippet: snippetText,
         location
       });
+      if (result?.content) {
+        this.document.updateContent(result.content, result?.version);
+      }
       return true;
     } catch (error) {
       console.error('[TextEditor] Insert snippet failed:', error);
@@ -164,8 +188,17 @@ export class TextEditor {
   }
 
   setDecorations(decorationType: any, rangesOrOptions: Range[] | any[]): void {
-    // TODO: Implement decorations
-    console.error('[TextEditor] setDecorations not yet implemented');
+    const key = decorationType?.key;
+    if (!key) {
+      console.warn('[TextEditor] setDecorations called without a valid decoration type');
+      return;
+    }
+
+    void this.bridge.send('setDecorations', {
+      uri: this.document.uri.fsPath,
+      key,
+      decorations: rangesOrOptions
+    });
   }
 
   revealRange(range: Range, revealType?: number): void {
@@ -192,6 +225,7 @@ export class TextEditor {
 
 export class TextEditorEdit {
   private edits: TextEdit[] = [];
+  private endOfLine?: number;
 
   replace(location: Position | Range | Selection, value: string): void {
     const range = this.toRange(location);
@@ -211,12 +245,15 @@ export class TextEditorEdit {
   }
 
   setEndOfLine(endOfLine: number): void {
-    // TODO: Implement end of line setting
-    console.error('[TextEditorEdit] setEndOfLine not yet implemented');
+    this.endOfLine = endOfLine;
   }
 
   getEdits(): TextEdit[] {
     return this.edits;
+  }
+
+  getEndOfLine(): number | undefined {
+    return this.endOfLine;
   }
 
   private toRange(location: Position | Range | Selection): Range {
@@ -250,6 +287,13 @@ export class TextEditorAPI {
       if (editor && data.selection) {
         editor.selection = data.selection;
         editor.selections = data.selections || [data.selection];
+      }
+    });
+
+    this.bridge.on('visibleRangesChanged', (data: any) => {
+      const editor = this.editors.get(data.uri);
+      if (editor && Array.isArray(data.ranges)) {
+        editor.visibleRanges = data.ranges;
       }
     });
   }
@@ -293,5 +337,10 @@ export class TextEditorAPI {
 
   setActiveEditor(editor: TextEditor): void {
     this.activeEditor = editor;
+  }
+
+  createDecorationType(options: any): TextEditorDecorationType {
+    const key = `decoration_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    return new TextEditorDecorationTypeImpl(this.bridge, key, options);
   }
 }

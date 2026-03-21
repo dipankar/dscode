@@ -62,6 +62,7 @@ class QuickPickImpl<T extends QuickPickItem> implements QuickPick<T> {
   private _onDidTriggerButton = new EventEmitter<QuickInputButton>();
   private _onDidChangeActive = new EventEmitter<readonly T[]>();
   private _onDidChangeSelection = new EventEmitter<readonly T[]>();
+  private _visible = false;
 
   readonly onDidChangeValue = this._onDidChangeValue.event;
   readonly onDidAccept = this._onDidAccept.event;
@@ -196,26 +197,76 @@ class QuickPickImpl<T extends QuickPickItem> implements QuickPick<T> {
   }
 
   show(): void {
-    this.bridge.send('showQuickPick', {
-      value: this._value,
-      placeholder: this._placeholder,
-      items: this._items,
-      title: this._title,
-      canSelectMany: this._canSelectMany
-    });
+    if (this._visible) {
+      return;
+    }
+    this._visible = true;
+    void this.present();
   }
 
   hide(): void {
+    if (!this._visible) {
+      return;
+    }
+    this._visible = false;
     this._onDidHide.fire();
   }
 
   dispose(): void {
+    this.hide();
     this._onDidChangeValue.dispose();
     this._onDidAccept.dispose();
     this._onDidHide.dispose();
     this._onDidTriggerButton.dispose();
     this._onDidChangeActive.dispose();
     this._onDidChangeSelection.dispose();
+  }
+
+  private async present(): Promise<void> {
+    try {
+      const serializedItems = this._items.map(item => ({
+        label: item.label,
+        description: item.description,
+        detail: (item as any).detail,
+        picked: (item as any).picked,
+        alwaysShow: (item as any).alwaysShow,
+      }));
+
+      const response = await this.bridge.request('window-show-quick-pick', {
+        items: serializedItems,
+        options: {
+          placeHolder: this._placeholder,
+          canPickMany: this._canSelectMany,
+          matchOnDescription: this._matchOnDescription,
+          matchOnDetail: this._matchOnDetail,
+          title: this._title,
+          ignoreFocusOut: this._ignoreFocusOut,
+          value: this._value,
+        },
+      });
+
+      if (response && response.selected) {
+        const selections = Array.isArray(response.selected)
+          ? response.selected
+          : [response.selected];
+        const labels = selections
+          .map((entry: any) => (typeof entry === 'string' ? entry : entry?.label))
+          .filter(Boolean);
+        const matched = this._items.filter(item => labels.includes(item.label));
+
+        if (this._canSelectMany) {
+          this.selectedItems = matched;
+        } else if (matched.length > 0) {
+          this.selectedItems = [matched[0]];
+        }
+
+        this._onDidAccept.fire();
+      }
+    } catch (error) {
+      console.error('[QuickPick] Failed to show quick pick:', error);
+    } finally {
+      this.hide();
+    }
   }
 }
 
@@ -366,13 +417,7 @@ class InputBoxImpl implements InputBox {
   }
 
   show(): void {
-    this.bridge.send('showInputBox', {
-      value: this._value,
-      placeholder: this._placeholder,
-      password: this._password,
-      prompt: this._prompt,
-      title: this._title
-    });
+    void this.present();
   }
 
   hide(): void {
@@ -384,6 +429,30 @@ class InputBoxImpl implements InputBox {
     this._onDidAccept.dispose();
     this._onDidHide.dispose();
     this._onDidTriggerButton.dispose();
+  }
+
+  private async present(): Promise<void> {
+    try {
+      const response = await this.bridge.request('window-show-input-box', {
+        value: this._value,
+        placeHolder: this._placeholder,
+        password: this._password,
+        prompt: this._prompt,
+        title: this._title,
+        step: this._step,
+        totalSteps: this._totalSteps,
+        ignoreFocusOut: this._ignoreFocusOut,
+      });
+
+      if (response && typeof response.value === 'string') {
+        this.value = response.value;
+        this._onDidAccept.fire();
+      }
+    } catch (error) {
+      console.error('[InputBox] Failed to show input box:', error);
+    } finally {
+      this.hide();
+    }
   }
 }
 

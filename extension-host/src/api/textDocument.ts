@@ -33,7 +33,7 @@ export class TextDocument {
     public readonly uri: { path: string; fsPath: string; scheme: string },
     public readonly fileName: string,
     public readonly languageId: string,
-    public readonly version: number,
+    public version: number,
     private _text: string,
     public readonly isDirty: boolean = false,
     public readonly isClosed: boolean = false,
@@ -172,11 +172,26 @@ export class TextDocument {
 
   async save(): Promise<boolean> {
     try {
-      await this.bridge.request('saveDocument', { uri: this.uri.fsPath });
+      const result = await this.bridge.request('saveDocument', {
+        uri: this.uri.fsPath,
+        content: this.getText(),
+      });
+      if (result?.version) {
+        this.version = result.version;
+      }
       return true;
     } catch (error) {
       console.error('[TextDocument] Save failed:', error);
       return false;
+    }
+  }
+
+  updateContent(text: string, version?: number): void {
+    this._text = text;
+    if (typeof version === 'number') {
+      this.version = version;
+    } else {
+      this.version += 1;
     }
   }
 }

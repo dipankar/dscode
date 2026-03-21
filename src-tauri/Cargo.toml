@@ -40,9 +40,14 @@ grep-searcher = "0.1"
 grep-matcher = "0.1"
 grep-regex = "0.1"
 regex = "1.10"
+globset = "0.4"
 
 # Async runtime
 async-trait = "0.1"
+
+# Directories
+directories = "5.0"
+semver = "1.0"
 
 # System monitoring
 sysinfo = "0.30"

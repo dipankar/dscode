@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ExtensionHostBridge } from '../bridge';
 import * as vscodeAPI from '../api/vscode';
+import { PersistentMemento } from './storage';
 
 export interface ExtensionManifest {
   name: string;
@@ -23,6 +24,10 @@ export interface ExtensionManifest {
     grammars?: any[];
     themes?: any[];
   };
+  extensionDependencies?: string[];
+  extensionPack?: string[];
+  categories?: string[];
+  repository?: string | { url?: string };
 }
 
 export interface LoadedExtension {
@@ -37,6 +42,7 @@ export interface LoadedExtension {
 export class ExtensionManager {
   private extensions = new Map<string, LoadedExtension>();
   private bridge: ExtensionHostBridge;
+  private activating = new Set<string>();
 
   constructor(bridge: ExtensionHostBridge) {
     this.bridge = bridge;
@@ -138,27 +144,51 @@ export class ExtensionManager {
       return;
     }
 
+    if (this.activating.has(extensionId)) {
+      console.warn(`[ExtensionManager] Circular activation request detected for ${extensionId}`);
+      return;
+    }
+
+    this.activating.add(extensionId);
+
     console.error(`[ExtensionManager] Activating: ${extensionId}`);
 
     try {
+      const dependencies = extension.manifest.extensionDependencies || [];
+      for (const dependencyId of dependencies) {
+        if (!this.extensions.has(dependencyId)) {
+          console.error(`[ExtensionManager] Missing dependency ${dependencyId} required by ${extensionId}`);
+          continue;
+        }
+        await this.activateExtension(dependencyId);
+      }
+
       // Load the extension's main file
       if (extension.manifest.main) {
         const mainPath = path.join(extension.extensionPath, extension.manifest.main);
+
+        const storageInfo = await this.bridge.request('get-extension-storage', {
+          extensionId,
+        });
+        const storagePaths = storageInfo as { global: string; workspace: string; logs: string };
+
+        const globalState = new PersistentMemento(path.join(storagePaths.global, 'globalState.json'));
+        const workspaceState = new PersistentMemento(path.join(storagePaths.workspace, 'workspaceState.json'));
 
         // Create extension context
         const context: vscodeAPI.ExtensionContext = {
           subscriptions: [],
           extensionPath: extension.extensionPath,
-          extensionUri: { fsPath: extension.extensionPath, scheme: 'file' } as any,
+          extensionUri: vscodeAPI.Uri.file(extension.extensionPath),
           globalState: {
-            get: (key: string) => undefined,
-            update: (key: string, value: any) => Promise.resolve(),
-            keys: () => [],
+            get: (key: string, defaultValue?: unknown) => globalState.get(key, defaultValue),
+            update: (key: string, value: any) => globalState.update(key, value),
+            keys: () => globalState.keys(),
           },
           workspaceState: {
-            get: (key: string) => undefined,
-            update: (key: string, value: any) => Promise.resolve(),
-            keys: () => [],
+            get: (key: string, defaultValue?: unknown) => workspaceState.get(key, defaultValue),
+            update: (key: string, value: any) => workspaceState.update(key, value),
+            keys: () => workspaceState.keys(),
           },
           secrets: {
             get: async (key: string) => undefined,
@@ -170,27 +200,31 @@ export class ExtensionManager {
           asAbsolutePath: (relativePath: string) => {
             return path.join(extension.extensionPath, relativePath);
           },
-          storageUri: undefined,
-          globalStorageUri: { fsPath: extension.extensionPath, scheme: 'file' } as any,
-          logUri: { fsPath: extension.extensionPath, scheme: 'file' } as any,
+          storageUri: vscodeAPI.Uri.file(storagePaths.workspace),
+          globalStorageUri: vscodeAPI.Uri.file(storagePaths.global),
+          logUri: vscodeAPI.Uri.file(storagePaths.logs),
         };
 
         // Load and activate the extension
         const extensionModule = require(mainPath);
 
-        if (typeof extensionModule.activate === 'function') {
-          extension.exports = await extensionModule.activate(context);
-          extension.context = context;
-          extension.isActive = true;
+        await vscodeAPI.__withExtensionActivation(extensionId, async () => {
+          if (typeof extensionModule.activate === 'function') {
+            extension.exports = await extensionModule.activate(context);
+            extension.context = context;
+            extension.isActive = true;
 
-          console.error(`[ExtensionManager] Activated: ${extensionId}`);
-        } else {
-          console.warn(`[ExtensionManager] No activate function: ${extensionId}`);
-        }
+            console.error(`[ExtensionManager] Activated: ${extensionId}`);
+          } else {
+            console.warn(`[ExtensionManager] No activate function: ${extensionId}`);
+          }
+        });
       }
     } catch (error) {
       console.error(`[ExtensionManager] Failed to activate ${extensionId}:`, error);
       throw error;
+    } finally {
+      this.activating.delete(extensionId);
     }
   }
 

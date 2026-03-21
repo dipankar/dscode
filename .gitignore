@@ -28,3 +28,4 @@ dist-ssr
 /src-tauri/Cargo.lock
 
 extensions/
+!/extension-host/src/extensions/

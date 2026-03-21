@@ -50,7 +50,7 @@ class ExtensionHost {
       }
     });
 
-    this.bridge.on('execute-command', async (command: string, args: any[]) => {
+    this.bridge.on('executeCommand', async (command: string, args: any[]) => {
       // Command execution will be handled by vscode.commands API
       console.error(`[ExtensionHost] Execute command: ${command}`, args);
     });

@@ -169,11 +169,8 @@ impl NngIncomingIpc {
     }
 
     /// Set the handler for incoming requests
-    pub fn set_handler<F>(&mut self, handler: F)
-    where
-        F: Fn(String, Value) -> Result<Value, String> + Send + Sync + 'static,
-    {
-        self.handler = Some(Arc::new(handler));
+    pub fn set_handler(&mut self, handler: IncomingRequestHandler) {
+        self.handler = Some(handler);
     }
 
     /// Start listening for incoming requests

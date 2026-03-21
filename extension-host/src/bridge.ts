@@ -71,6 +71,73 @@ export class ExtensionHostBridge extends EventEmitter {
    * Setup NNG message handlers
    */
   private setupHandlers() {
+    // Extension lifecycle: activate
+    this.nng.on('activate-extension', async (payload: any) => {
+      const extensionId = payload?.extensionId;
+      if (!extensionId) {
+        throw new Error('Missing extensionId in activate-extension payload');
+      }
+
+      await this.emitAsync('activate-extension', extensionId);
+      return { success: true };
+    });
+
+    // Extension lifecycle: deactivate
+    this.nng.on('deactivate-extension', async (payload: any) => {
+      const extensionId = payload?.extensionId;
+      if (!extensionId) {
+        throw new Error('Missing extensionId in deactivate-extension payload');
+      }
+
+      await this.emitAsync('deactivate-extension', extensionId);
+      return { success: true };
+    });
+
+    // Extension management: list installed extensions
+    this.nng.on('list-extensions', async (payload: any) => {
+      return new Promise((resolve, reject) => {
+        const respond = (response: any) => resolve(response);
+        try {
+          const handled = this.emit('list-extensions', payload, respond);
+          if (!handled) {
+            reject(new Error('No listeners registered for list-extensions'));
+          }
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+
+    // Extension management: reload extensions after install/uninstall
+    this.nng.on('reload-extensions', async (payload: any) => {
+      return new Promise((resolve, reject) => {
+        const respond = (response: any) => resolve(response);
+        try {
+          const handled = this.emit('reload-extensions', payload, respond);
+          if (!handled) {
+            reject(new Error('No listeners registered for reload-extensions'));
+          }
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+
+    // Extension management: uninstall extension
+    this.nng.on('uninstall-extension', async (payload: any) => {
+      return new Promise((resolve, reject) => {
+        const respond = (response: any) => resolve(response);
+        try {
+          const handled = this.emit('uninstall-extension', payload, respond);
+          if (!handled) {
+            reject(new Error('No listeners registered for uninstall-extension'));
+          }
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+
     // Handle tree view requests
     this.nng.on('treeView:getChildren', async (payload: any) => {
       console.error('[Bridge] Received treeView:getChildren request:', payload);
@@ -79,6 +146,16 @@ export class ExtensionHostBridge extends EventEmitter {
         // Emit event for extension manager to handle
         this.emit('treeView:getChildren', payload, (response: any) => {
           resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('treeView:event', async (payload: any) => {
+      console.error('[Bridge] Received treeView:event:', payload);
+
+      return new Promise((resolve) => {
+        this.emit('treeView:event', payload, (response: any) => {
+          resolve(response ?? { success: true });
         });
       });
     });
@@ -92,6 +169,20 @@ export class ExtensionHostBridge extends EventEmitter {
         this.emit('executeCommand', payload, (response: any) => {
           resolve(response);
         });
+      });
+    });
+
+    this.nng.on('configuration-changed', async (payload: any) => {
+      return new Promise((resolve) => {
+        this.emit('configurationChanged', payload);
+        resolve({ success: true });
+      });
+    });
+
+    this.nng.on('fsWatcher:event', async (payload: any) => {
+      return new Promise((resolve) => {
+        this.emit('fsWatcher:event', payload);
+        resolve({ success: true });
       });
     });
   }
@@ -111,6 +202,22 @@ export class ExtensionHostBridge extends EventEmitter {
     } catch (error) {
       console.error('[Bridge] Failed to send message:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Emit an event and await async listeners
+   */
+  private async emitAsync(event: string, ...args: any[]): Promise<void> {
+    const listeners = this.listeners(event);
+    if (listeners.length === 0) {
+      throw new Error(`No listeners registered for ${event}`);
+    }
+    for (const listener of listeners) {
+      const result = (listener as (...innerArgs: any[]) => unknown)(...args);
+      if (result instanceof Promise) {
+        await result;
+      }
     }
   }
 
