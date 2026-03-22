@@ -30,22 +30,39 @@ class ExtensionHost {
     // Set up message handlers
     this.setupMessageHandlers();
 
+    // Notify Tauri that we're ready to accept activation requests
+    // Send this BEFORE loading extensions so Rust knows we're connected
+    console.error('[ExtensionHost] Sending ready signal...');
+    try {
+      await this.bridge.send('extension-host-ready', { ready: true });
+      console.error('[ExtensionHost] Ready signal sent');
+    } catch (error) {
+      console.error('[ExtensionHost] Failed to send ready signal:', error);
+    }
+
     // Load installed extensions
     await this.extensionManager.loadExtensions();
-    console.error('[ExtensionHost] Extensions loaded');
+    console.log('[ExtensionHost] Extensions loaded');
 
-    console.error('[ExtensionHost] Ready');
+    // Signal startup finished to trigger onStartupFinished activations
+    // This should happen after initial extensions are loaded
+    await this.extensionManager.signalStartupFinished();
+    console.log('[ExtensionHost] Startup finished signal sent');
+
+    console.log('[ExtensionHost] Ready');
   }
 
   private setupMessageHandlers() {
-    this.bridge.on('activate-extension', async (extensionId: string) => {
+    this.bridge.on('activate-extension', async (payload: any) => {
       if (this.extensionManager) {
+        const extensionId = payload.extensionId || payload;
         await this.extensionManager.activateExtension(extensionId);
       }
     });
 
-    this.bridge.on('deactivate-extension', async (extensionId: string) => {
+    this.bridge.on('deactivate-extension', async (payload: any) => {
       if (this.extensionManager) {
+        const extensionId = payload.extensionId || payload;
         await this.extensionManager.deactivateExtension(extensionId);
       }
     });
@@ -112,6 +129,114 @@ class ExtensionHost {
       } catch (error: any) {
         respond({ success: false, error: error.message });
       }
+    });
+
+    // ==================== Activation Event Handlers ====================
+
+    // Signal startup finished - triggers onStartupFinished extensions
+    this.bridge.on('signal-startup-finished', async () => {
+      if (this.extensionManager) {
+        await this.extensionManager.signalStartupFinished();
+      }
+    });
+
+    // Trigger onLanguage activation
+    this.bridge.on('trigger-on-language', async (languageId: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnLanguage(languageId);
+      }
+    });
+
+    // Trigger onCommand activation
+    this.bridge.on('trigger-on-command', async (commandId: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnCommand(commandId);
+      }
+    });
+
+    // Trigger onView activation
+    this.bridge.on('trigger-on-view', async (viewId: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnView(viewId);
+      }
+    });
+
+    // Trigger onDebug activation
+    this.bridge.on('trigger-on-debug', async (debugType?: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnDebug(debugType);
+      }
+    });
+
+    // Trigger onUri activation
+    this.bridge.on('trigger-on-uri', async (scheme?: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnUri(scheme);
+      }
+    });
+
+    // Trigger onFileSystem activation
+    this.bridge.on('trigger-on-filesystem', async (scheme: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnFileSystem(scheme);
+      }
+    });
+
+    // Trigger onWebviewPanel activation
+    this.bridge.on('trigger-on-webview-panel', async (viewType: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnWebviewPanel(viewType);
+      }
+    });
+
+    // Trigger onCustomEditor activation
+    this.bridge.on('trigger-on-custom-editor', async (viewType: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnCustomEditor(viewType);
+      }
+    });
+
+    // Trigger onNotebook activation
+    this.bridge.on('trigger-on-notebook', async (notebookType: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnNotebook(notebookType);
+      }
+    });
+
+    // Trigger onAuthenticationRequest activation
+    this.bridge.on('trigger-on-authentication', async (providerId: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnAuthenticationRequest(providerId);
+      }
+    });
+
+    // Trigger onTerminalProfile activation
+    this.bridge.on('trigger-on-terminal-profile', async (profileId: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerOnTerminalProfile(profileId);
+      }
+    });
+
+    // Trigger workspaceContains activation
+    this.bridge.on('trigger-workspace-contains', async (pattern: string) => {
+      if (this.extensionManager) {
+        await this.extensionManager.triggerWorkspaceContains(pattern);
+      }
+    });
+
+    // Get pending activations (for debugging)
+    this.bridge.on('get-pending-activations', async (_: any, respond: Function) => {
+      if (!this.extensionManager) {
+        respond({ activations: {} });
+        return;
+      }
+
+      const pending = this.extensionManager.getPendingActivations();
+      const result: Record<string, string[]> = {};
+      for (const [key, extensions] of pending) {
+        result[key] = extensions;
+      }
+      respond({ activations: result });
     });
   }
 

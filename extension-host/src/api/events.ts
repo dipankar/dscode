@@ -8,8 +8,24 @@ export interface Event<T> {
   (listener: (e: T) => any, thisArgs?: any, disposables?: Disposable[]): Disposable;
 }
 
-export interface Disposable {
-  dispose(): void;
+export class Disposable {
+  constructor(private callOnDispose?: () => void) {}
+
+  dispose(): void {
+    if (this.callOnDispose) {
+      this.callOnDispose();
+    }
+  }
+
+  static from(...disposables: { dispose(): void }[]): Disposable {
+    return new Disposable(() => {
+      for (const disposable of disposables) {
+        if (disposable && typeof disposable.dispose === 'function') {
+          disposable.dispose();
+        }
+      }
+    });
+  }
 }
 
 export class EventEmitter<T> {

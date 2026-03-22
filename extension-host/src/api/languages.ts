@@ -7,9 +7,12 @@
 import { ExtensionHostBridge } from '../bridge';
 import { TextDocument, Position, Range } from './textDocument';
 
-export interface CompletionItem {
-  label: string;
-  kind?: number;
+export class CompletionItem {
+  constructor(
+    public label: string,
+    public kind?: number
+  ) {}
+
   detail?: string;
   documentation?: string | { value: string };
   sortText?: string;
@@ -24,9 +27,11 @@ export interface CompletionList {
   items: CompletionItem[];
 }
 
-export interface Hover {
-  contents: string | string[] | { language: string; value: string }[];
-  range?: Range;
+export class Hover {
+  constructor(
+    public contents: string | string[] | { language: string; value: string }[],
+    public range?: Range
+  ) {}
 }
 
 export interface Definition {
@@ -34,35 +39,46 @@ export interface Definition {
   range: Range;
 }
 
-export interface Location {
-  uri: { path: string; fsPath: string };
-  range: Range;
+export class Location {
+  constructor(
+    public uri: { path: string; fsPath: string },
+    public range: Range
+  ) {}
 }
 
-export interface CodeAction {
-  title: string;
-  kind?: string;
+export class CodeAction {
+  constructor(
+    public title: string,
+    public kind?: string
+  ) {}
+
   edit?: any; // WorkspaceEdit
   command?: { title: string; command: string; arguments?: any[] };
   diagnostics?: Diagnostic[];
   isPreferred?: boolean;
 }
 
-export interface Diagnostic {
-  range: Range;
-  message: string;
-  severity: number; // 0=Error, 1=Warning, 2=Info, 3=Hint
+export class Diagnostic {
+  constructor(
+    public range: Range,
+    public message: string,
+    public severity: number = 0 // 0=Error, 1=Warning, 2=Info, 3=Hint
+  ) {}
+
   source?: string;
   code?: string | number;
   relatedInformation?: { location: Location; message: string }[];
 }
 
-export interface DocumentSymbol {
-  name: string;
-  detail?: string;
-  kind: number;
-  range: Range;
-  selectionRange: Range;
+export class DocumentSymbol {
+  constructor(
+    public name: string,
+    public detail: string,
+    public kind: number,
+    public range: Range,
+    public selectionRange: Range
+  ) {}
+
   children?: DocumentSymbol[];
 }
 
@@ -244,6 +260,8 @@ export class LanguagesAPI {
 
   private setupMessageHandlers(): void {
     // Handle requests from main process to trigger providers
+
+    // Completion provider
     this.bridge.on('provideCompletion', async (data: any) => {
       const providers = this.completionProviders.get(data.languageId) || [];
       const results: CompletionItem[] = [];
@@ -269,6 +287,198 @@ export class LanguagesAPI {
 
       this.bridge.send('completionResult', { requestId: data.requestId, items: results });
     });
+
+    // Hover provider
+    this.bridge.on('provideHover', async (data: any, respond: Function) => {
+      const providers = this.hoverProviders.get(data.languageId) || [];
+
+      for (const provider of providers) {
+        try {
+          const result = await provider.provideHover(
+            data.document,
+            new Position(data.position.line, data.position.character),
+            data.token
+          );
+
+          if (result) {
+            respond({
+              contents: result.contents,
+              range: result.range
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('[Languages] Hover provider error:', error);
+        }
+      }
+
+      respond(null);
+    });
+
+    // Definition provider
+    this.bridge.on('provideDefinition', async (data: any, respond: Function) => {
+      const providers = this.definitionProviders.get(data.languageId) || [];
+
+      for (const provider of providers) {
+        try {
+          const result = await provider.provideDefinition(
+            data.document,
+            new Position(data.position.line, data.position.character),
+            data.token
+          );
+
+          if (result) {
+            // Normalize result to array
+            const definitions = Array.isArray(result) ? result : [result];
+            respond({
+              definitions: definitions.map(d => ({
+                uri: d.uri,
+                range: d.range
+              }))
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('[Languages] Definition provider error:', error);
+        }
+      }
+
+      respond({ definitions: [] });
+    });
+
+    // Reference provider
+    this.bridge.on('provideReferences', async (data: any, respond: Function) => {
+      const providers = this.referenceProviders.get(data.languageId) || [];
+
+      for (const provider of providers) {
+        try {
+          const result = await provider.provideReferences(
+            data.document,
+            new Position(data.position.line, data.position.character),
+            { includeDeclaration: data.includeDeclaration ?? true },
+            data.token
+          );
+
+          if (result) {
+            respond({
+              references: result.map(r => ({
+                uri: r.uri,
+                range: r.range
+              }))
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('[Languages] Reference provider error:', error);
+        }
+      }
+
+      respond({ references: [] });
+    });
+
+    // Code action provider
+    this.bridge.on('provideCodeActions', async (data: any, respond: Function) => {
+      const providers = this.codeActionProviders.get(data.languageId) || [];
+      const allActions: CodeAction[] = [];
+
+      for (const provider of providers) {
+        try {
+          const result = await provider.provideCodeActions(
+            data.document,
+            new Range(
+              new Position(data.range.start.line, data.range.start.character),
+              new Position(data.range.end.line, data.range.end.character)
+            ),
+            { diagnostics: data.diagnostics || [] },
+            data.token
+          );
+
+          if (result) {
+            allActions.push(...result);
+          }
+        } catch (error) {
+          console.error('[Languages] Code action provider error:', error);
+        }
+      }
+
+      respond({
+        actions: allActions.map(a => ({
+          title: a.title,
+          kind: a.kind,
+          edit: a.edit,
+          command: a.command,
+          isPreferred: a.isPreferred
+        }))
+      });
+    });
+
+    // Document symbol provider
+    this.bridge.on('provideDocumentSymbols', async (data: any, respond: Function) => {
+      const providers = this.symbolProviders.get(data.languageId) || [];
+
+      for (const provider of providers) {
+        try {
+          const result = await provider.provideDocumentSymbols(
+            data.document,
+            data.token
+          );
+
+          if (result) {
+            respond({
+              symbols: result.map(s => this.serializeDocumentSymbol(s))
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('[Languages] Document symbol provider error:', error);
+        }
+      }
+
+      respond({ symbols: [] });
+    });
+
+    // Document formatting provider
+    this.bridge.on('provideDocumentFormatting', async (data: any, respond: Function) => {
+      const providers = this.formattingProviders.get(data.languageId) || [];
+
+      for (const provider of providers) {
+        try {
+          const result = await provider.provideDocumentFormattingEdits(
+            data.document,
+            { tabSize: data.options?.tabSize || 4, insertSpaces: data.options?.insertSpaces ?? true },
+            data.token
+          );
+
+          if (result) {
+            respond({
+              edits: result.map(e => ({
+                range: e.range,
+                newText: e.newText
+              }))
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('[Languages] Formatting provider error:', error);
+        }
+      }
+
+      respond({ edits: [] });
+    });
+  }
+
+  /**
+   * Serialize a DocumentSymbol to plain object (including children)
+   */
+  private serializeDocumentSymbol(symbol: DocumentSymbol): any {
+    return {
+      name: symbol.name,
+      detail: symbol.detail,
+      kind: symbol.kind,
+      range: symbol.range,
+      selectionRange: symbol.selectionRange,
+      children: symbol.children?.map(c => this.serializeDocumentSymbol(c)) || []
+    };
   }
 
   registerCompletionItemProvider(

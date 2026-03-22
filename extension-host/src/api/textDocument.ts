@@ -6,14 +6,143 @@
 
 import { ExtensionHostBridge } from '../bridge';
 
-export interface Position {
-  line: number;
-  character: number;
+export class Position {
+  constructor(
+    public readonly line: number,
+    public readonly character: number
+  ) {}
+
+  isEqual(other: Position): boolean {
+    return this.line === other.line && this.character === other.character;
+  }
+
+  isBefore(other: Position): boolean {
+    return this.line < other.line || (this.line === other.line && this.character < other.character);
+  }
+
+  isAfter(other: Position): boolean {
+    return this.line > other.line || (this.line === other.line && this.character > other.character);
+  }
+
+  isBeforeOrEqual(other: Position): boolean {
+    return this.isBefore(other) || this.isEqual(other);
+  }
+
+  isAfterOrEqual(other: Position): boolean {
+    return this.isAfter(other) || this.isEqual(other);
+  }
+
+  compareTo(other: Position): number {
+    if (this.line < other.line) return -1;
+    if (this.line > other.line) return 1;
+    if (this.character < other.character) return -1;
+    if (this.character > other.character) return 1;
+    return 0;
+  }
+
+  translate(lineDelta: number, characterDelta?: number): Position;
+  translate(change: { lineDelta?: number; characterDelta?: number }): Position;
+  translate(lineDeltaOrChange: number | { lineDelta?: number; characterDelta?: number }, characterDelta?: number): Position {
+    if (typeof lineDeltaOrChange === 'number') {
+      const lineDelta = lineDeltaOrChange;
+      const charDelta = characterDelta || 0;
+      return new Position(this.line + lineDelta, this.character + charDelta);
+    } else {
+      const lineDelta = lineDeltaOrChange.lineDelta || 0;
+      const charDelta = lineDeltaOrChange.characterDelta || 0;
+      return new Position(this.line + lineDelta, this.character + charDelta);
+    }
+  }
+
+  with(line?: number, character?: number): Position;
+  with(change: { line?: number; character?: number }): Position;
+  with(lineOrChange?: number | { line?: number; character?: number }, character?: number): Position {
+    if (typeof lineOrChange === 'number') {
+      return new Position(
+        lineOrChange !== undefined ? lineOrChange : this.line,
+        character !== undefined ? character : this.character
+      );
+    } else if (lineOrChange) {
+      return new Position(
+        lineOrChange.line !== undefined ? lineOrChange.line : this.line,
+        lineOrChange.character !== undefined ? lineOrChange.character : this.character
+      );
+    }
+    return this;
+  }
 }
 
-export interface Range {
-  start: Position;
-  end: Position;
+export class Range {
+  public readonly start: Position;
+  public readonly end: Position;
+
+  constructor(start: Position, end: Position);
+  constructor(startLine: number, startCharacter: number, endLine: number, endCharacter: number);
+  constructor(
+    startOrStartLine: Position | number,
+    endOrStartCharacter: Position | number,
+    endLine?: number,
+    endCharacter?: number
+  ) {
+    if (startOrStartLine instanceof Position && endOrStartCharacter instanceof Position) {
+      this.start = startOrStartLine;
+      this.end = endOrStartCharacter;
+    } else if (typeof startOrStartLine === 'number' && typeof endOrStartCharacter === 'number') {
+      this.start = new Position(startOrStartLine, endOrStartCharacter);
+      this.end = new Position(endLine!, endCharacter!);
+    } else {
+      throw new Error('Invalid Range constructor arguments');
+    }
+  }
+
+  isEmpty(): boolean {
+    return this.start.isEqual(this.end);
+  }
+
+  isSingleLine(): boolean {
+    return this.start.line === this.end.line;
+  }
+
+  contains(positionOrRange: Position | Range): boolean {
+    if (positionOrRange instanceof Position) {
+      return positionOrRange.isAfterOrEqual(this.start) && positionOrRange.isBeforeOrEqual(this.end);
+    } else {
+      return this.contains(positionOrRange.start) && this.contains(positionOrRange.end);
+    }
+  }
+
+  isEqual(other: Range): boolean {
+    return this.start.isEqual(other.start) && this.end.isEqual(other.end);
+  }
+
+  intersection(other: Range): Range | undefined {
+    const start = this.start.isAfter(other.start) ? this.start : other.start;
+    const end = this.end.isBefore(other.end) ? this.end : other.end;
+    if (start.isAfter(end)) {
+      return undefined;
+    }
+    return new Range(start, end);
+  }
+
+  union(other: Range): Range {
+    const start = this.start.isBefore(other.start) ? this.start : other.start;
+    const end = this.end.isAfter(other.end) ? this.end : other.end;
+    return new Range(start, end);
+  }
+
+  with(start?: Position, end?: Position): Range;
+  with(change: { start?: Position; end?: Position }): Range;
+  with(startOrChange?: Position | { start?: Position; end?: Position }, end?: Position): Range {
+    if (startOrChange instanceof Position) {
+      return new Range(startOrChange, end || this.end);
+    } else if (startOrChange) {
+      return new Range(
+        startOrChange.start || this.start,
+        startOrChange.end || this.end
+      );
+    }
+    return this;
+  }
 }
 
 export interface TextLine {
@@ -64,14 +193,14 @@ export class TextDocument {
     return {
       lineNumber,
       text,
-      range: {
-        start: { line: lineNumber, character: 0 },
-        end: { line: lineNumber, character: text.length }
-      },
-      rangeIncludingLineBreak: {
-        start: { line: lineNumber, character: 0 },
-        end: { line: lineNumber + 1, character: 0 }
-      },
+      range: new Range(
+        new Position(lineNumber, 0),
+        new Position(lineNumber, text.length)
+      ),
+      rangeIncludingLineBreak: new Range(
+        new Position(lineNumber, 0),
+        new Position(lineNumber + 1, 0)
+      ),
       firstNonWhitespaceCharacterIndex,
       isEmptyOrWhitespace
     };
@@ -97,10 +226,7 @@ export class TextDocument {
       const lineLength = lines[line].length + 1; // +1 for newline
 
       if (currentOffset + lineLength > offset) {
-        return {
-          line,
-          character: offset - currentOffset
-        };
+        return new Position(line, offset - currentOffset);
       }
 
       currentOffset += lineLength;
@@ -108,10 +234,7 @@ export class TextDocument {
 
     // If offset is beyond the document, return the end position
     const lastLine = lines.length - 1;
-    return {
-      line: lastLine,
-      character: lines[lastLine]?.length || 0
-    };
+    return new Position(lastLine, lines[lastLine]?.length || 0);
   }
 
   getText(range?: Range): string {
@@ -137,10 +260,10 @@ export class TextDocument {
       const endChar = match.index + match[0].length;
 
       if (startChar <= position.character && position.character <= endChar) {
-        return {
-          start: { line: position.line, character: startChar },
-          end: { line: position.line, character: endChar }
-        };
+        return new Range(
+          new Position(position.line, startChar),
+          new Position(position.line, endChar)
+        );
       }
     }
 
@@ -156,10 +279,10 @@ export class TextDocument {
     const startChar = Math.max(0, Math.min(range.start.character, lines[startLine]?.length || 0));
     const endChar = Math.max(0, Math.min(range.end.character, lines[endLine]?.length || 0));
 
-    return {
-      start: { line: startLine, character: startChar },
-      end: { line: endLine, character: endChar }
-    };
+    return new Range(
+      new Position(startLine, startChar),
+      new Position(endLine, endChar)
+    );
   }
 
   validatePosition(position: Position): Position {
@@ -167,7 +290,7 @@ export class TextDocument {
     const line = Math.max(0, Math.min(position.line, lines.length - 1));
     const character = Math.max(0, Math.min(position.character, lines[line]?.length || 0));
 
-    return { line, character };
+    return new Position(line, character);
   }
 
   async save(): Promise<boolean> {
@@ -175,7 +298,7 @@ export class TextDocument {
       const result = await this.bridge.request('saveDocument', {
         uri: this.uri.fsPath,
         content: this.getText(),
-      });
+      }) as { version?: number } | null;
       if (result?.version) {
         this.version = result.version;
       }
@@ -213,7 +336,14 @@ export class TextDocumentAPI {
     }
 
     // Request document from main process
-    const docData = await this.bridge.request('openTextDocument', { path });
+    const docData = await this.bridge.request('openTextDocument', { path }) as {
+      uri?: string;
+      languageId?: string;
+      version?: number;
+      text?: string;
+      isDirty?: boolean;
+      eol?: number;
+    };
 
     const uri = {
       path: docData.uri || path,

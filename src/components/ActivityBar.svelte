@@ -1,56 +1,58 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
   import { activeActivity, type ActivityId } from '../lib/activity-store';
 
   export let sidebarVisible: boolean;
 
-  interface Activity {
+  interface ActivityBarItem {
     id: string;
-    icon: string;
+    owner: string;
     title: string;
-    isExtension?: boolean;
+    icon?: string;
+    icon_path?: string;
+    priority: number;
+    badge_count?: number;
+    badge_text?: string;
+    visible: boolean;
   }
 
-  const builtInActivities: Activity[] = [
-    { id: 'explorer', icon: '📁', title: 'Explorer' },
-    { id: 'search', icon: '🔍', title: 'Search' },
-    { id: 'scm', icon: '🔀', title: 'Source Control' },
-    { id: 'debug', icon: '🐛', title: 'Run and Debug' },
-    { id: 'extensions', icon: '🧩', title: 'Extensions' },
-  ];
-
-  let activities: Activity[] = builtInActivities;
+  let activities: ActivityBarItem[] = [];
   let currentActivity: ActivityId = 'explorer';
+  let unlistenActivityBarChanged: (() => void) | null = null;
 
   activeActivity.subscribe((activity) => {
     currentActivity = activity;
   });
 
-  onMount(async () => {
+  async function loadActivityBarItems() {
     try {
-      const contributions = await invoke('get_extension_contributions');
-      const extensionActivities: Activity[] = [];
-
-      // Parse viewsContainers.activitybar from each extension
-      for (const contrib of contributions as any[]) {
-        if (contrib.contributes?.viewsContainers?.activitybar) {
-          for (const container of contrib.contributes.viewsContainers.activitybar) {
-            extensionActivities.push({
-              id: container.id,
-              icon: container.icon ? '🔷' : '📦', // Use generic icon for now
-              title: container.title || contrib.extension_name,
-              isExtension: true,
-            });
-          }
-        }
-      }
-
-      // Add extension activities before settings (after built-in)
-      activities = [...builtInActivities, ...extensionActivities];
-      console.log('Loaded extension activities:', extensionActivities);
+      const items = await invoke<ActivityBarItem[]>('get_activity_bar_items');
+      activities = items;
+      console.log('[ActivityBar] Loaded items:', items.length);
     } catch (error) {
-      console.error('Failed to load extension contributions:', error);
+      console.error('[ActivityBar] Failed to load items:', error);
+    }
+  }
+
+  onMount(async () => {
+    // Load initial activity bar items
+    await loadActivityBarItems();
+
+    // Listen for activity bar changes
+    unlistenActivityBarChanged = await listen<ActivityBarItem[]>(
+      'activity-bar-items-changed',
+      (event) => {
+        activities = event.payload;
+        console.log('[ActivityBar] Items updated:', event.payload.length);
+      }
+    );
+  });
+
+  onDestroy(() => {
+    if (unlistenActivityBarChanged) {
+      unlistenActivityBarChanged();
     }
   });
 
@@ -82,7 +84,12 @@
       on:click={() => handleClick(activity.id)}
       title={activity.title}
     >
-      <span class="icon">{activity.icon}</span>
+      <span class="icon">{activity.icon || '📦'}</span>
+      {#if activity.badge_count || activity.badge_text}
+        <span class="badge">
+          {activity.badge_text || activity.badge_count}
+        </span>
+      {/if}
     </button>
   {/each}
 
@@ -136,6 +143,24 @@
 
   .icon {
     font-size: 24px;
+  }
+
+  .badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background-color: var(--color-accent);
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   }
 
   .spacer {

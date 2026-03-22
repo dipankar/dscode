@@ -12,14 +12,18 @@
   }
 
   let searchQuery = '';
+  let replaceText = '';
   let searchResults: SearchResult[] = [];
   let searching = false;
+  let replacing = false;
   let caseSensitive = false;
   let useRegex = false;
   let wholeWord = false;
   let includePattern = '';
   let excludePattern = '';
   let searchTimeout: number | null = null;
+  let showReplace = false;
+  let selectedFiles = new Set<string>();
 
   $: groupedResults = groupResultsByFile(searchResults);
 
@@ -117,12 +121,77 @@
   function clearSearch() {
     searchQuery = '';
     searchResults = [];
+    selectedFiles.clear();
+  }
+
+  async function replaceAll() {
+    const rootPath = $workspaceStore.rootPath;
+    if (!rootPath || !searchQuery.trim()) return;
+
+    const confirmed = confirm(`Replace all occurrences of "${searchQuery}" with "${replaceText}"?`);
+    if (!confirmed) return;
+
+    replacing = true;
+    try {
+      const filesModified = await invoke<number>('replace_in_files', {
+        rootPath,
+        searchQuery,
+        replaceText,
+        options: {
+          query: searchQuery,
+          caseSensitive,
+          useRegex,
+          wholeWord,
+          includePattern: includePattern || null,
+          excludePattern: excludePattern || null,
+          maxResults: 500,
+        }
+      });
+
+      alert(`Replaced in ${filesModified} file(s)`);
+
+      // Re-run search to update results
+      await search();
+    } catch (error) {
+      console.error('[Replace] Error:', error);
+      alert(`Replace failed: ${error}`);
+    } finally {
+      replacing = false;
+    }
+  }
+
+  function toggleFileSelection(filePath: string) {
+    if (selectedFiles.has(filePath)) {
+      selectedFiles.delete(filePath);
+    } else {
+      selectedFiles.add(filePath);
+    }
+    selectedFiles = selectedFiles; // Trigger reactivity
+  }
+
+  function toggleAllFiles() {
+    if (selectedFiles.size === groupedResults.size) {
+      selectedFiles.clear();
+    } else {
+      selectedFiles = new Set([...groupedResults.keys()]);
+    }
+    selectedFiles = selectedFiles;
   }
 </script>
 
 <div class="search-view">
   <div class="search-header">
     <h3>SEARCH</h3>
+    <button
+      class="toggle-replace-btn"
+      class:active={showReplace}
+      on:click={() => showReplace = !showReplace}
+      title="Toggle Replace"
+    >
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M8.75 1a.75.75 0 0 0-1.5 0v1.5H5.5a.75.75 0 0 0 0 1.5h1.75v1.75a.75.75 0 0 0 1.5 0V4h1.75a.75.75 0 0 0 0-1.5H8.75V1zM4 7.75A.75.75 0 0 1 4.75 7h6.5a.75.75 0 0 1 0 1.5h-6.5A.75.75 0 0 1 4 7.75zm0 3.5a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1-.75-.75z"/>
+      </svg>
+    </button>
   </div>
 
   <div class="search-controls">
@@ -143,6 +212,17 @@
         </button>
       {/if}
     </div>
+
+    {#if showReplace}
+      <div class="replace-input-container">
+        <input
+          type="text"
+          bind:value={replaceText}
+          placeholder="Replace with..."
+          class="search-input"
+        />
+      </div>
+    {/if}
 
     <div class="search-options">
       <button
@@ -186,13 +266,24 @@
       />
     </div>
 
-    <button
-      class="search-btn"
-      on:click={search}
-      disabled={!searchQuery.trim() || searching}
-    >
-      {searching ? 'Searching...' : 'Search'}
-    </button>
+    <div class="action-buttons">
+      <button
+        class="search-btn"
+        on:click={search}
+        disabled={!searchQuery.trim() || searching}
+      >
+        {searching ? 'Searching...' : 'Search'}
+      </button>
+      {#if showReplace && searchResults.length > 0}
+        <button
+          class="replace-btn"
+          on:click={replaceAll}
+          disabled={replacing || !searchQuery.trim()}
+        >
+          {replacing ? 'Replacing...' : 'Replace All'}
+        </button>
+      {/if}
+    </div>
   </div>
 
   <div class="search-results">
@@ -253,6 +344,9 @@
   .search-header {
     padding: 8px 16px;
     border-bottom: 1px solid var(--color-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
 
   .search-header h3 {
@@ -260,6 +354,29 @@
     font-weight: 600;
     color: var(--color-text-secondary);
     letter-spacing: 0.5px;
+  }
+
+  .toggle-replace-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    transition: all 0.1s;
+  }
+
+  .toggle-replace-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .toggle-replace-btn.active {
+    background: var(--accent-color);
+    color: white;
+    border-color: var(--accent-color);
   }
 
   .search-controls {
@@ -358,7 +475,14 @@
     border-color: var(--accent-color);
   }
 
-  .search-btn {
+  .action-buttons {
+    display: flex;
+    gap: 8px;
+  }
+
+  .search-btn,
+  .replace-btn {
+    flex: 1;
     background: var(--accent-color);
     color: white;
     border: none;
@@ -370,13 +494,24 @@
     transition: opacity 0.1s;
   }
 
-  .search-btn:hover:not(:disabled) {
+  .replace-btn {
+    background: #f9c74f;
+  }
+
+  .search-btn:hover:not(:disabled),
+  .replace-btn:hover:not(:disabled) {
     opacity: 0.9;
   }
 
-  .search-btn:disabled {
+  .search-btn:disabled,
+  .replace-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .replace-input-container {
+    display: flex;
+    align-items: center;
   }
 
   .search-results {

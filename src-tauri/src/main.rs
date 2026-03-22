@@ -1,6 +1,12 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Allow dead code and unused imports for work-in-progress modules
+// These are scaffolded features that will be integrated in future iterations
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+
 // Configure memory allocator
 #[cfg(feature = "jemalloc")]
 #[global_allocator]
@@ -23,6 +29,7 @@ mod terminal;
 mod debug;
 mod session;
 mod config;
+mod logging;
 
 use commands::*;
 use watcher::FileWatcherState;
@@ -110,6 +117,71 @@ fn main() {
             // Store in app state
             app.manage(session_manager.clone());
 
+            // Initialize command registry
+            let command_registry = CommandRegistry::new(app.handle().clone());
+            app.manage(command_registry);
+
+            // Initialize menu registry
+            let menu_registry = MenuRegistry::new(app.handle().clone());
+            app.manage(menu_registry);
+
+            // Initialize keybinding registry
+            let keybinding_registry = KeybindingRegistry::new(app.handle().clone());
+            app.manage(keybinding_registry);
+
+            // Initialize status bar registry
+            let status_bar_registry = StatusBarRegistry::new(app.handle().clone());
+            app.manage(status_bar_registry);
+
+            // Initialize activity bar registry
+            let activity_bar_registry = ActivityBarRegistry::new(app.handle().clone());
+            app.manage(activity_bar_registry);
+
+            // Initialize language features registry
+            let language_features_registry = LanguageFeaturesRegistry::new(app.handle().clone());
+            app.manage(language_features_registry);
+
+            // Initialize workspace registry
+            let workspace_registry = WorkspaceRegistry::new(app.handle().clone());
+            app.manage(workspace_registry);
+
+            // Initialize file system registry
+            let filesystem_registry = FileSystemRegistry::new(app.handle().clone());
+            app.manage(filesystem_registry);
+
+            // Initialize text document registry
+            let textdocument_registry = TextDocumentRegistry::new(app.handle().clone());
+            app.manage(textdocument_registry);
+
+            // Initialize configuration registry
+            let configuration_registry = ConfigurationRegistry::new(app.handle().clone());
+            let configuration_registry_arc = Arc::new(configuration_registry);
+            app.manage(configuration_registry_arc.clone());
+
+            // Initialize settings UI registry
+            let settings_ui_registry = SettingsUIRegistry::new(app.handle().clone(), configuration_registry_arc.clone());
+            app.manage(settings_ui_registry);
+
+            // Initialize debug configuration registry
+            let debug_configuration_registry = DebugConfigurationRegistry::new(app.handle().clone());
+            app.manage(debug_configuration_registry);
+
+            // Initialize theme registry
+            let theme_registry = ThemeRegistry::new(app.handle().clone());
+            app.manage(theme_registry);
+
+            // Initialize task registry
+            let task_registry = TaskRegistry::new(app.handle().clone());
+            app.manage(task_registry);
+
+            // Initialize marketplace UI registry
+            let marketplace_ui_registry = MarketplaceUIRegistry::new(app.handle().clone());
+            app.manage(marketplace_ui_registry);
+
+            // Initialize test runner registry
+            let test_runner_registry = TestRunnerRegistry::new(app.handle().clone());
+            app.manage(test_runner_registry);
+
             // Initialize session asynchronously
             let session = session_manager.clone();
             tauri::async_runtime::spawn(async move {
@@ -185,6 +257,13 @@ fn main() {
             git_create_branch,
             git_checkout_branch,
             git_delete_branch,
+            git_stash_save,
+            git_stash_list,
+            git_stash_pop,
+            git_stash_drop,
+            git_log,
+            git_discard_file,
+            git_discard_all,
             extension_tree_get_children,
             extension_tree_get_item,
             extension_execute_command,
@@ -200,6 +279,247 @@ fn main() {
             remove_workspace_folder,
             editor_selection_changed,
             editor_visible_ranges_changed,
+            get_all_commands,
+            search_commands,
+            get_command,
+            register_command,
+            unregister_command,
+            get_menu_items,
+            get_menu_items_filtered,
+            register_menu_item,
+            register_menu_items,
+            get_menu_locations,
+            parse_and_register_extension_menus,
+            parse_command_contributions,
+            get_all_keybindings,
+            get_keybindings_for_key,
+            get_keybindings_for_command,
+            register_keybinding,
+            register_keybindings,
+            get_platform,
+            parse_and_register_extension_keybindings,
+            create_status_bar_item,
+            update_status_bar_item,
+            show_status_bar_item,
+            hide_status_bar_item,
+            dispose_status_bar_item,
+            get_status_bar_items,
+            clear_status_bar_items,
+            register_activity_bar_item,
+            update_activity_bar_badge,
+            show_activity_bar_item,
+            hide_activity_bar_item,
+            dispose_activity_bar_item,
+            get_activity_bar_items,
+            clear_activity_bar_items,
+            register_hover_provider,
+            register_definition_provider,
+            register_completion_provider,
+            register_code_action_provider,
+            register_signature_help_provider,
+            register_references_provider,
+            register_code_lens_provider,
+            register_document_highlight_provider,
+            register_folding_range_provider,
+            register_rename_provider,
+            get_hover_providers,
+            get_definition_providers,
+            get_completion_providers,
+            get_code_action_providers,
+            get_signature_help_providers,
+            get_references_providers,
+            get_code_lens_providers,
+            get_document_highlight_providers,
+            get_folding_range_providers,
+            get_rename_providers,
+            publish_diagnostics,
+            get_diagnostics,
+            get_all_diagnostics,
+            clear_diagnostics,
+            register_document_symbols_provider,
+            register_workspace_symbols_provider,
+            register_document_formatting_provider,
+            register_range_formatting_provider,
+            register_on_type_formatting_provider,
+            get_document_symbols_providers,
+            get_workspace_symbols_providers,
+            get_document_formatting_providers,
+            get_range_formatting_providers,
+            get_on_type_formatting_providers,
+            register_semantic_tokens_provider,
+            register_inline_values_provider,
+            register_color_provider,
+            register_selection_range_provider,
+            register_linked_editing_range_provider,
+            get_semantic_tokens_providers,
+            get_inline_values_providers,
+            get_color_providers,
+            get_selection_range_providers,
+            get_linked_editing_range_providers,
+            clear_language_providers,
+            get_workspace_folders,
+            workspace_add_folder,
+            workspace_remove_folder,
+            get_workspace_configuration,
+            update_workspace_configuration,
+            register_file_decoration_provider,
+            update_file_decorations,
+            get_file_decorations,
+            workspace_find_files,
+            workspace_find_text,
+            clear_workspace_data,
+            fs_read_file,
+            fs_write_file,
+            fs_stat,
+            fs_read_directory,
+            fs_create_directory,
+            fs_delete,
+            fs_rename,
+            fs_copy,
+            register_file_system_provider,
+            unregister_file_system_provider,
+            get_file_system_provider,
+            get_all_file_system_providers,
+            create_file_watcher,
+            dispose_file_watcher,
+            get_file_watcher,
+            get_all_file_watchers,
+            apply_workspace_edit,
+            clear_filesystem_data,
+            register_text_document,
+            unregister_text_document,
+            update_text_document,
+            mark_document_saved,
+            get_text_document,
+            get_all_text_documents,
+            register_text_editor,
+            unregister_text_editor,
+            update_text_editor_selections,
+            update_text_editor_visible_ranges,
+            get_text_editor,
+            get_all_text_editors,
+            create_text_editor_decoration_type,
+            dispose_text_editor_decoration_type,
+            set_text_editor_decorations,
+            get_text_editor_decorations,
+            apply_text_edits,
+            clear_textdocument_data,
+            set_settings_path,
+            set_workspace_path,
+            register_configuration_schema,
+            get_configuration_value,
+            get_configuration_with_fallback,
+            update_configuration_value,
+            get_all_configuration_keys,
+            has_configuration_key,
+            clear_configuration_data,
+            register_debug_configuration_provider,
+            unregister_debug_configuration_provider,
+            get_debug_configuration_providers,
+            register_debug_adapter_descriptor_factory,
+            unregister_debug_adapter_descriptor_factory,
+            get_debug_adapter_descriptor_factories,
+            set_launch_configuration,
+            get_launch_configuration,
+            get_all_launch_configurations,
+            clear_debug_configuration_data,
+            register_color_theme,
+            unregister_color_theme,
+            get_color_theme,
+            get_all_color_themes,
+            get_color_themes_by_type,
+            set_active_color_theme,
+            get_active_color_theme,
+            register_icon_theme,
+            unregister_icon_theme,
+            get_icon_theme,
+            get_all_icon_themes,
+            set_active_icon_theme,
+            get_active_icon_theme,
+            register_product_icon_theme,
+            unregister_product_icon_theme,
+            get_product_icon_theme,
+            get_all_product_icon_themes,
+            set_active_product_icon_theme,
+            get_active_product_icon_theme,
+            get_theme_settings,
+            clear_theme_data,
+            register_task_provider,
+            unregister_task_provider,
+            get_task_providers,
+            get_task_providers_by_type,
+            get_task_provider,
+            start_task_execution,
+            update_task_execution,
+            end_task_execution,
+            get_task_execution,
+            get_all_task_executions,
+            clear_task_executions,
+            clear_task_data,
+            create_terminal_with_options,
+            register_terminal_profile,
+            unregister_terminal_profile,
+            get_terminal_profile,
+            list_terminal_profiles,
+            register_settings_category,
+            get_settings_categories,
+            get_settings_category,
+            register_setting_ui_schema,
+            get_setting_ui_schema,
+            get_all_setting_ui_schemas,
+            search_settings,
+            get_settings_by_category,
+            get_setting_with_values,
+            get_effective_setting_value,
+            update_setting_value,
+            reset_setting_to_default,
+            validate_setting_value,
+            clear_settings_ui_data,
+            set_featured_extensions,
+            get_featured_extensions,
+            get_extension_categories,
+            get_extension_category,
+            add_extension_review,
+            get_extension_reviews,
+            get_extension_reviews_paginated,
+            get_extension_rating,
+            add_extension_recommendations,
+            get_extension_recommendations,
+            generate_recommendations,
+            add_update_notification,
+            get_update_notifications,
+            remove_update_notification,
+            clear_update_notifications,
+            search_marketplace_extensions,
+            clear_marketplace_data,
+            register_test_suite,
+            get_test_suite,
+            get_all_test_suites,
+            get_test_suites_by_extension,
+            start_test_run,
+            update_test_result,
+            complete_test_run,
+            get_test_run_result,
+            get_all_test_results,
+            get_test_results_by_suite,
+            update_coverage,
+            get_coverage,
+            get_all_coverage,
+            validate_api_usage,
+            clear_test_data,
+            clear_all_test_results,
+            invoke_hover_provider,
+            invoke_definition_provider,
+            invoke_references_provider,
+            invoke_code_actions_provider,
+            invoke_document_symbols_provider,
+            invoke_document_formatting_provider,
+            invoke_completion_provider,
+            trigger_language_activation,
+            secret_get,
+            secret_store,
+            secret_delete,
+            secret_has,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

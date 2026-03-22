@@ -132,16 +132,19 @@ export interface CommentingRangeProvider {
   provideCommentingRanges(document: any, token: any): Range[] | Promise<Range[]>;
 }
 
-export interface CommentController {
-  readonly id: string;
-  label: string;
-  options?: any;
-  commentingRangeProvider?: CommentingRangeProvider;
-  createCommentThread(uri: Uri, range: Range, comments: Comment[]): CommentThread;
-  dispose(): void;
+export class CommentController {
+  readonly id!: string;
+  get label(): string { return ''; }
+  set label(value: string) {}
+  get options(): any { return undefined; }
+  set options(value: any) {}
+  get commentingRangeProvider(): CommentingRangeProvider | undefined { return undefined; }
+  set commentingRangeProvider(value: CommentingRangeProvider | undefined) {}
+  createCommentThread(uri: Uri, range: Range, comments: Comment[]): CommentThread { throw new Error('Not implemented'); }
+  dispose(): void {}
 }
 
-class CommentControllerImpl implements CommentController {
+class CommentControllerImpl extends CommentController {
   private _label: string;
   private _options?: any;
   private _commentingRangeProvider?: CommentingRangeProvider;
@@ -149,9 +152,11 @@ class CommentControllerImpl implements CommentController {
 
   constructor(
     private bridge: ExtensionHostBridge,
-    public readonly id: string,
+    id: string,
     label: string
   ) {
+    super();
+    (this as any).id = id;
     this._label = label;
   }
 

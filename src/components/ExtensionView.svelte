@@ -1,11 +1,4 @@
-<script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
-  import TreeItemView from './TreeItemView.svelte';
-
-  export let viewId: string;
-  export let title: string;
-
+<script context="module" lang="ts">
   export interface TreeItem {
     label?: string | { label: string };
     id?: string;
@@ -21,6 +14,15 @@
     item: TreeItem;
     children?: TreeNode[];
   }
+</script>
+
+<script lang="ts">
+  import { onMount, onDestroy, tick } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
+  import TreeItemView from './TreeItemView.svelte';
+
+  export let viewId: string;
+  export let title: string;
 
   let rootItems: TreeNode[] = [];
   let loading = true;

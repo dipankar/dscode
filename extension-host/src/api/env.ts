@@ -27,6 +27,7 @@ export interface EnvironmentAPI {
   readonly onDidChangeLogLevel: Event<LogLevel>;
   asExternalUri(target: any): Promise<any>;
   openExternal(target: any): Promise<boolean>;
+  createTelemetryLogger(sender: TelemetrySender, options?: TelemetryLoggerOptions): TelemetryLogger;
 }
 
 export interface Clipboard {
@@ -52,7 +53,7 @@ class ClipboardImpl implements Clipboard {
   constructor(private bridge: ExtensionHostBridge) {}
 
   async readText(): Promise<string> {
-    const result = await this.bridge.request('clipboardReadText', {});
+    const result = await this.bridge.request('clipboardReadText', {}) as { text?: string };
     return result.text || '';
   }
 
@@ -99,18 +100,77 @@ export class EnvironmentAPIImpl implements EnvironmentAPI {
     this.bridge.send('openExternal', { uri: target });
     return true;
   }
+
+  createTelemetryLogger(sender: TelemetrySender, options?: TelemetryLoggerOptions): TelemetryLogger {
+    return new TelemetryLoggerImpl(sender, options);
+  }
+}
+
+// Telemetry API types
+export interface TelemetrySender {
+  sendEventData(eventName: string, data?: Record<string, any>): void;
+  sendErrorData(error: Error, data?: Record<string, any>): void;
+  flush?(): void | Promise<void>;
+}
+
+export interface TelemetryLoggerOptions {
+  ignoreBuiltInCommonProperties?: boolean;
+  ignoreUnhandledErrors?: boolean;
+  additionalCommonProperties?: Record<string, any>;
+}
+
+export interface TelemetryLogger {
+  readonly onDidChangeEnableStates: Event<TelemetryLogger>;
+  readonly isUsageEnabled: boolean;
+  readonly isErrorsEnabled: boolean;
+  logUsage(eventName: string, data?: Record<string, any>): void;
+  logError(eventNameOrError: string | Error, data?: Record<string, any>): void;
+  dispose(): void;
+}
+
+class TelemetryLoggerImpl implements TelemetryLogger {
+  private _onDidChangeEnableStates = new EventEmitter<TelemetryLogger>();
+  readonly onDidChangeEnableStates = this._onDidChangeEnableStates.event;
+  readonly isUsageEnabled = false; // Telemetry disabled by default
+  readonly isErrorsEnabled = false;
+
+  constructor(
+    private sender: TelemetrySender,
+    private options?: TelemetryLoggerOptions
+  ) {}
+
+  logUsage(eventName: string, data?: Record<string, any>): void {
+    if (this.isUsageEnabled) {
+      this.sender.sendEventData(eventName, data);
+    }
+  }
+
+  logError(eventNameOrError: string | Error, data?: Record<string, any>): void {
+    if (this.isErrorsEnabled) {
+      if (eventNameOrError instanceof Error) {
+        this.sender.sendErrorData(eventNameOrError, data);
+      } else {
+        this.sender.sendEventData(eventNameOrError, data);
+      }
+    }
+  }
+
+  dispose(): void {
+    this.sender.flush?.();
+    this._onDidChangeEnableStates.dispose();
+  }
 }
 
 // Extensions
-export interface Extension<T> {
-  readonly id: string;
-  readonly extensionUri: any;
-  readonly extensionPath: string;
-  readonly isActive: boolean;
-  readonly packageJSON: any;
-  readonly extensionKind: ExtensionKind;
-  readonly exports: T;
-  activate(): Promise<T>;
+export class Extension<T> {
+  readonly id!: string;
+  readonly extensionUri!: any;
+  readonly extensionPath!: string;
+  get isActive(): boolean { return false; }
+  readonly packageJSON!: any;
+  readonly extensionKind!: ExtensionKind;
+  get exports(): T { return undefined as any; }
+  activate(): Promise<T> { return Promise.resolve(undefined as any); }
 }
 
 export enum ExtensionKind {
@@ -124,16 +184,28 @@ export interface ExtensionMode {
   production: 3;
 }
 
-class ExtensionImpl<T> implements Extension<T> {
+class ExtensionImpl<T> extends Extension<T> {
+  private _isActive: boolean;
+  private _exports: T;
+
   constructor(
-    public readonly id: string,
-    public readonly extensionUri: any,
-    public readonly extensionPath: string,
-    public readonly packageJSON: any,
-    public readonly extensionKind: ExtensionKind,
-    private _isActive: boolean,
-    private _exports: T
-  ) {}
+    id: string,
+    extensionUri: any,
+    extensionPath: string,
+    packageJSON: any,
+    extensionKind: ExtensionKind,
+    isActive: boolean,
+    exports: T
+  ) {
+    super();
+    (this as any).id = id;
+    (this as any).extensionUri = extensionUri;
+    (this as any).extensionPath = extensionPath;
+    (this as any).packageJSON = packageJSON;
+    (this as any).extensionKind = extensionKind;
+    this._isActive = isActive;
+    this._exports = exports;
+  }
 
   get isActive(): boolean {
     return this._isActive;

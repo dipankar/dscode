@@ -1,4 +1,4 @@
-use crate::terminal::{TerminalInfo, TerminalManager};
+use crate::terminal::{TerminalInfo, TerminalManager, TerminalProfile, TerminalOptions};
 use std::sync::Mutex;
 use tauri::{AppHandle, State};
 
@@ -59,4 +59,53 @@ pub fn terminal_ready(
 ) -> Result<(), String> {
     let manager = terminal_manager.lock().unwrap();
     manager.start_reading(&terminal_id)
+}
+
+// ===== Enhanced Terminal Commands =====
+
+#[tauri::command]
+pub fn create_terminal_with_options(
+    options: TerminalOptions,
+    app_handle: AppHandle,
+    terminal_manager: State<Mutex<TerminalManager>>,
+) -> Result<String, String> {
+    let manager = terminal_manager.lock().unwrap();
+    manager.create_terminal_with_options(options, app_handle)
+}
+
+// ===== Profile Management Commands =====
+
+#[tauri::command]
+pub fn register_terminal_profile(
+    profile: TerminalProfile,
+    terminal_manager: State<Mutex<TerminalManager>>,
+) -> Result<String, String> {
+    let manager = terminal_manager.lock().unwrap();
+    manager.register_profile(profile)
+}
+
+#[tauri::command]
+pub fn unregister_terminal_profile(
+    profile_id: String,
+    terminal_manager: State<Mutex<TerminalManager>>,
+) -> Result<(), String> {
+    let manager = terminal_manager.lock().unwrap();
+    manager.unregister_profile(&profile_id)
+}
+
+#[tauri::command]
+pub fn get_terminal_profile(
+    profile_id: String,
+    terminal_manager: State<Mutex<TerminalManager>>,
+) -> Result<TerminalProfile, String> {
+    let manager = terminal_manager.lock().unwrap();
+    manager.get_profile(&profile_id)
+}
+
+#[tauri::command]
+pub fn list_terminal_profiles(
+    terminal_manager: State<Mutex<TerminalManager>>,
+) -> Result<Vec<TerminalProfile>, String> {
+    let manager = terminal_manager.lock().unwrap();
+    Ok(manager.list_profiles())
 }

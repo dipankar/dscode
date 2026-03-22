@@ -60,10 +60,23 @@
   }
 
   async function loadInstalledExtensions() {
-    try {
-      installedExtensions = await invoke('list_extensions');
-    } catch (e) {
-      console.error('Failed to load installed extensions:', e);
+    // Retry up to 3 times with delay to allow extension host to connect
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        installedExtensions = await invoke('list_extensions');
+        return; // Success
+      } catch (e) {
+        const errorStr = String(e);
+        if (errorStr.includes('not connected') && attempt < 2) {
+          // Extension host not ready yet, wait and retry
+          console.log(`[ExtensionGallery] Extension host not ready, retrying in ${(attempt + 1) * 500}ms...`);
+          await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 500));
+          continue;
+        }
+        // Final attempt failed or different error
+        console.warn('Failed to load installed extensions:', e);
+        return; // Exit gracefully
+      }
     }
   }
 

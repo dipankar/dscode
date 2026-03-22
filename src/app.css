@@ -22,6 +22,17 @@
   --color-accent: #007acc;
   --color-accent-hover: #005a9e;
 
+  /* Aliases for consistent naming */
+  --border-color: var(--color-border);
+  --bg-primary: var(--color-bg);
+  --bg-secondary: var(--color-bg-secondary);
+  --bg-tertiary: var(--color-bg-tertiary);
+  --bg-hover: var(--color-bg-tertiary);
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-secondary);
+  --accent-color: var(--color-accent);
+
   /* Activity bar */
   --activity-bar-bg: #333333;
   --activity-bar-item-hover: #2a2d2e;
@@ -43,6 +54,17 @@
   --color-text-secondary: #616161;
   --color-accent: #007acc;
   --color-accent-hover: #005a9e;
+
+  /* Aliases for consistent naming */
+  --border-color: var(--color-border);
+  --bg-primary: var(--color-bg);
+  --bg-secondary: var(--color-bg-secondary);
+  --bg-tertiary: var(--color-bg-tertiary);
+  --bg-hover: var(--color-bg-tertiary);
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-secondary);
+  --accent-color: var(--color-accent);
 
   /* Activity bar */
   --activity-bar-bg: #2c2c2c;
@@ -68,6 +90,17 @@
   --color-text-secondary: #ffffff;
   --color-accent: #0e639c;
   --color-accent-hover: #007acc;
+
+  /* Aliases for consistent naming */
+  --border-color: var(--color-border);
+  --bg-primary: var(--color-bg);
+  --bg-secondary: var(--color-bg-secondary);
+  --bg-tertiary: var(--color-bg-tertiary);
+  --bg-hover: var(--color-bg-tertiary);
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-secondary);
+  --accent-color: var(--color-accent);
 
   /* Activity bar */
   --activity-bar-bg: #000000;
@@ -121,4 +154,30 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #4e4e4e;
+}
+
+/* Git decorations in editor gutter */
+.git-line-added {
+  background: rgba(137, 209, 133, 0.2);
+  border-left: 3px solid #89d185;
+}
+
+.git-line-modified {
+  background: rgba(249, 199, 79, 0.2);
+  border-left: 3px solid #f9c74f;
+}
+
+.git-line-deleted {
+  border-left: 3px solid #f48771;
+  position: relative;
+}
+
+.git-line-deleted::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 100%;
+  height: 0;
+  border-top: 2px solid #f48771;
 }

@@ -1,16 +1,28 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
   import { editorStore } from '../stores/editor';
   import { workspaceStore } from '../stores/workspace';
+  import { keybindingManager } from '../lib/keybinding-manager';
 
   export let visible: boolean = false;
   export let onClose: () => void;
+
+  interface CommandInfo {
+    id: string;
+    label: string;
+    category?: string;
+    owner: string;
+    keybinding?: string;
+    when?: string;
+  }
 
   interface Command {
     id: string;
     label: string;
     category?: string;
+    keybinding?: string;
     action: () => void | Promise<void>;
   }
 
@@ -18,83 +30,100 @@
   let filteredCommands: Command[] = [];
   let selectedIndex = 0;
   let inputElement: HTMLInputElement;
+  let allCommands: Command[] = [];
 
-  const commands: Command[] = [
-    {
-      id: 'file.save',
-      label: 'File: Save',
-      category: 'File',
-      action: async () => {
-        const activeTab = $editorStore.tabs.find(t => t.id === $editorStore.activeTabId);
-        if (activeTab && $editorStore.monacoInstance) {
-          const content = $editorStore.monacoInstance.getValue();
-          await invoke('write_file', { path: activeTab.path, content });
-          editorStore.markClean(activeTab.path);
-        }
-      },
+  // Built-in command actions (these execute in the frontend)
+  const builtinActions: Record<string, () => void | Promise<void>> = {
+    'file.save': async () => {
+      const activeTab = $editorStore.tabs.find(t => t.id === $editorStore.activeTabId);
+      if (activeTab && $editorStore.monacoInstance) {
+        const content = $editorStore.monacoInstance.getValue();
+        await invoke('write_file', { path: activeTab.path, content });
+        editorStore.markClean(activeTab.path);
+      }
     },
-    {
-      id: 'file.close',
-      label: 'File: Close Editor',
-      category: 'File',
-      action: () => {
-        if ($editorStore.activeTabId) {
-          editorStore.closeTab($editorStore.activeTabId);
-        }
-      },
+    'file.close': () => {
+      if ($editorStore.activeTabId) {
+        editorStore.closeTab($editorStore.activeTabId);
+      }
     },
-    {
-      id: 'file.closeAll',
-      label: 'File: Close All Editors',
-      category: 'File',
-      action: () => {
-        const tabIds = $editorStore.tabs.map(t => t.id);
-        tabIds.forEach(id => editorStore.closeTab(id));
-      },
+    'file.closeAll': () => {
+      const tabIds = $editorStore.tabs.map(t => t.id);
+      tabIds.forEach(id => editorStore.closeTab(id));
     },
-    {
-      id: 'view.toggleSidebar',
-      label: 'View: Toggle Sidebar',
-      category: 'View',
-      action: () => {
-        // Will be implemented via event
-        window.dispatchEvent(new CustomEvent('toggleSidebar'));
-      },
+    'view.toggleSidebar': () => {
+      window.dispatchEvent(new CustomEvent('toggleSidebar'));
     },
-    {
-      id: 'view.togglePanel',
-      label: 'View: Toggle Panel',
-      category: 'View',
-      action: () => {
-        window.dispatchEvent(new CustomEvent('togglePanel'));
-      },
+    'view.togglePanel': () => {
+      window.dispatchEvent(new CustomEvent('togglePanel'));
     },
-    {
-      id: 'editor.action.formatDocument',
-      label: 'Format Document',
-      category: 'Editor',
-      action: () => {
-        if ($editorStore.monacoInstance) {
-          $editorStore.monacoInstance.getAction('editor.action.formatDocument')?.run();
-        }
-      },
+    'editor.action.formatDocument': () => {
+      if ($editorStore.monacoInstance) {
+        $editorStore.monacoInstance.getAction('editor.action.formatDocument')?.run();
+      }
     },
-    {
-      id: 'workbench.action.reloadWindow',
-      label: 'Developer: Reload Window',
-      category: 'Developer',
-      action: () => {
-        window.location.reload();
-      },
+    'workbench.action.reloadWindow': () => {
+      window.location.reload();
     },
-  ];
+  };
 
-  $: {
+  // Load commands from the command registry
+  async function loadCommands() {
+    try {
+      const commandInfos = await invoke<CommandInfo[]>('get_all_commands');
+
+      // Map commands and fetch keybindings
+      allCommands = await Promise.all(
+        commandInfos.map(async cmdInfo => {
+          const keybinding = await keybindingManager.getKeybindingForCommand(cmdInfo.id);
+
+          return {
+            id: cmdInfo.id,
+            label: cmdInfo.label,
+            category: cmdInfo.category,
+            keybinding: keybinding || undefined,
+            action: async () => {
+              // Check if it's a builtin command with a local action
+              if (builtinActions[cmdInfo.id]) {
+                await builtinActions[cmdInfo.id]();
+              } else {
+                // Execute via extension host
+                await executeExtensionCommand(cmdInfo.id);
+              }
+            }
+          };
+        })
+      );
+
+      updateFilteredCommands();
+    } catch (error) {
+      console.error('[CommandPalette] Failed to load commands:', error);
+      // Fallback to built-in commands only
+      allCommands = Object.entries(builtinActions).map(([id, action]) => ({
+        id,
+        label: id,
+        action
+      }));
+    }
+  }
+
+  async function executeExtensionCommand(commandId: string, args: any[] = []) {
+    try {
+      await invoke('extension_execute_command', {
+        command: commandId,
+        args
+      });
+    } catch (error) {
+      console.error(`[CommandPalette] Failed to execute command ${commandId}:`, error);
+    }
+  }
+
+  function updateFilteredCommands() {
     if (searchQuery.trim() === '') {
-      filteredCommands = commands;
+      filteredCommands = allCommands;
     } else {
       const query = searchQuery.toLowerCase();
-      filteredCommands = commands
+      filteredCommands = allCommands
         .filter(cmd =>
           cmd.label.toLowerCase().includes(query) ||
           cmd.category?.toLowerCase().includes(query)
@@ -112,6 +141,15 @@
     }
     selectedIndex = 0;
   }
+
+  // Watch for search query changes
+  $: {
+    updateFilteredCommands();
+  }
+
+  // Listen for command registry updates
+  let commandRegisteredUnlisten: (() => void) | null = null;
+  let commandUnregisteredUnlisten: (() => void) | null = null;
 
   function handleKeydown(e: KeyboardEvent) {
     if (!visible) return;
@@ -149,14 +187,36 @@
 
   $: if (visible && inputElement) {
     inputElement.focus();
+    // Reload commands when palette opens to get latest
+    loadCommands();
   }
 
-  onMount(() => {
+  onMount(async () => {
     window.addEventListener('keydown', handleKeydown);
+
+    // Initial load of commands
+    await loadCommands();
+
+    // Listen for command registry updates
+    commandRegisteredUnlisten = await listen('command-registered', () => {
+      loadCommands();
+    });
+
+    commandUnregisteredUnlisten = await listen('command-unregistered', () => {
+      loadCommands();
+    });
   });
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleKeydown);
+
+    // Unlisten from events
+    if (commandRegisteredUnlisten) {
+      commandRegisteredUnlisten();
+    }
+    if (commandUnregisteredUnlisten) {
+      commandUnregisteredUnlisten();
+    }
   });
 </script>
 
@@ -185,9 +245,14 @@
               on:mouseenter={() => (selectedIndex = index)}
             >
               <span class="command-label">{command.label}</span>
-              {#if command.category}
-                <span class="command-category">{command.category}</span>
-              {/if}
+              <div class="command-meta">
+                {#if command.keybinding}
+                  <span class="command-keybinding">{command.keybinding}</span>
+                {/if}
+                {#if command.category}
+                  <span class="command-category">{command.category}</span>
+                {/if}
+              </div>
             </button>
           {/each}
         {/if}
@@ -272,6 +337,22 @@
 
   .command-label {
     flex: 1;
+  }
+
+  .command-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .command-keybinding {
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-family: monospace;
+    background-color: var(--color-bg-tertiary);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--color-border);
   }
 
   .command-category {

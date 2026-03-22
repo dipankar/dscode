@@ -7,14 +7,14 @@
 import { ExtensionHostBridge } from '../bridge';
 import { Event, EventEmitter, Disposable } from './events';
 
-export interface DebugSession {
-  readonly id: string;
-  readonly type: string;
-  readonly name: string;
-  readonly workspaceFolder: any | undefined;
-  readonly configuration: DebugConfiguration;
-  customRequest(command: string, args?: any): Promise<any>;
-  getDebugProtocolBreakpoint(breakpoint: any): Promise<any | undefined>;
+export class DebugSession {
+  readonly id!: string;
+  readonly type!: string;
+  readonly name!: string;
+  readonly workspaceFolder!: any | undefined;
+  readonly configuration!: DebugConfiguration;
+  customRequest(command: string, args?: any): Promise<any> { return Promise.resolve(undefined); }
+  getDebugProtocolBreakpoint(breakpoint: any): Promise<any | undefined> { return Promise.resolve(undefined); }
 }
 
 export interface DebugConfiguration {
@@ -60,38 +60,45 @@ export interface DebugAdapterTracker {
   onExit?(code: number | undefined, signal: string | undefined): void;
 }
 
-export interface Breakpoint {
-  readonly id: string;
-  readonly enabled: boolean;
+export class Breakpoint {
+  readonly id!: string;
+  readonly enabled!: boolean;
   readonly condition?: string;
   readonly hitCondition?: string;
   readonly logMessage?: string;
 }
 
-export interface SourceBreakpoint extends Breakpoint {
-  readonly location: any; // Location
+export class SourceBreakpoint extends Breakpoint {
+  readonly location!: any; // Location
 }
 
-export interface FunctionBreakpoint extends Breakpoint {
-  readonly functionName: string;
+export class FunctionBreakpoint extends Breakpoint {
+  readonly functionName!: string;
 }
 
-class DebugSessionImpl implements DebugSession {
+class DebugSessionImpl extends DebugSession {
   constructor(
     private bridge: ExtensionHostBridge,
-    public readonly id: string,
-    public readonly type: string,
-    public readonly name: string,
-    public readonly workspaceFolder: any | undefined,
-    public readonly configuration: DebugConfiguration
-  ) {}
+    id: string,
+    type: string,
+    name: string,
+    workspaceFolder: any | undefined,
+    configuration: DebugConfiguration
+  ) {
+    super();
+    (this as any).id = id;
+    (this as any).type = type;
+    (this as any).name = name;
+    (this as any).workspaceFolder = workspaceFolder;
+    (this as any).configuration = configuration;
+  }
 
   async customRequest(command: string, args?: any): Promise<any> {
     const result = await this.bridge.request('debugCustomRequest', {
       sessionId: this.id,
       command,
       args
-    });
+    }) as { response?: any };
     return result.response;
   }
 
@@ -99,7 +106,7 @@ class DebugSessionImpl implements DebugSession {
     const result = await this.bridge.request('debugGetProtocolBreakpoint', {
       sessionId: this.id,
       breakpoint
-    });
+    }) as { protocolBreakpoint?: any };
     return result.protocolBreakpoint;
   }
 }
@@ -221,7 +228,7 @@ export class DebugAPI {
       folder,
       nameOrConfiguration,
       parentSessionOrOptions
-    });
+    }) as { success?: boolean };
     return result.success || false;
   }
 
@@ -249,18 +256,37 @@ export class DebugAPI {
 }
 
 // Tasks API
-export interface Task {
-  readonly definition: TaskDefinition;
-  readonly scope: any | undefined;
-  name: string;
+export class Task {
+  readonly definition!: TaskDefinition;
+  readonly scope!: any | undefined;
+  name!: string;
   detail?: string;
   execution?: ProcessExecution | ShellExecution | CustomExecution;
-  isBackground: boolean;
-  source: string;
+  isBackground!: boolean;
+  source!: string;
   group?: TaskGroup;
-  presentationOptions: TaskPresentationOptions;
-  problemMatchers: string[];
-  runOptions: RunOptions;
+  presentationOptions!: TaskPresentationOptions;
+  problemMatchers!: string[];
+  runOptions!: RunOptions;
+
+  constructor(
+    definition?: TaskDefinition,
+    scope?: any,
+    name?: string,
+    source?: string,
+    execution?: ProcessExecution | ShellExecution | CustomExecution,
+    problemMatchers?: string | string[]
+  ) {
+    if (definition) (this as any).definition = definition;
+    if (scope !== undefined) (this as any).scope = scope;
+    if (name) this.name = name;
+    if (source) this.source = source;
+    if (execution) this.execution = execution;
+    this.isBackground = false;
+    this.presentationOptions = {};
+    this.problemMatchers = Array.isArray(problemMatchers) ? problemMatchers : problemMatchers ? [problemMatchers] : [];
+    this.runOptions = {};
+  }
 }
 
 export interface TaskDefinition {
@@ -351,12 +377,12 @@ export class TasksAPI {
   constructor(private bridge: ExtensionHostBridge) {}
 
   async fetchTasks(filter?: any): Promise<Task[]> {
-    const result = await this.bridge.request('fetchTasks', { filter });
+    const result = await this.bridge.request('fetchTasks', { filter }) as { tasks?: Task[] };
     return result.tasks || [];
   }
 
   async executeTask(task: Task): Promise<any> {
-    const result = await this.bridge.request('executeTask', { task });
+    const result = await this.bridge.request('executeTask', { task }) as { execution?: any };
     return result.execution;
   }
 

@@ -31,7 +31,7 @@ use notify::{RecommendedWatcher, Watcher, RecursiveMode, Event, EventKind};
 use notify::event::{CreateKind, ModifyKind, RemoveKind};
 use ignore::WalkBuilder;
 
-use crate::extension_host::{ExtensionHostManager, NngIpcManager, IncomingRequestHandler};
+use crate::extension_host::{ExtensionHostManager, NngIpcManager, IncomingRequestHandler, SecretStorage};
 use crate::config::AppDirectories;
 use crate::lsp::{LspServerPool, LspServerStrategy};
 use crate::debug::DebugAdapterPool;
@@ -315,6 +315,10 @@ pub struct SessionManager {
     editor_decorations: Arc<RwLock<HashMap<String, HashMap<String, Value>>>>,
     decoration_types: Arc<RwLock<HashMap<String, Value>>>,
     extension_watchers: Arc<Mutex<HashMap<String, RecommendedWatcher>>>,
+    extension_host_ready: Arc<tokio::sync::Notify>,
+    extension_host_ready_flag: Arc<RwLock<bool>>,
+    initialized: Arc<RwLock<bool>>,
+    secrets: Arc<SecretStorage>,
 }
 
 impl SessionManager {
@@ -371,6 +375,10 @@ impl SessionManager {
             editor_decorations: Arc::new(RwLock::new(HashMap::new())),
             decoration_types: Arc::new(RwLock::new(HashMap::new())),
             extension_watchers: Arc::new(Mutex::new(HashMap::new())),
+            extension_host_ready: Arc::new(tokio::sync::Notify::new()),
+            extension_host_ready_flag: Arc::new(RwLock::new(false)),
+            initialized: Arc::new(RwLock::new(false)),
+            secrets: Arc::new(SecretStorage::new()),
         }
     }
 
@@ -383,11 +391,37 @@ impl SessionManager {
 
     /// Initialize the session - start Extension Host and load extensions
     pub async fn initialize(&self) -> Result<(), String> {
+        // Check if already initialized
+        {
+            let is_initialized = self.initialized.read().await;
+            if *is_initialized {
+                println!("[SessionManager] Already initialized, skipping");
+                return Ok(());
+            }
+        }
+
         println!("[SessionManager] Initializing session...");
 
         // Start the single Extension Host with NNG IPC
         println!("[SessionManager] Starting Extension Host with NNG IPC...");
         self.start_extension_host().await?;
+
+        // Wait for extension host to signal it's ready (with timeout)
+        println!("[SessionManager] Waiting for extension host ready signal...");
+
+        // Check if the ready signal was already received
+        if !*self.extension_host_ready_flag.read().await {
+            let ready_wait = self.extension_host_ready.notified();
+            match tokio::time::timeout(Duration::from_secs(10), ready_wait).await {
+                Ok(_) => println!("[SessionManager] Extension host is ready"),
+                Err(_) => {
+                    eprintln!("[SessionManager] Timeout waiting for extension host ready signal");
+                    return Err("Extension host failed to start within timeout".to_string());
+                }
+            }
+        } else {
+            println!("[SessionManager] Extension host already ready");
+        }
 
         // Scan for installed extensions
         self.scan_extensions().await?;
@@ -399,12 +433,24 @@ impl SessionManager {
         let state = self.state.read().await.clone();
         self.emit_event(SessionEvent::StateChanged { state });
 
+        // Mark as initialized
+        *self.initialized.write().await = true;
+
         println!("[SessionManager] Session initialized");
         Ok(())
     }
 
     /// Start the Extension Host with bidirectional NNG IPC
     async fn start_extension_host(&self) -> Result<(), String> {
+        // Check if extension host is already running
+        {
+            let mut manager = self.extension_host.lock().await;
+            if manager.is_running() {
+                println!("[SessionManager] Extension Host already running, skipping");
+                return Ok(());
+            }
+        }
+
         let session_id = Uuid::new_v4();
         let outgoing_ipc_url = Self::build_ipc_url("ext-out", &session_id)?;
         let incoming_ipc_url = Self::build_ipc_url("ext-in", &session_id)?;
@@ -424,15 +470,11 @@ impl SessionManager {
         let extension_host_main_str = extension_host_main.to_string_lossy().to_string();
 
         let mut manager = self.extension_host.lock().await;
-        if manager.is_running() {
-            println!("[SessionManager] Extension Host already running");
-        } else {
-            manager.start_with_nng(
-                &extension_host_main_str,
-                &outgoing_ipc_url,
-                &incoming_ipc_url,
-            )?;
-        }
+        manager.start_with_nng(
+            &extension_host_main_str,
+            &outgoing_ipc_url,
+            &incoming_ipc_url,
+        )?;
         drop(manager);
 
         const MAX_ATTEMPTS: u8 = 10;
@@ -485,6 +527,10 @@ impl SessionManager {
             editor_decorations: Arc::clone(&self.editor_decorations),
             decoration_types: Arc::clone(&self.decoration_types),
             extension_watchers: Arc::clone(&self.extension_watchers),
+            extension_host_ready: Arc::clone(&self.extension_host_ready),
+            extension_host_ready_flag: Arc::clone(&self.extension_host_ready_flag),
+            initialized: Arc::clone(&self.initialized),
+            secrets: Arc::clone(&self.secrets),
         })
     }
 
@@ -508,6 +554,11 @@ impl SessionManager {
         if let Ok(cwd) = std::env::current_dir() {
             candidates.push(cwd.join("extension-host/dist/main.js"));
             candidates.push(cwd.join("extension-host/main.js"));
+            // Also check parent directory (for when running from src-tauri/)
+            if let Some(parent) = cwd.parent() {
+                candidates.push(parent.join("extension-host/dist/main.js"));
+                candidates.push(parent.join("extension-host/main.js"));
+            }
         }
 
         if let Ok(exe_path) = std::env::current_exe() {
@@ -516,13 +567,19 @@ impl SessionManager {
             }
         }
 
-        for candidate in candidates {
+        println!("[SessionManager] Checking {} candidates for extension host entry", candidates.len());
+        for candidate in &candidates {
+            println!("[SessionManager] Checking candidate: {:?} (exists: {})", candidate, candidate.exists());
             if candidate.exists() {
                 println!("[SessionManager] Resolved extension host entry to {:?}", candidate);
-                return Ok(candidate);
+                return Ok(candidate.clone());
             }
         }
 
+        println!("[SessionManager] None of the candidates exist. Checked:");
+        for candidate in &candidates {
+            println!("  - {:?}", candidate);
+        }
         Err("Unable to locate extension host entry point".to_string())
     }
 
@@ -556,6 +613,12 @@ impl SessionManager {
         println!("[SessionManager] Handling incoming request: {}", msg_type);
 
         match msg_type {
+            "extension-host-ready" => {
+                println!("[SessionManager] Extension host ready signal received");
+                *self.extension_host_ready_flag.write().await = true;
+                self.extension_host_ready.notify_waiters();
+                Ok(json!({"success": true}))
+            },
             "get-extensions-dir" => {
                 let extensions_dir = self.app_dirs.extensions_dir.canonicalize()
                     .unwrap_or_else(|_| self.app_dirs.extensions_dir.clone());
@@ -643,6 +706,21 @@ impl SessionManager {
                     self.add_command_owner(command, owner).await;
                     self.publish_command_list().await;
 
+                    // Also register with CommandRegistry
+                    use crate::commands::CommandRegistry;
+                    if let Some(registry) = self.app_handle.try_state::<CommandRegistry>() {
+                        use crate::commands::CommandInfo;
+                        let cmd_info = CommandInfo {
+                            id: command.to_string(),
+                            label: command.to_string(), // TODO: Get actual label from extension
+                            category: Some(owner.to_string()),
+                            owner: owner.to_string(),
+                            keybinding: None, // TODO: Get from package.json contributions
+                            when: None,
+                        };
+                        let _ = registry.register_command(cmd_info);
+                    }
+
                     Ok(serde_json::json!({"success": true}))
                 } else {
                     Err("Missing command name".to_string())
@@ -657,6 +735,12 @@ impl SessionManager {
 
                     self.remove_command_owner(command, owner).await;
                     self.publish_command_list().await;
+
+                    // Also unregister from CommandRegistry
+                    use crate::commands::CommandRegistry;
+                    if let Some(registry) = self.app_handle.try_state::<CommandRegistry>() {
+                        let _ = registry.unregister_command(command, owner);
+                    }
 
                     Ok(serde_json::json!({"success": true}))
                 } else {
@@ -1173,6 +1257,361 @@ impl SessionManager {
                     .map(|p| p.to_string_lossy().to_string())
                     .collect();
                 Ok(serde_json::json!(folders))
+            },
+            "secretGet" => {
+                let extension_id = payload
+                    .get("extensionId")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing extensionId".to_string())?;
+                let key = payload
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing key".to_string())?;
+
+                match self.secrets.get(extension_id, key) {
+                    Ok(value) => Ok(json!({ "value": value })),
+                    Err(e) => Err(e),
+                }
+            },
+            "secretStore" => {
+                let extension_id = payload
+                    .get("extensionId")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing extensionId".to_string())?;
+                let key = payload
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing key".to_string())?;
+                let value = payload
+                    .get("value")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing value".to_string())?;
+
+                match self.secrets.set(extension_id, key, value) {
+                    Ok(()) => {
+                        // Notify extension of secret change (for onDidChange event)
+                        if let Err(e) = self.nng_manager
+                            .request("main", "secretChanged", json!({
+                                "extensionId": extension_id,
+                                "key": key,
+                            }))
+                            .await
+                        {
+                            eprintln!("[SessionManager] Failed to notify secret change: {}", e);
+                        }
+                        Ok(json!({ "success": true }))
+                    },
+                    Err(e) => Err(e),
+                }
+            },
+            "secretDelete" => {
+                let extension_id = payload
+                    .get("extensionId")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing extensionId".to_string())?;
+                let key = payload
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing key".to_string())?;
+
+                match self.secrets.delete(extension_id, key) {
+                    Ok(()) => {
+                        // Notify extension of secret change (for onDidChange event)
+                        if let Err(e) = self.nng_manager
+                            .request("main", "secretChanged", json!({
+                                "extensionId": extension_id,
+                                "key": key,
+                            }))
+                            .await
+                        {
+                            eprintln!("[SessionManager] Failed to notify secret deletion: {}", e);
+                        }
+                        Ok(json!({ "success": true }))
+                    },
+                    Err(e) => Err(e),
+                }
+            },
+            // ==================== File System Handlers ====================
+            "fsReadFile" => {
+                let uri = payload
+                    .get("uri")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing uri".to_string())?;
+
+                // Parse the URI to get the file path
+                let path = if uri.starts_with("file://") {
+                    uri.strip_prefix("file://").unwrap_or(uri)
+                } else {
+                    uri
+                };
+
+                match std::fs::read(path) {
+                    Ok(contents) => {
+                        // Return as array of bytes
+                        let data: Vec<u8> = contents;
+                        Ok(json!({ "data": data }))
+                    },
+                    Err(e) => Err(format!("Failed to read file: {}", e)),
+                }
+            },
+            "fsStat" => {
+                let uri = payload
+                    .get("uri")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing uri".to_string())?;
+
+                let path = if uri.starts_with("file://") {
+                    uri.strip_prefix("file://").unwrap_or(uri)
+                } else {
+                    uri
+                };
+
+                match std::fs::metadata(path) {
+                    Ok(metadata) => {
+                        let file_type = if metadata.is_file() {
+                            1 // FileType.File
+                        } else if metadata.is_dir() {
+                            2 // FileType.Directory
+                        } else if metadata.is_symlink() {
+                            64 // FileType.SymbolicLink
+                        } else {
+                            0 // FileType.Unknown
+                        };
+
+                        let mtime = metadata.modified()
+                            .ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+
+                        let ctime = metadata.created()
+                            .ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+
+                        Ok(json!({
+                            "stat": {
+                                "type": file_type,
+                                "ctime": ctime,
+                                "mtime": mtime,
+                                "size": metadata.len(),
+                            }
+                        }))
+                    },
+                    Err(e) => Err(format!("Failed to stat file: {}", e)),
+                }
+            },
+            "fsReadDirectory" => {
+                let uri = payload
+                    .get("uri")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing uri".to_string())?;
+
+                let path = if uri.starts_with("file://") {
+                    uri.strip_prefix("file://").unwrap_or(uri)
+                } else {
+                    uri
+                };
+
+                match std::fs::read_dir(path) {
+                    Ok(entries) => {
+                        let mut result: Vec<(String, u8)> = Vec::new();
+                        for entry in entries.flatten() {
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            let file_type = if entry.path().is_file() {
+                                1 // FileType.File
+                            } else if entry.path().is_dir() {
+                                2 // FileType.Directory
+                            } else if entry.path().is_symlink() {
+                                64 // FileType.SymbolicLink
+                            } else {
+                                0 // FileType.Unknown
+                            };
+                            result.push((name, file_type));
+                        }
+                        Ok(json!({ "entries": result }))
+                    },
+                    Err(e) => Err(format!("Failed to read directory: {}", e)),
+                }
+            },
+            "fsCreateDirectory" => {
+                let uri = payload
+                    .get("uri")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing uri".to_string())?;
+
+                let path = if uri.starts_with("file://") {
+                    uri.strip_prefix("file://").unwrap_or(uri)
+                } else {
+                    uri
+                };
+
+                match std::fs::create_dir_all(path) {
+                    Ok(()) => Ok(json!({ "success": true })),
+                    Err(e) => Err(format!("Failed to create directory: {}", e)),
+                }
+            },
+            "fsWriteFile" => {
+                let uri = payload
+                    .get("uri")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing uri".to_string())?;
+                let content = payload
+                    .get("content")
+                    .ok_or_else(|| "Missing content".to_string())?;
+
+                let path = if uri.starts_with("file://") {
+                    uri.strip_prefix("file://").unwrap_or(uri)
+                } else {
+                    uri
+                };
+
+                // Content is expected to be an array of bytes
+                let bytes: Vec<u8> = if let Some(arr) = content.as_array() {
+                    arr.iter()
+                        .filter_map(|v| v.as_u64().map(|n| n as u8))
+                        .collect()
+                } else if let Some(s) = content.as_str() {
+                    s.as_bytes().to_vec()
+                } else {
+                    return Err("Invalid content format".to_string());
+                };
+
+                match std::fs::write(path, bytes) {
+                    Ok(()) => Ok(json!({ "success": true })),
+                    Err(e) => Err(format!("Failed to write file: {}", e)),
+                }
+            },
+            "fsDelete" => {
+                let uri = payload
+                    .get("uri")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing uri".to_string())?;
+                let options = payload.get("options");
+                let recursive = options
+                    .and_then(|o| o.get("recursive"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                let path = if uri.starts_with("file://") {
+                    uri.strip_prefix("file://").unwrap_or(uri)
+                } else {
+                    uri
+                };
+
+                let path_ref = std::path::Path::new(path);
+                let result = if path_ref.is_dir() {
+                    if recursive {
+                        std::fs::remove_dir_all(path)
+                    } else {
+                        std::fs::remove_dir(path)
+                    }
+                } else {
+                    std::fs::remove_file(path)
+                };
+
+                match result {
+                    Ok(()) => Ok(json!({ "success": true })),
+                    Err(e) => Err(format!("Failed to delete: {}", e)),
+                }
+            },
+            "fsRename" => {
+                let old_uri = payload
+                    .get("oldUri")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing oldUri".to_string())?;
+                let new_uri = payload
+                    .get("newUri")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing newUri".to_string())?;
+
+                let old_path = if old_uri.starts_with("file://") {
+                    old_uri.strip_prefix("file://").unwrap_or(old_uri)
+                } else {
+                    old_uri
+                };
+                let new_path = if new_uri.starts_with("file://") {
+                    new_uri.strip_prefix("file://").unwrap_or(new_uri)
+                } else {
+                    new_uri
+                };
+
+                match std::fs::rename(old_path, new_path) {
+                    Ok(()) => Ok(json!({ "success": true })),
+                    Err(e) => Err(format!("Failed to rename: {}", e)),
+                }
+            },
+            "fsCopy" => {
+                let source_uri = payload
+                    .get("source")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing source".to_string())?;
+                let dest_uri = payload
+                    .get("destination")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing destination".to_string())?;
+
+                let source_path = if source_uri.starts_with("file://") {
+                    source_uri.strip_prefix("file://").unwrap_or(source_uri)
+                } else {
+                    source_uri
+                };
+                let dest_path = if dest_uri.starts_with("file://") {
+                    dest_uri.strip_prefix("file://").unwrap_or(dest_uri)
+                } else {
+                    dest_uri
+                };
+
+                match std::fs::copy(source_path, dest_path) {
+                    Ok(_) => Ok(json!({ "success": true })),
+                    Err(e) => Err(format!("Failed to copy: {}", e)),
+                }
+            },
+            // ==================== Progress Handlers ====================
+            "startProgress" => {
+                // Progress is primarily a UI concern - acknowledge and let frontend handle
+                let _location = payload.get("location");
+                let _title = payload.get("title");
+                let _cancellable = payload.get("cancellable");
+
+                // Generate a progress ID
+                let progress_id = uuid::Uuid::new_v4().to_string();
+
+                // For now, just acknowledge - real progress UI would be handled by frontend
+                Ok(json!({ "progressId": progress_id }))
+            },
+            "updateProgress" => {
+                let _progress_id = payload.get("progressId");
+                let _message = payload.get("message");
+                let _increment = payload.get("increment");
+
+                // Acknowledge update
+                Ok(json!({ "success": true }))
+            },
+            "endProgress" => {
+                let _progress_id = payload.get("progressId");
+
+                // Acknowledge end
+                Ok(json!({ "success": true }))
+            },
+            // ==================== File System Watcher Handlers ====================
+            "createFileSystemWatcher" => {
+                // FileSystemWatcher is primarily handled on the extension host side
+                // We just acknowledge the creation and return a watcher ID
+                let _glob_pattern = payload.get("globPattern");
+                let _ignore_create = payload.get("ignoreCreateEvents").and_then(|v| v.as_bool()).unwrap_or(false);
+                let _ignore_change = payload.get("ignoreChangeEvents").and_then(|v| v.as_bool()).unwrap_or(false);
+                let _ignore_delete = payload.get("ignoreDeleteEvents").and_then(|v| v.as_bool()).unwrap_or(false);
+
+                // Generate a watcher ID
+                let watcher_id = uuid::Uuid::new_v4().to_string();
+
+                Ok(json!({ "watcherId": watcher_id }))
+            },
+            "disposeFileSystemWatcher" => {
+                let _watcher_id = payload.get("watcherId");
+                Ok(json!({ "success": true }))
             },
             _ => {
                 println!("[SessionManager] Unhandled request type: {}", msg_type);

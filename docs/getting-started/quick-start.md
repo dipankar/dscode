@@ -73,7 +73,7 @@ cargo build --release   # Release build
 4. **Git integration** - Real git operations with git2
 5. **Terminal integration** - Embedded terminal with PTY
 
-See [GETTING_STARTED.md](GETTING_STARTED.md) for detailed development guide.
+See [getting-started.md](getting-started.md) for detailed development guide.
 
 ## 🐛 Troubleshooting
 
@@ -89,6 +89,6 @@ See [GETTING_STARTED.md](GETTING_STARTED.md) for detailed development guide.
 
 ## 📚 Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) - System design
-- [Getting Started](GETTING_STARTED.md) - Full development guide
-- [Roadmap](docs/IMPLEMENTATION_ROADMAP.md) - What's next
+- [Architecture](../architecture/overview.md) - System design
+- [Getting Started](getting-started.md) - Full development guide
+- [Roadmap](../development/implementation-timeline.md) - What's next

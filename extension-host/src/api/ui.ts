@@ -13,22 +13,26 @@ export enum StatusBarAlignment {
   Right = 2
 }
 
-export interface StatusBarItem {
-  readonly alignment: StatusBarAlignment;
+export class StatusBarItem {
+  readonly alignment!: StatusBarAlignment;
   readonly priority?: number;
-  text: string;
-  tooltip?: string | { value: string };
-  color?: string;
+  get text(): string { return ''; }
+  set text(value: string) {}
+  get tooltip(): string | { value: string } | undefined { return undefined; }
+  set tooltip(value: string | { value: string } | undefined) {}
+  get color(): string | undefined { return undefined; }
+  set color(value: string | undefined) {}
+  get command(): string | { title: string; command: string; arguments?: any[] } | undefined { return undefined; }
+  set command(value: string | { title: string; command: string; arguments?: any[] } | undefined) {}
   backgroundColor?: any;
-  command?: string | { title: string; command: string; arguments?: any[] };
   accessibilityInformation?: { label: string; role?: string };
   name?: string;
-  show(): void;
-  hide(): void;
-  dispose(): void;
+  show(): void {}
+  hide(): void {}
+  dispose(): void {}
 }
 
-class StatusBarItemImpl implements StatusBarItem {
+class StatusBarItemImpl extends StatusBarItem {
   private _text = '';
   private _tooltip?: string | { value: string };
   private _color?: string;
@@ -38,10 +42,13 @@ class StatusBarItemImpl implements StatusBarItem {
   constructor(
     private bridge: ExtensionHostBridge,
     private owner: string,
-    public readonly alignment: StatusBarAlignment,
-    public readonly priority?: number,
+    alignment: StatusBarAlignment,
+    priority?: number,
     private id?: string
   ) {
+    super();
+    (this as any).alignment = alignment;
+    (this as any).priority = priority;
     this.id = id || `statusbar_${Date.now()}_${Math.random()}`;
   }
 
@@ -125,15 +132,18 @@ class StatusBarItemImpl implements StatusBarItem {
 }
 
 // TreeView
-export interface TreeItem {
-  label?: string | { label: string };
+export class TreeItem {
+  constructor(
+    public label?: string | { label: string },
+    public collapsibleState?: TreeItemCollapsibleState
+  ) {}
+
   id?: string;
   iconPath?: string | { light: string; dark: string } | any;
   description?: string | boolean;
   resourceUri?: any;
   tooltip?: string | { value: string };
   command?: { title: string; command: string; arguments?: any[] };
-  collapsibleState?: TreeItemCollapsibleState;
   contextValue?: string;
   accessibilityInformation?: { label: string; role?: string };
 }

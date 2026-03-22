@@ -1,0 +1,223 @@
+<script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
+
+  export let visible: boolean = false;
+  export let x: number = 0;
+  export let y: number = 0;
+  export let location: string = 'editor/context';
+  export let context: MenuContext = {};
+  export let onClose: () => void;
+
+  interface MenuItem {
+    command: string;
+    location?: string;
+    when?: string;
+    group?: string;
+    title?: string;
+    icon?: string;
+    owner: string;
+    alt?: string;
+  }
+
+  interface MenuContext {
+    has_selection?: boolean;
+    editor_focused?: boolean;
+    explorer_focused?: boolean;
+    resource_extension?: string;
+    resource_path?: string;
+    language_id?: string;
+    in_debug_mode?: boolean;
+    custom?: Record<string, any>;
+  }
+
+  let menuItems: MenuItem[] = [];
+  let menuElement: HTMLDivElement;
+
+  async function loadMenuItems() {
+    try {
+      const items = await invoke<MenuItem[]>('get_menu_items_filtered', {
+        location,
+        context,
+      });
+
+      menuItems = items;
+    } catch (error) {
+      console.error('[ContextMenu] Failed to load menu items:', error);
+      menuItems = [];
+    }
+  }
+
+  async function executeMenuItem(item: MenuItem) {
+    try {
+      await invoke('extension_execute_command', {
+        command: item.command,
+        args: context.resource_path ? [context.resource_path] : [],
+      });
+      onClose();
+    } catch (error) {
+      console.error(`[ContextMenu] Failed to execute command ${item.command}:`, error);
+    }
+  }
+
+  function handleClickOutside(event: MouseEvent) {
+    if (menuElement && !menuElement.contains(event.target as Node)) {
+      onClose();
+    }
+  }
+
+  function handleEscape(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      onClose();
+    }
+  }
+
+  // Group menu items by group
+  function groupMenuItems(items: MenuItem[]): Map<string, MenuItem[]> {
+    const groups = new Map<string, MenuItem[]>();
+
+    for (const item of items) {
+      const group = item.group || 'z_other';
+      if (!groups.has(group)) {
+        groups.set(group, []);
+      }
+      groups.get(group)!.push(item);
+    }
+
+    // Sort groups
+    const sortedGroups = new Map(
+      Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+    );
+
+    return sortedGroups;
+  }
+
+  $: if (visible) {
+    loadMenuItems();
+
+    // Position menu within viewport
+    setTimeout(() => {
+      if (menuElement) {
+        const rect = menuElement.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        // Adjust horizontal position
+        if (x + rect.width > viewportWidth) {
+          x = viewportWidth - rect.width - 10;
+        }
+
+        // Adjust vertical position
+        if (y + rect.height > viewportHeight) {
+          y = viewportHeight - rect.height - 10;
+        }
+      }
+    }, 0);
+  }
+
+  $: groupedItems = groupMenuItems(menuItems);
+
+  onMount(() => {
+    document.addEventListener('click', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+  });
+
+  onDestroy(() => {
+    document.removeEventListener('click', handleClickOutside);
+    document.removeEventListener('keydown', handleEscape);
+  });
+</script>
+
+{#if visible}
+  <div
+    bind:this={menuElement}
+    class="context-menu"
+    style="left: {x}px; top: {y}px;"
+  >
+    {#if menuItems.length === 0}
+      <div class="context-menu-empty">No actions available</div>
+    {:else}
+      {#each Array.from(groupedItems.entries()) as [groupName, items], groupIndex}
+        {#if groupIndex > 0}
+          <div class="context-menu-separator"></div>
+        {/if}
+        {#each items as item}
+          <button
+            class="context-menu-item"
+            on:click={() => executeMenuItem(item)}
+          >
+            {#if item.icon}
+              <span class="context-menu-icon">{item.icon}</span>
+            {/if}
+            <span class="context-menu-label">
+              {item.title || item.command}
+            </span>
+          </button>
+        {/each}
+      {/each}
+    {/if}
+  </div>
+{/if}
+
+<style>
+  .context-menu {
+    position: fixed;
+    background-color: var(--modal-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    min-width: 200px;
+    max-width: 400px;
+    padding: 4px 0;
+    z-index: 10000;
+    font-size: 13px;
+  }
+
+  .context-menu-item {
+    width: 100%;
+    padding: 6px 12px;
+    background: none;
+    border: none;
+    color: var(--color-text);
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    transition: background-color 0.1s;
+  }
+
+  .context-menu-item:hover {
+    background-color: var(--editor-selection);
+  }
+
+  .context-menu-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .context-menu-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .context-menu-separator {
+    height: 1px;
+    background-color: var(--color-border);
+    margin: 4px 0;
+  }
+
+  .context-menu-empty {
+    padding: 12px;
+    color: var(--color-text-secondary);
+    text-align: center;
+    font-size: 12px;
+  }
+</style>

@@ -297,6 +297,6 @@ listen('file-changed', (event) => {
 - [Tauri Documentation](https://tauri.app/v1/guides/)
 - [Svelte Tutorial](https://svelte.dev/tutorial)
 - [Monaco Editor API](https://microsoft.github.io/monaco-editor/api/index.html)
-- [DSCode Architecture](docs/ARCHITECTURE.md)
+- [DSCode Architecture](../architecture/overview.md)
 
 Happy coding! 🚀

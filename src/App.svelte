@@ -18,6 +18,7 @@
   import { quickPickStore } from './stores/quickPick';
   import { inputBoxStore } from './stores/inputBox';
   import { initializeSession } from './stores/session';
+  import { keybindingManager } from './lib/keybinding-manager';
 
   $: theme = $settingsStore.theme.colorTheme;
 

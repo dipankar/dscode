@@ -728,7 +728,7 @@ impl DenoEngine {
 
 ### Marketplace Integration
 
-See [VSCODE_COMPAT.md](VSCODE_COMPAT.md) for marketplace details.
+See [vscode-compat.md](vscode-compat.md) for marketplace details.
 
 ### Local Extensions
 

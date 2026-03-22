@@ -247,17 +247,33 @@ Why much better:
 - [ ] Tasks & debugging
 - [ ] Performance optimization
 
-See [IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md) for detailed timeline.
+See [docs/development/implementation-timeline.md](docs/development/implementation-timeline.md) for detailed timeline.
 
 ## Documentation
 
-- [Architecture Overview](docs/ARCHITECTURE.md) - Tauri + Rust backend design
-- [IPC Design](docs/IPC_DESIGN.md) - Tauri IPC + nng for backend services
-- [Extension System](docs/EXTENSION_SYSTEM.md) - Node.js runtime + Electron shims
-- [UI System](docs/UI_SYSTEM.md) - Monaco editor + React components
-- [LSP Integration](docs/LSP_INTEGRATION.md)
-- [Remote Development](docs/REMOTE_DEVELOPMENT.md)
-- [VS Code Compatibility](docs/VSCODE_COMPAT.md) - 95%+ compatibility achieved
+📚 **[Full Documentation Index](docs/README.md)** - Complete documentation navigation
+
+### Quick Links
+
+- [Installation Guide](docs/getting-started/installation.md) - Get started with DSCode
+- [Quick Start](docs/getting-started/quick-start.md) - 5-minute introduction
+- [Features Overview](docs/getting-started/features.md) - Key capabilities
+- [Project Roadmap](docs/roadmap.md) - Current status and future plans
+
+### Architecture
+
+- [Architecture Overview](docs/architecture/overview.md) - Tauri + Rust backend design
+- [IPC Design](docs/architecture/ipc-design.md) - Tauri IPC + nng for backend services
+- [Extension System](docs/architecture/extension-system.md) - Node.js runtime + Electron shims
+- [UI System](docs/architecture/ui-system.md) - Monaco editor + React components
+- [LSP Integration](docs/architecture/lsp-integration.md) - Language Server Protocol
+- [Remote Development](docs/architecture/remote-development.md) - SSH, WSL, containers
+- [VS Code Compatibility](docs/architecture/vscode-compat.md) - 95%+ compatibility achieved
+
+### Development
+
+- [Testing Guide](docs/development/testing.md) - How to test DSCode
+- [Performance Guide](docs/development/performance.md) - Optimization techniques
 
 ## Contributing
 

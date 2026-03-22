@@ -41,6 +41,8 @@ grep-matcher = "0.1"
 grep-regex = "0.1"
 regex = "1.10"
 globset = "0.4"
+walkdir = "2.4"
+glob = "0.3"
 
 # Async runtime
 async-trait = "0.1"
@@ -48,6 +50,9 @@ async-trait = "0.1"
 # Directories
 directories = "5.0"
 semver = "1.0"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
 
 # System monitoring
 sysinfo = "0.30"

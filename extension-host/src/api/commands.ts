@@ -87,13 +87,13 @@ export class CommandsAPI {
     const result = await this.bridge.request('executeCommandRequest', {
       command,
       args,
-    });
+    }) as { success: boolean; error?: string; result?: T };
 
     if (!result.success) {
       throw new Error(result.error || `Failed to execute command: ${command}`);
     }
 
-    return result.result;
+    return result.result as T;
   }
 
   /**

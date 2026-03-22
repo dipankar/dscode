@@ -1,15 +1,60 @@
 {
   "name": "dscode-extension-host",
   "version": "0.1.0",
-  "description": "Node.js runtime for DSCode extensions",
+  "description": "VS Code-compatible extension host for running VS Code extensions in any editor",
+  "author": "DSCode Contributors",
+  "license": "MIT",
   "main": "dist/main.js",
+  "types": "dist/main.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/main.d.ts",
+      "require": "./dist/main.js",
+      "import": "./dist/main.js"
+    },
+    "./api/vscode": {
+      "types": "./dist/api/vscode.d.ts",
+      "require": "./dist/api/vscode.js",
+      "import": "./dist/api/vscode.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "vscode",
+    "extension",
+    "extension-host",
+    "ide",
+    "editor",
+    "language-server",
+    "lsp",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anthropics/dscode.git",
+    "directory": "extension-host"
+  },
+  "bugs": {
+    "url": "https://github.com/anthropics/dscode/issues"
+  },
+  "homepage": "https://github.com/anthropics/dscode#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/main.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm run build && npm test",
+    "clean": "rm -rf dist",
+    "lint": "eslint src --ext .ts"
   },
   "dependencies": {
     "@types/node": "^20.11.5",
@@ -20,5 +65,13 @@
     "jest": "^30.2.0",
     "ts-jest": "^29.4.4",
     "typescript": "^5.3.3"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.7.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   }
 }

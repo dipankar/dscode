@@ -7,17 +7,7 @@
 import { ExtensionHostBridge } from '../bridge';
 import { Event, EventEmitter, Disposable } from './events';
 
-export interface Terminal {
-  readonly name: string;
-  readonly processId: Promise<number | undefined>;
-  readonly creationOptions: Readonly<TerminalOptions | ExtensionTerminalOptions>;
-  readonly exitStatus: TerminalExitStatus | undefined;
-  sendText(text: string, shouldExecute?: boolean): void;
-  show(preserveFocus?: boolean): void;
-  hide(): void;
-  dispose(): void;
-}
-
+// Terminal Options
 export interface TerminalOptions {
   name?: string;
   shellPath?: string;
@@ -38,13 +28,13 @@ export interface ExtensionTerminalOptions {
   color?: any;
 }
 
-export interface Pseudoterminal {
-  onDidWrite: Event<string>;
+export class Pseudoterminal {
+  onDidWrite!: Event<string>;
   onDidOverrideDimensions?: Event<TerminalDimensions | undefined>;
   onDidClose?: Event<number | void>;
   onDidChangeName?: Event<string>;
-  open(initialDimensions: TerminalDimensions | undefined): void;
-  close(): void;
+  open(initialDimensions: TerminalDimensions | undefined): void {}
+  close(): void {}
   handleInput?(data: string): void;
   setDimensions?(dimensions: TerminalDimensions): void;
 }
@@ -67,16 +57,31 @@ export enum TerminalExitReason {
   Extension = 4
 }
 
-class TerminalImpl implements Terminal {
+// Export Terminal as a class (not interface) so extensions can reference it at runtime
+export class Terminal {
+  readonly name!: string;
+  get processId(): Promise<number | undefined> { return Promise.resolve(undefined); }
+  readonly creationOptions!: Readonly<TerminalOptions | ExtensionTerminalOptions>;
+  get exitStatus(): TerminalExitStatus | undefined { return undefined; }
+  sendText(text: string, shouldExecute?: boolean): void {}
+  show(preserveFocus?: boolean): void {}
+  hide(): void {}
+  dispose(): void {}
+}
+
+class TerminalImpl extends Terminal {
   private _exitStatus?: TerminalExitStatus;
   private _processId: Promise<number | undefined>;
 
   constructor(
     private bridge: ExtensionHostBridge,
     private terminalId: string,
-    public readonly name: string,
-    public readonly creationOptions: Readonly<TerminalOptions | ExtensionTerminalOptions>
+    name: string,
+    creationOptions: Readonly<TerminalOptions | ExtensionTerminalOptions>
   ) {
+    super();
+    (this as any).name = name;
+    (this as any).creationOptions = creationOptions;
     this._processId = this.getProcessId();
   }
 
@@ -84,7 +89,7 @@ class TerminalImpl implements Terminal {
     try {
       const result = await this.bridge.request('getTerminalProcessId', {
         terminalId: this.terminalId
-      });
+      }) as { processId?: number };
       return result.processId;
     } catch {
       return undefined;

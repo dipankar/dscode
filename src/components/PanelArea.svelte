@@ -4,6 +4,7 @@
   import OutputPanel from './OutputPanel.svelte';
   import DebugConsole from './DebugConsole.svelte';
   import Terminal from './Terminal.svelte';
+  import GitHistoryPanel from './GitHistoryPanel.svelte';
 import { editorStore } from '../stores/editor';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, X } from 'lucide-svelte';
@@ -16,6 +17,7 @@ import { outputChannelReveal } from '../stores/outputChannels';
     { id: 'output', label: 'Output', icon: '📤' },
     { id: 'debug', label: 'Debug Console', icon: '🐛' },
     { id: 'terminal', label: 'Terminal', icon: '💻' },
+    { id: 'git-history', label: 'Git History', icon: '📜' },
   ];
 
   interface TerminalTab {
@@ -86,6 +88,8 @@ import { outputChannelReveal } from '../stores/outputChannels';
       <OutputPanel visible={activePanel === 'output'} />
     {:else if activePanel === 'debug'}
       <DebugConsole visible={activePanel === 'debug'} />
+    {:else if activePanel === 'git-history'}
+      <GitHistoryPanel />
     {:else if activePanel === 'terminal'}
       <div class="terminal-panel">
         <!-- Terminal tabs -->

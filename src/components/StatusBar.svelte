@@ -163,7 +163,7 @@
         class:extension={item.owner !== '__core__'}
         class:has-command={!!item.command}
         title={item.tooltip ?? item.text}
-        style={`color: ${item.color ?? 'inherit'}`}
+        style={`color: ${item.color ?? 'inherit'}; background-color: ${item.background_color ?? 'transparent'}`}
         on:click={() => handleStatusBarCommand(item)}
       >
         {item.text}
@@ -209,7 +209,7 @@
         class:extension={item.owner !== '__core__'}
         class:has-command={!!item.command}
         title={item.tooltip ?? item.text}
-        style={`color: ${item.color ?? 'inherit'}`}
+        style={`color: ${item.color ?? 'inherit'}; background-color: ${item.background_color ?? 'transparent'}`}
         on:click={() => handleStatusBarCommand(item)}
       >
         {item.text}

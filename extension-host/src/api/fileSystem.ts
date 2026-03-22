@@ -16,14 +16,14 @@ export class FileSystemAPI {
   async stat(uri: Uri): Promise<FileStat> {
     const result = await this.bridge.request('fsStat', {
       uri: uri.toString()
-    });
+    }) as { stat: FileStat };
     return result.stat;
   }
 
   async readDirectory(uri: Uri): Promise<[string, FileType][]> {
     const result = await this.bridge.request('fsReadDirectory', {
       uri: uri.toString()
-    });
+    }) as { entries: [string, FileType][] };
     return result.entries;
   }
 
@@ -36,7 +36,7 @@ export class FileSystemAPI {
   async readFile(uri: Uri): Promise<Uint8Array> {
     const result = await this.bridge.request('fsReadFile', {
       uri: uri.toString()
-    });
+    }) as { data: number[] };
     // Convert array/base64 to Uint8Array if needed
     return new Uint8Array(result.data);
   }

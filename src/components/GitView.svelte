@@ -1,7 +1,9 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
   import { workspaceStore } from '../stores/workspace';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import BranchSwitcher from './BranchSwitcher.svelte';
 
   interface GitChange {
     path: string;
@@ -20,15 +22,58 @@
   let commitMessage = '';
   let loading = false;
   let error: string | null = null;
+  let branchSwitcherVisible = false;
+  let fileChangeUnlisten: (() => void) | null = null;
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Debounce time for file change events (ms)
+  const DEBOUNCE_MS = 500;
 
   $: stagedChanges = gitStatus?.changes.filter(c => c.staged) || [];
   $: unstagedChanges = gitStatus?.changes.filter(c => !c.staged) || [];
 
+  // Debounced refresh to avoid too many updates
+  function debouncedRefresh() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    debounceTimer = setTimeout(() => {
+      loadGitStatus();
+      debounceTimer = null;
+    }, DEBOUNCE_MS);
+  }
+
   onMount(() => {
     loadGitStatus();
-    // Refresh every 5 seconds
-    const interval = setInterval(loadGitStatus, 5000);
-    return () => clearInterval(interval);
+
+    // Listen for file changes instead of polling
+    listen('file-changed', (event: any) => {
+      const { path } = event.payload;
+      // Refresh on any file change, or specifically on .git changes
+      if (path && (path.includes('.git') || !path.includes('node_modules'))) {
+        debouncedRefresh();
+      }
+    }).then((unlisten) => {
+      fileChangeUnlisten = unlisten;
+    }).catch((e) => {
+      console.error('[GitView] Failed to set up file watcher:', e);
+      // Fallback to polling if file watching fails
+      const interval = setInterval(loadGitStatus, 5000);
+      fileChangeUnlisten = () => clearInterval(interval);
+    });
+  });
+
+  onDestroy(() => {
+    // Clean up event listener
+    if (fileChangeUnlisten) {
+      fileChangeUnlisten();
+      fileChangeUnlisten = null;
+    }
+    // Clear any pending debounce
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
   });
 
   async function loadGitStatus() {
@@ -175,6 +220,51 @@
     await handlePull();
     await handlePush();
   }
+
+  async function discardFile(filePath: string) {
+    const rootPath = $workspaceStore.rootPath;
+    if (!rootPath) return;
+
+    const confirmed = confirm(`Discard changes to ${filePath}?`);
+    if (!confirmed) return;
+
+    try {
+      await invoke('git_discard_file', {
+        repoPath: rootPath,
+        filePath
+      });
+      await loadGitStatus();
+    } catch (e) {
+      console.error('[Git] Discard failed:', e);
+      error = `Discard failed: ${e}`;
+    }
+  }
+
+  async function viewDiff(filePath: string, staged: boolean) {
+    const rootPath = $workspaceStore.rootPath;
+    if (!rootPath) return;
+
+    try {
+      const diff = await invoke('git_get_diff', {
+        repoPath: rootPath,
+        filePath,
+        staged
+      });
+      console.log('[Git] Diff:', diff);
+
+      // Dispatch event to open diff viewer
+      window.dispatchEvent(new CustomEvent('openDiff', {
+        detail: {
+          filePath,
+          diff,
+          staged
+        }
+      }));
+    } catch (e) {
+      console.error('[Git] Get diff failed:', e);
+      error = `Get diff failed: ${e}`;
+    }
+  }
 </script>
 
 <div class="git-view">
@@ -202,12 +292,15 @@
     {:else if gitStatus}
       <!-- Branch Info -->
       <div class="branch-info">
-        <div class="branch-name">
+        <button class="branch-name" on:click={() => branchSwitcherVisible = true} title="Switch branch">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
             <path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z"/>
           </svg>
           {gitStatus.branch}
-        </div>
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+          </svg>
+        </button>
         <div class="branch-actions">
           {#if gitStatus.ahead > 0 || gitStatus.behind > 0}
             <div class="sync-status">
@@ -277,14 +370,27 @@
                   <span class="status-icon" style="color: {getStatusColor(change.status)}">
                     {getStatusIcon(change.status)}
                   </span>
-                  <span class="change-path" title={change.path}>{change.path}</span>
-                  <button
-                    class="file-action-btn"
-                    on:click={() => unstageFile(change.path)}
-                    title="Unstage"
-                  >
-                    −
-                  </button>
+                  <span class="change-path" title={change.path} on:click={() => viewDiff(change.path, true)}>
+                    {change.path}
+                  </span>
+                  <div class="file-actions">
+                    <button
+                      class="file-action-btn"
+                      on:click={() => viewDiff(change.path, true)}
+                      title="View Diff"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M1.5 1.75V13.5h13.75a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1-.75-.75V1.75a.75.75 0 0 1 1.5 0zm14.28 2.53-5.25 5.25a.75.75 0 0 1-1.06 0L7 7.06 4.28 9.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.25-3.25a.75.75 0 0 1 1.06 0L10 7.94l4.72-4.72a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042z"/>
+                      </svg>
+                    </button>
+                    <button
+                      class="file-action-btn"
+                      on:click={() => unstageFile(change.path)}
+                      title="Unstage"
+                    >
+                      −
+                    </button>
+                  </div>
                 </div>
               {/each}
             </div>
@@ -307,14 +413,36 @@
                   <span class="status-icon" style="color: {getStatusColor(change.status)}">
                     {getStatusIcon(change.status)}
                   </span>
-                  <span class="change-path" title={change.path}>{change.path}</span>
-                  <button
-                    class="file-action-btn"
-                    on:click={() => stageFile(change.path)}
-                    title="Stage"
-                  >
-                    +
-                  </button>
+                  <span class="change-path" title={change.path} on:click={() => viewDiff(change.path, false)}>
+                    {change.path}
+                  </span>
+                  <div class="file-actions">
+                    <button
+                      class="file-action-btn"
+                      on:click={() => viewDiff(change.path, false)}
+                      title="View Diff"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M1.5 1.75V13.5h13.75a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1-.75-.75V1.75a.75.75 0 0 1 1.5 0zm14.28 2.53-5.25 5.25a.75.75 0 0 1-1.06 0L7 7.06 4.28 9.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.25-3.25a.75.75 0 0 1 1.06 0L10 7.94l4.72-4.72a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042z"/>
+                      </svg>
+                    </button>
+                    <button
+                      class="file-action-btn"
+                      on:click={() => stageFile(change.path)}
+                      title="Stage"
+                    >
+                      +
+                    </button>
+                    <button
+                      class="file-action-btn discard-btn"
+                      on:click={() => discardFile(change.path)}
+                      title="Discard Changes"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25z"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               {/each}
             </div>
@@ -332,6 +460,8 @@
     {/if}
   </div>
 </div>
+
+<BranchSwitcher bind:visible={branchSwitcherVisible} on:close={() => loadGitStatus()} />
 
 <style>
   .git-view {
@@ -427,6 +557,17 @@
     font-size: 13px;
     font-weight: 500;
     color: var(--text-primary);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+
+  .branch-name:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-color);
   }
 
   .branch-actions {
@@ -576,7 +717,7 @@
     background: var(--bg-hover);
   }
 
-  .change-item:hover .file-action-btn {
+  .change-item:hover .file-actions {
     opacity: 1;
   }
 
@@ -594,27 +735,46 @@
     white-space: nowrap;
     font-family: 'Fira Code', 'Consolas', monospace;
     color: var(--text-primary);
-    cursor: default;
+    cursor: pointer;
+  }
+
+  .change-path:hover {
+    text-decoration: underline;
+  }
+
+  .file-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.1s;
   }
 
   .file-action-btn {
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    padding: 2px 6px;
+    padding: 3px;
     border-radius: 3px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-size: 14px;
     font-weight: bold;
     line-height: 1;
     transition: all 0.1s;
-    opacity: 0;
-    min-width: 24px;
+    min-width: 20px;
+    height: 20px;
   }
 
   .file-action-btn:hover {
     background: var(--accent-color);
     color: white;
     border-color: var(--accent-color);
+  }
+
+  .discard-btn:hover {
+    background: #f48771;
+    border-color: #f48771;
   }
 </style>

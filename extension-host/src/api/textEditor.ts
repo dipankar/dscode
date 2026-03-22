@@ -7,10 +7,39 @@
 import { ExtensionHostBridge } from '../bridge';
 import { TextDocument, Position, Range } from './textDocument';
 
-export interface Selection extends Range {
-  anchor: Position;
-  active: Position;
-  isReversed: boolean;
+export class Selection extends Range {
+  public readonly anchor: Position;
+  public readonly active: Position;
+
+  constructor(anchor: Position, active: Position);
+  constructor(anchorLine: number, anchorCharacter: number, activeLine: number, activeCharacter: number);
+  constructor(
+    anchorOrAnchorLine: Position | number,
+    activeOrAnchorCharacter: Position | number,
+    activeLine?: number,
+    activeCharacter?: number
+  ) {
+    let anchor: Position;
+    let active: Position;
+
+    if (anchorOrAnchorLine instanceof Position && activeOrAnchorCharacter instanceof Position) {
+      anchor = anchorOrAnchorLine;
+      active = activeOrAnchorCharacter;
+    } else if (typeof anchorOrAnchorLine === 'number' && typeof activeOrAnchorCharacter === 'number') {
+      anchor = new Position(anchorOrAnchorLine, activeOrAnchorCharacter);
+      active = new Position(activeLine!, activeCharacter!);
+    } else {
+      throw new Error('Invalid Selection constructor arguments');
+    }
+
+    super(anchor.isBefore(active) ? anchor : active, anchor.isAfter(active) ? anchor : active);
+    this.anchor = anchor;
+    this.active = active;
+  }
+
+  get isReversed(): boolean {
+    return this.anchor.isAfter(this.active);
+  }
 }
 
 export interface TextEditorOptions {
@@ -20,15 +49,73 @@ export interface TextEditorOptions {
   lineNumbers?: number;
 }
 
-export interface TextEdit {
-  range: Range;
-  newText: string;
+export class TextEdit {
+  constructor(
+    public range: Range,
+    public newText: string
+  ) {}
+
+  static replace(range: Range, newText: string): TextEdit {
+    return new TextEdit(range, newText);
+  }
+
+  static insert(position: Position, newText: string): TextEdit {
+    return new TextEdit(new Range(position, position), newText);
+  }
+
+  static delete(range: Range): TextEdit {
+    return new TextEdit(range, '');
+  }
+
+  static setEndOfLine(eol: number): TextEdit {
+    return new TextEdit(new Range(new Position(0, 0), new Position(0, 0)), '');
+  }
 }
 
-export interface WorkspaceEdit {
-  entries(): [{ path: string }, TextEdit[]][];
-  set(uri: { path: string }, edits: TextEdit[]): void;
-  get(uri: { path: string }): TextEdit[] | undefined;
+export class WorkspaceEdit {
+  private _edits = new Map<string, TextEdit[]>();
+
+  entries(): [{ path: string }, TextEdit[]][] {
+    const result: [{ path: string }, TextEdit[]][] = [];
+    for (const [path, edits] of this._edits.entries()) {
+      result.push([{ path }, edits]);
+    }
+    return result;
+  }
+
+  set(uri: { path: string }, edits: TextEdit[]): void {
+    this._edits.set(uri.path, edits);
+  }
+
+  get(uri: { path: string }): TextEdit[] | undefined {
+    return this._edits.get(uri.path);
+  }
+
+  has(uri: { path: string }): boolean {
+    return this._edits.has(uri.path);
+  }
+
+  delete(uri: { path: string }): boolean {
+    return this._edits.delete(uri.path);
+  }
+
+  replace(uri: { path: string }, range: Range, newText: string): void {
+    const edits = this._edits.get(uri.path) || [];
+    edits.push(new TextEdit(range, newText));
+    this._edits.set(uri.path, edits);
+  }
+
+  insert(uri: { path: string }, position: Position, newText: string): void {
+    this.replace(uri, new Range(position, position), newText);
+  }
+
+  deleteEdit(uri: { path: string }, range: Range): void {
+    this.replace(uri, range, '');
+  }
+
+  get size(): number {
+    return this._edits.size;
+  }
 }
 
 export class SnippetString {
@@ -155,7 +242,7 @@ export class TextEditor {
         uri: this.document.uri.fsPath,
         edits: editBuilder.getEdits(),
         endOfLine: editBuilder.getEndOfLine()
-      });
+      }) as { content?: string; version?: number } | null;
       if (result?.content) {
         this.document.updateContent(result.content, result?.version);
       }
@@ -176,7 +263,7 @@ export class TextEditor {
         uri: this.document.uri.fsPath,
         snippet: snippetText,
         location
-      });
+      }) as { content?: string; version?: number } | null;
       if (result?.content) {
         this.document.updateContent(result.content, result?.version);
       }
@@ -234,7 +321,7 @@ export class TextEditorEdit {
 
   insert(location: Position, value: string): void {
     this.edits.push({
-      range: { start: location, end: location },
+      range: new Range(location, location),
       newText: value
     });
   }
@@ -258,9 +345,9 @@ export class TextEditorEdit {
 
   private toRange(location: Position | Range | Selection): Range {
     if ('start' in location && 'end' in location) {
-      return { start: location.start, end: location.end };
+      return new Range(location.start, location.end);
     }
-    return { start: location, end: location };
+    return new Range(location, location);
   }
 }
 
@@ -299,16 +386,11 @@ export class TextEditorAPI {
   }
 
   createEditor(document: TextDocument): TextEditor {
+    const zeroPos = new Position(0, 0);
     const editor = new TextEditor(
       this.bridge,
       document,
-      {
-        start: { line: 0, character: 0 },
-        end: { line: 0, character: 0 },
-        anchor: { line: 0, character: 0 },
-        active: { line: 0, character: 0 },
-        isReversed: false
-      },
+      new Selection(zeroPos, zeroPos),
       [],
       [],
       {

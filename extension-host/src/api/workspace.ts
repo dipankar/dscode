@@ -7,8 +7,39 @@
 import { ExtensionHostBridge } from '../bridge';
 import { Event, EventEmitter, Disposable } from './events';
 import { Uri } from './uri';
+import { WorkspaceEdit, TextEdit } from './textEditor';
+import { Range } from './textDocument';
 import * as path from 'path';
 import * as fs from 'fs';
+
+// Types for workspace edit serialization
+interface WorkspaceEditEntry {
+  uri: string;
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+  newText: string;
+}
+
+interface FileOperation {
+  uri: string;
+  options?: {
+    overwrite?: boolean;
+    ignoreIfExists?: boolean;
+    ignoreIfNotExists?: boolean;
+    recursive?: boolean;
+  };
+}
+
+interface RenameOperation {
+  oldUri: string;
+  newUri: string;
+  options?: {
+    overwrite?: boolean;
+    ignoreIfExists?: boolean;
+  };
+}
 
 export interface WorkspaceFolder {
   uri: { fsPath: string; scheme: string };
@@ -28,6 +59,7 @@ export class WorkspaceAPI {
   private _onDidCloseTextDocument = new EventEmitter<any>();
   private _onDidChangeWorkspaceFolders = new EventEmitter<any>();
   private _onDidChangeConfiguration = new EventEmitter<any>();
+  private _onDidGrantWorkspaceTrust = new EventEmitter<void>();
 
   // Events
   readonly onDidChangeTextDocument = this._onDidChangeTextDocument.event;
@@ -36,6 +68,10 @@ export class WorkspaceAPI {
   readonly onDidCloseTextDocument = this._onDidCloseTextDocument.event;
   readonly onDidChangeWorkspaceFolders = this._onDidChangeWorkspaceFolders.event;
   readonly onDidChangeConfiguration = this._onDidChangeConfiguration.event;
+  readonly onDidGrantWorkspaceTrust = this._onDidGrantWorkspaceTrust.event;
+
+  // Workspace trust - always trusted for now
+  readonly isTrusted: boolean = true;
 
   constructor(private bridge: ExtensionHostBridge) {
     // Request workspace folders from main app
@@ -96,7 +132,7 @@ export class WorkspaceAPI {
     try {
       const response = await this.bridge.request('workspace-get-configuration', {
         section: null,
-      });
+      }) as { config?: any } | null;
       this.configurationData = response?.config ?? {};
     } catch (error) {
       console.error('[Workspace] Failed to load configuration:', error);
@@ -162,7 +198,7 @@ export class WorkspaceAPI {
       include,
       exclude,
       maxResults,
-    });
+    }) as { files: string[] };
 
     return result.files.map((file: string) => ({
       fsPath: file,
@@ -204,10 +240,90 @@ export class WorkspaceAPI {
   }
 
   /**
+   * Apply a workspace edit
+   * This allows making edits to multiple files at once
+   */
+  async applyEdit(edit: WorkspaceEdit): Promise<boolean> {
+    console.log('[Workspace] Applying workspace edit');
+
+    try {
+      // Serialize the workspace edit
+      const edits: WorkspaceEditEntry[] = [];
+
+      for (const [uri, textEdits] of edit.entries()) {
+        const uriPath = typeof uri === 'string' ? uri : (uri as any).path || (uri as any).fsPath;
+
+        for (const textEdit of textEdits) {
+          edits.push({
+            uri: uriPath,
+            range: {
+              start: {
+                line: textEdit.range.start.line,
+                character: textEdit.range.start.character
+              },
+              end: {
+                line: textEdit.range.end.line,
+                character: textEdit.range.end.character
+              }
+            },
+            newText: textEdit.newText
+          });
+        }
+      }
+
+      // Also handle file operations (create, delete, rename)
+      const createFiles: FileOperation[] = [];
+      const deleteFiles: FileOperation[] = [];
+      const renameFiles: RenameOperation[] = [];
+
+      // Check if edit has file operations (VS Code 1.48+)
+      if (typeof (edit as any)._fileOperations !== 'undefined') {
+        const fileOps = (edit as any)._fileOperations as Map<string, any>;
+        for (const [opUri, op] of fileOps) {
+          if (op.type === 'create') {
+            createFiles.push({
+              uri: opUri,
+              options: op.options
+            });
+          } else if (op.type === 'delete') {
+            deleteFiles.push({
+              uri: opUri,
+              options: op.options
+            });
+          } else if (op.type === 'rename') {
+            renameFiles.push({
+              oldUri: opUri,
+              newUri: op.newUri,
+              options: op.options
+            });
+          }
+        }
+      }
+
+      const result = await this.bridge.request('workspace-apply-edit', {
+        edits,
+        createFiles,
+        deleteFiles,
+        renameFiles
+      }) as { success: boolean; failureReason?: string };
+
+      if (!result.success) {
+        console.error('[Workspace] Apply edit failed:', result.failureReason);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('[Workspace] Failed to apply workspace edit:', error);
+      return false;
+    }
+  }
+
+  /**
    * Get configuration
    */
   getConfiguration(section?: string): any {
-    return new WorkspaceConfiguration(this, section);
+    return WorkspaceConfiguration(this, section);
   }
 
   private getSectionData(section?: string): any {
@@ -377,11 +493,30 @@ class FileSystemWatcherImpl implements Disposable {
   }
 }
 
-class WorkspaceConfiguration {
+// Empty configuration proxy for undefined configuration values
+// This allows chained access like config.pylance.indexing.subkey to return undefined
+// instead of throwing "Cannot read properties of undefined"
+const EMPTY_CONFIG: any = new Proxy({}, {
+  get(_target: any, prop: string | symbol): any {
+    // Return undefined for primitive conversions and known methods
+    if (typeof prop === 'symbol') return undefined;
+    if (prop === 'toString' || prop === 'valueOf' || prop === 'toJSON') return () => undefined;
+    // Return itself for any other property access to support deep chaining
+    return EMPTY_CONFIG;
+  },
+  has(): boolean {
+    return false;
+  }
+});
+
+class WorkspaceConfigurationImpl {
   constructor(private workspace: WorkspaceAPI, private section?: string) {}
 
   get<T = any>(key: string, defaultValue?: T): T {
-    return this.workspace.getConfigurationValue(this.section, key, defaultValue) as T;
+    const value = this.workspace.getConfigurationValue(this.section, key, defaultValue);
+    // Return the value or default - don't use EMPTY_CONFIG here as it breaks array methods
+    // Extensions are expected to handle undefined config values
+    return value as T;
   }
 
   has(key: string): boolean {
@@ -391,4 +526,55 @@ class WorkspaceConfiguration {
   update(key: string, value: any, configurationTarget?: any): Promise<void> {
     return this.workspace.updateConfiguration(this.section, key, value, configurationTarget);
   }
+
+  inspect<T>(key: string): {
+    key: string;
+    defaultValue?: T;
+    globalValue?: T;
+    workspaceValue?: T;
+    workspaceFolderValue?: T;
+    defaultLanguageValue?: T;
+    globalLanguageValue?: T;
+    workspaceLanguageValue?: T;
+    workspaceFolderLanguageValue?: T;
+    languageIds?: string[];
+  } | undefined {
+    const value = this.get<T>(key);
+    return {
+      key: this.section ? `${this.section}.${key}` : key,
+      globalValue: value,
+      workspaceValue: undefined,
+      workspaceFolderValue: undefined,
+    };
+  }
+}
+
+/**
+ * Create a WorkspaceConfiguration with Proxy support for bracket notation access
+ * VS Code allows both config.get('key') and config['key'] access patterns
+ */
+function WorkspaceConfiguration(workspace: WorkspaceAPI, section?: string): any {
+  const impl = new WorkspaceConfigurationImpl(workspace, section);
+
+  return new Proxy(impl, {
+    get(target: WorkspaceConfigurationImpl, prop: string | symbol): any {
+      // Handle known methods first
+      if (prop === 'get') return target.get.bind(target);
+      if (prop === 'has') return target.has.bind(target);
+      if (prop === 'update') return target.update.bind(target);
+      if (prop === 'inspect') return target.inspect.bind(target);
+
+      // Handle symbol properties (like Symbol.toStringTag)
+      if (typeof prop === 'symbol') return undefined;
+
+      // For any other property access, use get() to retrieve the value
+      // This enables config['pylance'] style access
+      // Note: target.get() already returns EMPTY_CONFIG for undefined values
+      return target.get(prop);
+    },
+    has(target: WorkspaceConfigurationImpl, prop: string | symbol): boolean {
+      if (typeof prop === 'symbol') return false;
+      return target.has(prop as string);
+    }
+  });
 }

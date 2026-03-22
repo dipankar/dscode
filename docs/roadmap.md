@@ -595,7 +595,7 @@ This roadmap is a living document. We welcome:
 - Documentation improvements
 - Extension development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
 
 ---
 

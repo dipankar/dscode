@@ -6,6 +6,7 @@
 
 import { ExtensionHostBridge } from '../bridge';
 import { Event, EventEmitter } from './events';
+import { Uri } from './uri';
 
 export enum MessageType {
   Info = 'info',
@@ -86,7 +87,7 @@ export class WindowAPI {
       type: MessageType.Info,
       message,
       actions: items,
-    });
+    }) as { action?: string } | null;
 
     return result?.action;
   }
@@ -109,7 +110,7 @@ export class WindowAPI {
       type: MessageType.Warning,
       message,
       actions: items,
-    });
+    }) as { action?: string } | null;
 
     return result?.action;
   }
@@ -132,7 +133,7 @@ export class WindowAPI {
       type: MessageType.Error,
       message,
       actions: items,
-    });
+    }) as { action?: string } | null;
 
     return result?.action;
   }
@@ -146,7 +147,7 @@ export class WindowAPI {
     value?: string;
     password?: boolean;
   }): Promise<string | undefined> {
-    const result = await this.bridge.request('window-show-input-box', options || {});
+    const result = await this.bridge.request('window-show-input-box', options || {}) as { value?: string } | null;
     return result?.value;
   }
 
@@ -163,7 +164,7 @@ export class WindowAPI {
     const result = await this.bridge.request('window-show-quick-pick', {
       items,
       options: options || {},
-    });
+    }) as { selected?: any } | null;
 
     return result?.selected;
   }
@@ -193,6 +194,130 @@ export class WindowAPI {
       },
     };
   }
+
+  /**
+   * Show an open dialog to select files or folders
+   */
+  async showOpenDialog(options?: OpenDialogOptions): Promise<Uri[] | undefined> {
+    console.log('[Window] showOpenDialog:', options);
+
+    const result = await this.bridge.request('window-show-open-dialog', {
+      canSelectFiles: options?.canSelectFiles ?? true,
+      canSelectFolders: options?.canSelectFolders ?? false,
+      canSelectMany: options?.canSelectMany ?? false,
+      openLabel: options?.openLabel,
+      title: options?.title,
+      defaultUri: options?.defaultUri?.toString(),
+      filters: options?.filters
+    }) as { uris?: string[] } | null;
+
+    if (!result || !result.uris || result.uris.length === 0) {
+      return undefined;
+    }
+
+    // Convert string URIs to Uri objects
+    return result.uris.map((uriStr: string) => Uri.file(uriStr));
+  }
+
+  /**
+   * Show a save dialog to select a file path
+   */
+  async showSaveDialog(options?: SaveDialogOptions): Promise<Uri | undefined> {
+    console.log('[Window] showSaveDialog:', options);
+
+    const result = await this.bridge.request('window-show-save-dialog', {
+      saveLabel: options?.saveLabel,
+      title: options?.title,
+      defaultUri: options?.defaultUri?.toString(),
+      filters: options?.filters
+    }) as { uri?: string } | null;
+
+    if (!result || !result.uri) {
+      return undefined;
+    }
+
+    return Uri.file(result.uri);
+  }
+
+  /**
+   * Show a workspace folder picker
+   */
+  async showWorkspaceFolderPick(options?: WorkspaceFolderPickOptions): Promise<WorkspaceFolder | undefined> {
+    console.log('[Window] showWorkspaceFolderPick:', options);
+
+    const result = await this.bridge.request('window-show-workspace-folder-pick', {
+      placeHolder: options?.placeHolder,
+      ignoreFocusOut: options?.ignoreFocusOut
+    }) as { uri: string; name: string; index: number } | null;
+
+    if (!result) {
+      return undefined;
+    }
+
+    return {
+      uri: Uri.file(result.uri),
+      name: result.name,
+      index: result.index
+    };
+  }
+}
+
+// ==================== File Dialog Types ====================
+
+/**
+ * Options for the open dialog
+ */
+export interface OpenDialogOptions {
+  /** URI of the folder to open initially */
+  defaultUri?: Uri;
+  /** Label for the open button */
+  openLabel?: string;
+  /** Allow selecting files */
+  canSelectFiles?: boolean;
+  /** Allow selecting folders */
+  canSelectFolders?: boolean;
+  /** Allow selecting multiple items */
+  canSelectMany?: boolean;
+  /** File filters (e.g., { 'Images': ['png', 'jpg'], 'TypeScript': ['ts'] }) */
+  filters?: { [name: string]: string[] };
+  /** Title of the dialog */
+  title?: string;
+}
+
+/**
+ * Options for the save dialog
+ */
+export interface SaveDialogOptions {
+  /** URI of the file to save initially */
+  defaultUri?: Uri;
+  /** Label for the save button */
+  saveLabel?: string;
+  /** File filters */
+  filters?: { [name: string]: string[] };
+  /** Title of the dialog */
+  title?: string;
+}
+
+/**
+ * Options for the workspace folder picker
+ */
+export interface WorkspaceFolderPickOptions {
+  /** Placeholder text */
+  placeHolder?: string;
+  /** Keep dialog open when focus is lost */
+  ignoreFocusOut?: boolean;
+}
+
+/**
+ * Represents a workspace folder
+ */
+export interface WorkspaceFolder {
+  /** URI of the folder */
+  uri: Uri;
+  /** Name of the folder */
+  name: string;
+  /** Index of the folder in the workspace */
+  index: number;
 }
 
 /**
@@ -235,5 +360,27 @@ export class OutputChannel {
     this.bridge.send('output-channel-dispose', {
       channel: this.name,
     });
+  }
+
+  // Log level methods for LogOutputChannel compatibility
+  trace(message: string, ...args: any[]): void {
+    this.appendLine(`[TRACE] ${message} ${args.join(' ')}`);
+  }
+
+  debug(message: string, ...args: any[]): void {
+    this.appendLine(`[DEBUG] ${message} ${args.join(' ')}`);
+  }
+
+  info(message: string, ...args: any[]): void {
+    this.appendLine(`[INFO] ${message} ${args.join(' ')}`);
+  }
+
+  warn(message: string, ...args: any[]): void {
+    this.appendLine(`[WARN] ${message} ${args.join(' ')}`);
+  }
+
+  error(error: string | Error, ...args: any[]): void {
+    const msg = error instanceof Error ? error.message : error;
+    this.appendLine(`[ERROR] ${msg} ${args.join(' ')}`);
   }
 }

@@ -19,10 +19,13 @@ export enum NotebookCellExecutionState {
   Executing = 3
 }
 
-export interface NotebookCellData {
-  kind: NotebookCellKind;
-  value: string;
-  languageId: string;
+export class NotebookCellData {
+  constructor(
+    public kind: NotebookCellKind,
+    public value: string,
+    public languageId: string
+  ) {}
+
   outputs?: NotebookCellOutput[];
   metadata?: { [key: string]: any };
   executionSummary?: NotebookCellExecutionSummary;
@@ -34,37 +37,72 @@ export interface NotebookCellExecutionSummary {
   timing?: { startTime: number; endTime: number };
 }
 
-export interface NotebookCellOutput {
-  items: NotebookCellOutputItem[];
-  metadata?: { [key: string]: any };
+export class NotebookCellOutput {
+  constructor(
+    public items: NotebookCellOutputItem[],
+    public metadata?: { [key: string]: any }
+  ) {}
 }
 
-export interface NotebookCellOutputItem {
-  mime: string;
-  data: Uint8Array;
+export class NotebookCellOutputItem {
+  constructor(
+    public data: Uint8Array,
+    public mime: string
+  ) {}
+
+  static text(value: string, mime?: string): NotebookCellOutputItem {
+    const encoder = new TextEncoder();
+    return new NotebookCellOutputItem(encoder.encode(value), mime || 'text/plain');
+  }
+
+  static json(value: any, mime?: string): NotebookCellOutputItem {
+    const encoder = new TextEncoder();
+    return new NotebookCellOutputItem(
+      encoder.encode(JSON.stringify(value)),
+      mime || 'application/json'
+    );
+  }
+
+  static error(value: Error): NotebookCellOutputItem {
+    const encoder = new TextEncoder();
+    return new NotebookCellOutputItem(
+      encoder.encode(value.stack || value.message),
+      'application/vnd.code.notebook.error'
+    );
+  }
+
+  static stdout(value: string): NotebookCellOutputItem {
+    const encoder = new TextEncoder();
+    return new NotebookCellOutputItem(encoder.encode(value), 'application/vnd.code.notebook.stdout');
+  }
+
+  static stderr(value: string): NotebookCellOutputItem {
+    const encoder = new TextEncoder();
+    return new NotebookCellOutputItem(encoder.encode(value), 'application/vnd.code.notebook.stderr');
+  }
 }
 
-export interface NotebookCell {
-  readonly index: number;
-  readonly kind: NotebookCellKind;
-  readonly document: any; // TextDocument
-  readonly metadata: { [key: string]: any };
-  readonly outputs: readonly NotebookCellOutput[];
-  readonly executionSummary: NotebookCellExecutionSummary | undefined;
+export class NotebookCell {
+  readonly index!: number;
+  readonly kind!: NotebookCellKind;
+  readonly document!: any; // TextDocument
+  readonly metadata!: { [key: string]: any };
+  readonly outputs!: readonly NotebookCellOutput[];
+  readonly executionSummary!: NotebookCellExecutionSummary | undefined;
 }
 
-export interface NotebookDocument {
-  readonly uri: Uri;
-  readonly notebookType: string;
-  readonly version: number;
-  readonly isDirty: boolean;
-  readonly isUntitled: boolean;
-  readonly isClosed: boolean;
-  readonly metadata: { [key: string]: any };
-  readonly cellCount: number;
-  cellAt(index: number): NotebookCell;
-  getCells(range?: any): NotebookCell[];
-  save(): Promise<boolean>;
+export class NotebookDocument {
+  readonly uri!: Uri;
+  readonly notebookType!: string;
+  readonly version!: number;
+  readonly isDirty!: boolean;
+  readonly isUntitled!: boolean;
+  readonly isClosed!: boolean;
+  readonly metadata!: { [key: string]: any };
+  readonly cellCount!: number;
+  cellAt(index: number): NotebookCell { throw new Error('Not implemented'); }
+  getCells(range?: any): NotebookCell[] { return []; }
+  save(): Promise<boolean> { return Promise.resolve(false); }
 }
 
 export interface NotebookData {

@@ -88,18 +88,23 @@ class SourceControlResourceGroupImpl implements SourceControlResourceGroup {
   }
 }
 
-export interface SourceControl {
-  readonly id: string;
-  readonly label: string;
-  readonly rootUri: any | undefined;
-  inputBox: SourceControlInputBox;
-  count?: number;
-  quickDiffProvider?: QuickDiffProvider;
-  commitTemplate?: string;
-  acceptInputCommand?: { title: string; command: string; arguments?: any[] };
-  statusBarCommands?: { title: string; command: string; arguments?: any[] }[];
-  createResourceGroup(id: string, label: string): SourceControlResourceGroup;
-  dispose(): void;
+export class SourceControl {
+  readonly id!: string;
+  readonly label!: string;
+  readonly rootUri!: any | undefined;
+  get inputBox(): SourceControlInputBox { throw new Error('Not implemented'); }
+  get count(): number | undefined { return undefined; }
+  set count(value: number | undefined) {}
+  get quickDiffProvider(): QuickDiffProvider | undefined { return undefined; }
+  set quickDiffProvider(value: QuickDiffProvider | undefined) {}
+  get commitTemplate(): string | undefined { return undefined; }
+  set commitTemplate(value: string | undefined) {}
+  get acceptInputCommand(): { title: string; command: string; arguments?: any[] } | undefined { return undefined; }
+  set acceptInputCommand(value: { title: string; command: string; arguments?: any[] } | undefined) {}
+  get statusBarCommands(): { title: string; command: string; arguments?: any[] }[] | undefined { return undefined; }
+  set statusBarCommands(value: { title: string; command: string; arguments?: any[] }[] | undefined) {}
+  createResourceGroup(id: string, label: string): SourceControlResourceGroup { throw new Error('Not implemented'); }
+  dispose(): void {}
 }
 
 export interface SourceControlInputBox {
@@ -190,7 +195,7 @@ export interface QuickDiffProvider {
   provideOriginalResource?(uri: any, token?: any): any | null | undefined | Promise<any | null | undefined>;
 }
 
-class SourceControlImpl implements SourceControl {
+class SourceControlImpl extends SourceControl {
   private _inputBox: SourceControlInputBoxImpl;
   private _count?: number;
   private _quickDiffProvider?: QuickDiffProvider;
@@ -201,10 +206,14 @@ class SourceControlImpl implements SourceControl {
 
   constructor(
     private bridge: ExtensionHostBridge,
-    public readonly id: string,
-    public readonly label: string,
-    public readonly rootUri: any | undefined
+    id: string,
+    label: string,
+    rootUri: any | undefined
   ) {
+    super();
+    (this as any).id = id;
+    (this as any).label = label;
+    (this as any).rootUri = rootUri;
     this._inputBox = new SourceControlInputBoxImpl(bridge, id);
   }
 

@@ -7,6 +7,8 @@
   import { debugStore } from '../stores/debug';
   import { File, FileCode, FileJson, FileText } from 'lucide-svelte';
   import { initializeMonaco } from '../main';
+  import ContextMenu from './ContextMenu.svelte';
+  import { languageFeaturesManager } from '../lib/language-features';
 
   let editorContainer: HTMLDivElement;
   let editor: any = null; // Will be monaco.editor.IStandaloneCodeEditor
@@ -20,6 +22,12 @@
   const decorationHandles = new Map<string, string[]>();
   let decorationsListener: ((event: Event) => void) | null = null;
   let lastActivePath: string | null = null;
+
+  // Context menu state
+  let contextMenuVisible = false;
+  let contextMenuX = 0;
+  let contextMenuY = 0;
+  let contextMenuContext: any = {};
 
   $: tabs = $editorStore.tabs;
   $: activeTabId = $editorStore.activeTabId;
@@ -163,6 +171,14 @@
     // Store Monaco instance in store
     editorStore.setMonacoInstance(editor);
 
+    // Initialize language features manager
+    try {
+      await languageFeaturesManager.initialize(editor);
+      console.log('[EditorArea] Language features initialized');
+    } catch (error) {
+      console.error('[EditorArea] Failed to initialize language features:', error);
+    }
+
     // Subscribe to settings changes and update editor
     settingsStore.subscribe((settings) => {
       if (!editor) return;
@@ -218,6 +234,34 @@
           syncBreakpointsWithBackend(activeTab.path);
         }
       }
+    });
+
+    // Handle context menu (right-click)
+    editor.onContextMenu((e: any) => {
+      e.event.preventDefault();
+
+      // Get editor selection state
+      const selection = editor.getSelection();
+      const hasSelection = selection && !selection.isEmpty();
+
+      // Get file extension
+      const fileExt = activeTab?.path.split('.').pop();
+
+      // Build context menu context
+      contextMenuContext = {
+        has_selection: hasSelection,
+        editor_focused: true,
+        explorer_focused: false,
+        resource_extension: fileExt,
+        resource_path: activeTab?.path,
+        language_id: activeFile?.language,
+        in_debug_mode: false,
+      };
+
+      // Show context menu at mouse position
+      contextMenuX = e.event.posx;
+      contextMenuY = e.event.posy;
+      contextMenuVisible = true;
     });
 
     // Listen for content changes
@@ -283,14 +327,15 @@
       applyDecorationsForPath(activeTab.path);
       lastActivePath = activeTab.path;
     }
-  });
 
-  editor.onDidChangeCursorSelection((e: any) => {
-    emitSelectionChanged(e);
-  });
+    // Set up editor event listeners
+    editor.onDidChangeCursorSelection((e: any) => {
+      emitSelectionChanged(e);
+    });
 
-  editor.onDidScrollChange(() => {
-    emitVisibleRangesChanged();
+    editor.onDidScrollChange(() => {
+      emitVisibleRangesChanged();
+    });
   });
 
   async function handleFileChanged(changedPath: string) {
@@ -652,6 +697,16 @@
     </div>
   {/if}
 </div>
+
+<!-- Context Menu -->
+<ContextMenu
+  visible={contextMenuVisible}
+  x={contextMenuX}
+  y={contextMenuY}
+  location="editor/context"
+  context={contextMenuContext}
+  onClose={() => (contextMenuVisible = false)}
+/>
 
 <style>
   .editor-area {

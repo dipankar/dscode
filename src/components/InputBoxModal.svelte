@@ -87,13 +87,23 @@ $: if (request.id !== lastRequestId) {
     {/if}
 
     <main>
-      <input
-        bind:this={inputEl}
-        type={request.password ? 'password' : 'text'}
-        placeholder={request.placeHolder ?? ''}
-        bind:value
-        on:keydown={handleKeydown}
-      />
+      {#if request.password}
+        <input
+          bind:this={inputEl}
+          type="password"
+          placeholder={request.placeHolder ?? ''}
+          bind:value
+          on:keydown={handleKeydown}
+        />
+      {:else}
+        <input
+          bind:this={inputEl}
+          type="text"
+          placeholder={request.placeHolder ?? ''}
+          bind:value
+          on:keydown={handleKeydown}
+        />
+      {/if}
     </main>
 
     <footer>

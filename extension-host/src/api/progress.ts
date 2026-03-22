@@ -8,38 +8,52 @@ import { ExtensionHostBridge } from '../bridge';
 import { Event, EventEmitter, Disposable } from './events';
 import { ProgressOptions, Progress, ProgressLocation, QuickPickItem, QuickInputButton, InputBoxOptions, QuickPickOptions, CancellationToken } from './common';
 
-// Re-export types from common for convenience
-export type { QuickPickItem, QuickInputButton, ProgressOptions, Progress, ProgressLocation, InputBoxOptions, QuickPickOptions };
+// Re-export types and classes from common for convenience
+export { QuickPickItem, QuickInputButton, ProgressOptions, Progress, ProgressLocation, InputBoxOptions, QuickPickOptions };
 
 // QuickPick
-export interface QuickPick<T extends QuickPickItem> extends Disposable {
-  value: string;
-  placeholder: string | undefined;
-  readonly onDidChangeValue: Event<string>;
-  readonly onDidAccept: Event<void>;
-  readonly onDidHide: Event<void>;
-  buttons: readonly QuickInputButton[];
-  readonly onDidTriggerButton: Event<QuickInputButton>;
-  items: readonly T[];
-  canSelectMany: boolean;
-  matchOnDescription: boolean;
-  matchOnDetail: boolean;
-  activeItems: readonly T[];
-  readonly onDidChangeActive: Event<readonly T[]>;
-  selectedItems: readonly T[];
-  readonly onDidChangeSelection: Event<readonly T[]>;
-  title: string | undefined;
-  step: number | undefined;
-  totalSteps: number | undefined;
-  enabled: boolean;
-  busy: boolean;
-  ignoreFocusOut: boolean;
-  show(): void;
-  hide(): void;
-  dispose(): void;
+export class QuickPick<T extends QuickPickItem> extends Disposable {
+  get value(): string { return ''; }
+  set value(val: string) {}
+  get placeholder(): string | undefined { return undefined; }
+  set placeholder(val: string | undefined) {}
+  readonly onDidChangeValue!: Event<string>;
+  readonly onDidAccept!: Event<void>;
+  readonly onDidHide!: Event<void>;
+  get buttons(): readonly QuickInputButton[] { return []; }
+  set buttons(val: readonly QuickInputButton[]) {}
+  readonly onDidTriggerButton!: Event<QuickInputButton>;
+  get items(): readonly T[] { return []; }
+  set items(val: readonly T[]) {}
+  get canSelectMany(): boolean { return false; }
+  set canSelectMany(val: boolean) {}
+  get matchOnDescription(): boolean { return false; }
+  set matchOnDescription(val: boolean) {}
+  get matchOnDetail(): boolean { return false; }
+  set matchOnDetail(val: boolean) {}
+  get activeItems(): readonly T[] { return []; }
+  set activeItems(val: readonly T[]) {}
+  readonly onDidChangeActive!: Event<readonly T[]>;
+  get selectedItems(): readonly T[] { return []; }
+  set selectedItems(val: readonly T[]) {}
+  readonly onDidChangeSelection!: Event<readonly T[]>;
+  get title(): string | undefined { return undefined; }
+  set title(val: string | undefined) {}
+  get step(): number | undefined { return undefined; }
+  set step(val: number | undefined) {}
+  get totalSteps(): number | undefined { return undefined; }
+  set totalSteps(val: number | undefined) {}
+  get enabled(): boolean { return true; }
+  set enabled(val: boolean) {}
+  get busy(): boolean { return false; }
+  set busy(val: boolean) {}
+  get ignoreFocusOut(): boolean { return false; }
+  set ignoreFocusOut(val: boolean) {}
+  show(): void {}
+  hide(): void {}
 }
 
-class QuickPickImpl<T extends QuickPickItem> implements QuickPick<T> {
+class QuickPickImpl<T extends QuickPickItem> extends QuickPick<T> {
   private _value = '';
   private _placeholder?: string;
   private _items: readonly T[] = [];
@@ -71,7 +85,9 @@ class QuickPickImpl<T extends QuickPickItem> implements QuickPick<T> {
   readonly onDidChangeActive = this._onDidChangeActive.event;
   readonly onDidChangeSelection = this._onDidChangeSelection.event;
 
-  constructor(private bridge: ExtensionHostBridge) {}
+  constructor(private bridge: ExtensionHostBridge) {
+    super();
+  }
 
   get value(): string {
     return this._value;
@@ -243,7 +259,7 @@ class QuickPickImpl<T extends QuickPickItem> implements QuickPick<T> {
           ignoreFocusOut: this._ignoreFocusOut,
           value: this._value,
         },
-      });
+      }) as { selected?: any } | null;
 
       if (response && response.selected) {
         const selections = Array.isArray(response.selected)
@@ -271,29 +287,40 @@ class QuickPickImpl<T extends QuickPickItem> implements QuickPick<T> {
 }
 
 // InputBox
-export interface InputBox extends Disposable {
-  value: string;
-  placeholder: string | undefined;
-  password: boolean;
-  readonly onDidChangeValue: Event<string>;
-  readonly onDidAccept: Event<void>;
-  readonly onDidHide: Event<void>;
-  buttons: readonly QuickInputButton[];
-  readonly onDidTriggerButton: Event<QuickInputButton>;
-  prompt: string | undefined;
-  validationMessage: string | undefined;
-  title: string | undefined;
-  step: number | undefined;
-  totalSteps: number | undefined;
-  enabled: boolean;
-  busy: boolean;
-  ignoreFocusOut: boolean;
-  show(): void;
-  hide(): void;
-  dispose(): void;
+export class InputBox extends Disposable {
+  get value(): string { return ''; }
+  set value(val: string) {}
+  get placeholder(): string | undefined { return undefined; }
+  set placeholder(val: string | undefined) {}
+  get password(): boolean { return false; }
+  set password(val: boolean) {}
+  readonly onDidChangeValue!: Event<string>;
+  readonly onDidAccept!: Event<void>;
+  readonly onDidHide!: Event<void>;
+  get buttons(): readonly QuickInputButton[] { return []; }
+  set buttons(val: readonly QuickInputButton[]) {}
+  readonly onDidTriggerButton!: Event<QuickInputButton>;
+  get prompt(): string | undefined { return undefined; }
+  set prompt(val: string | undefined) {}
+  get validationMessage(): string | undefined { return undefined; }
+  set validationMessage(val: string | undefined) {}
+  get title(): string | undefined { return undefined; }
+  set title(val: string | undefined) {}
+  get step(): number | undefined { return undefined; }
+  set step(val: number | undefined) {}
+  get totalSteps(): number | undefined { return undefined; }
+  set totalSteps(val: number | undefined) {}
+  get enabled(): boolean { return true; }
+  set enabled(val: boolean) {}
+  get busy(): boolean { return false; }
+  set busy(val: boolean) {}
+  get ignoreFocusOut(): boolean { return false; }
+  set ignoreFocusOut(val: boolean) {}
+  show(): void {}
+  hide(): void {}
 }
 
-class InputBoxImpl implements InputBox {
+class InputBoxImpl extends InputBox {
   private _value = '';
   private _placeholder?: string;
   private _password = false;
@@ -317,7 +344,9 @@ class InputBoxImpl implements InputBox {
   readonly onDidHide = this._onDidHide.event;
   readonly onDidTriggerButton = this._onDidTriggerButton.event;
 
-  constructor(private bridge: ExtensionHostBridge) {}
+  constructor(private bridge: ExtensionHostBridge) {
+    super();
+  }
 
   get value(): string {
     return this._value;
@@ -442,7 +471,7 @@ class InputBoxImpl implements InputBox {
         step: this._step,
         totalSteps: this._totalSteps,
         ignoreFocusOut: this._ignoreFocusOut,
-      });
+      }) as { value?: string } | null;
 
       if (response && typeof response.value === 'string') {
         this.value = response.value;

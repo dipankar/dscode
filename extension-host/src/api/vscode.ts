@@ -13,19 +13,20 @@ import { TextEditorAPI, TextEditor, Selection, TextEdit, WorkspaceEdit, SnippetS
 import { LanguagesAPI, CompletionItem, Hover, Definition, Location, CodeAction, Diagnostic, DocumentSymbol } from './languages';
 import { UIAPI, StatusBarItem, StatusBarAlignment, TreeView, TreeDataProvider, TreeItem, TreeItemCollapsibleState, WebviewPanel, Webview, WebviewOptions, WebviewPanelOptions } from './ui';
 import { TerminalAPI, Terminal, TerminalOptions, Pseudoterminal, TerminalDimensions, TerminalExitReason, TerminalExitStatus } from './terminal';
-import { EnvironmentAPIImpl, ExtensionsAPI, EnvironmentAPI, Extension, ExtensionKind, UIKind, LogLevel } from './env';
+import { EnvironmentAPIImpl, ExtensionsAPI, EnvironmentAPI, Extension, ExtensionKind, UIKind, LogLevel, TelemetrySender, TelemetryLoggerOptions, TelemetryLogger } from './env';
 import { DebugAPI, TasksAPI, DebugSession, DebugConfiguration, Task, TaskProvider, TaskDefinition, TaskGroup, ProcessExecution, ShellExecution, CustomExecution, TaskRevealKind, TaskPanelKind, Breakpoint, SourceBreakpoint, FunctionBreakpoint } from './debug';
 import { FileSystemAPI, FileSystemWatcher } from './fs';
 import { EventEmitter, Event, Disposable } from './events';
 import { Uri } from './uri';
 import { SCMAPI, SourceControl, SourceControlResourceGroup, SourceControlResourceState, SourceControlInputBox } from './scm';
-import { MarkdownString, ThemeColor, ThemeIcon, ConfigurationTarget, ExtensionMode, CancellationToken, CancellationTokenSource, ProgressLocation, Memento, FileType, FileStat, FilePermission, FileSystemError } from './common';
+import { MarkdownString, ThemeColor, ThemeIcon, ConfigurationTarget, ExtensionMode, CancellationToken, CancellationTokenSource, ProgressLocation, Memento, FileType, FileStat, FilePermission, FileSystemError, EnvironmentVariableCollection, EnvironmentVariableMutatorType, CancellationError, CodeLens, l10n, DocumentLink, SignatureHelp, SignatureInformation, ParameterInformation, InlayHint, InlayHintKind, FoldingRange, FoldingRangeKind, SelectionRange, CallHierarchyItem, TypeHierarchyItem, Color, ColorInformation, ColorPresentation, SemanticTokens, SemanticTokensBuilder, SemanticTokensLegend, ViewColumn, CodeActionKind, InlineCompletionItem, InlineCompletionList, LinkedEditingRanges, SymbolInformation, WorkspaceSymbol, SymbolTag, DocumentHighlight, DocumentHighlightKind, RelativePattern } from './common';
 import { ProgressAPI, QuickPickItem, QuickPick, InputBox } from './progress';
 import { AuthenticationAPI, SecretStorageImpl, AuthenticationSession, AuthenticationProvider, AuthenticationProviderAuthenticationSessionsChangeEvent } from './authentication';
 import { NotebooksAPI, NotebookCell, NotebookCellKind, NotebookDocument, NotebookController, NotebookCellExecution, NotebookCellExecutionState, NotebookCellData, NotebookCellOutput, NotebookCellOutputItem } from './notebooks';
 import { CommentsAPI, CommentController, CommentThread, Comment, CommentMode, CommentThreadCollapsibleState } from './comments';
 import { TestingAPI, TestController, TestItem, TestRun, TestRunProfile, TestRunProfileKind, TestRunRequest } from './testing';
 import { FileSystemAPI as WorkspaceFSAPI, TextDocumentContentAPI, TextDocumentContentProvider } from './fileSystem';
+import { registerBuiltinCommands } from './builtin-commands';
 
 // Global API instances
 let windowAPI: WindowAPI;
@@ -75,6 +76,49 @@ export function initializeAPI(bridge: ExtensionHostBridge) {
   testingAPI = new TestingAPI(bridge);
   workspaceFSAPI = new WorkspaceFSAPI(bridge);
   textDocumentContentAPI = new TextDocumentContentAPI(bridge);
+
+  // Register built-in VS Code commands
+  registerBuiltinCommands(
+    (command, handler) => commandsAPI.registerCommand(command, handler),
+    {
+      bridge,
+      languagesAPI
+    }
+  );
+}
+
+/**
+ * Register an extension with the extensions API so it can be found via getExtension()
+ * This should be called when an extension is loaded (before activation)
+ */
+export function registerLoadedExtension<T = any>(
+  extensionId: string,
+  extensionPath: string,
+  packageJSON: any,
+  isActive: boolean = false,
+  exports?: T
+): Extension<T> {
+  return extensionsAPI.registerExtension(
+    extensionId,
+    extensionPath,
+    packageJSON,
+    exports as T
+  );
+}
+
+/**
+ * Update an extension's active state and exports after activation
+ */
+export function updateExtensionActivation<T = any>(
+  extensionId: string,
+  exports: T
+): void {
+  const ext = extensionsAPI.getExtension<T>(extensionId);
+  if (ext) {
+    // ExtensionImpl uses (this as any) for properties, so we do the same
+    (ext as any)._isActive = true;
+    (ext as any)._exports = exports;
+  }
 }
 
 /**
@@ -101,6 +145,15 @@ export const window = {
   },
   get showQuickPick() {
     return windowAPI.showQuickPick.bind(windowAPI);
+  },
+  get showOpenDialog() {
+    return windowAPI.showOpenDialog.bind(windowAPI);
+  },
+  get showSaveDialog() {
+    return windowAPI.showSaveDialog.bind(windowAPI);
+  },
+  get showWorkspaceFolderPick() {
+    return windowAPI.showWorkspaceFolderPick.bind(windowAPI);
   },
   get createOutputChannel() {
     return windowAPI.createOutputChannel.bind(windowAPI);
@@ -223,6 +276,9 @@ export const workspace = {
   get saveTextDocument() {
     return workspaceAPI.saveTextDocument.bind(workspaceAPI);
   },
+  get applyEdit() {
+    return workspaceAPI.applyEdit.bind(workspaceAPI);
+  },
   get getConfiguration() {
     return workspaceAPI.getConfiguration.bind(workspaceAPI);
   },
@@ -264,6 +320,13 @@ export const workspace = {
   },
   get registerTextDocumentContentProvider() {
     return textDocumentContentAPI.registerTextDocumentContentProvider.bind(textDocumentContentAPI);
+  },
+  // Workspace trust
+  get isTrusted() {
+    return workspaceAPI.isTrusted;
+  },
+  get onDidGrantWorkspaceTrust() {
+    return workspaceAPI.onDidGrantWorkspaceTrust;
   },
 };
 
@@ -412,6 +475,9 @@ export const env: EnvironmentAPI = {
   },
   openExternal(target: any) {
     return environmentAPI.openExternal(target);
+  },
+  createTelemetryLogger(sender: TelemetrySender, options?: TelemetryLoggerOptions): TelemetryLogger {
+    return environmentAPI.createTelemetryLogger(sender, options);
   },
 };
 
@@ -667,6 +733,39 @@ export {
   FileStat,
   FilePermission,
   FileSystemError,
+  EnvironmentVariableCollection,
+  EnvironmentVariableMutatorType,
+  CancellationError,
+  CodeLens,
+  l10n,
+  DocumentLink,
+  SignatureHelp,
+  SignatureInformation,
+  ParameterInformation,
+  InlayHint,
+  InlayHintKind,
+  FoldingRange,
+  FoldingRangeKind,
+  SelectionRange,
+  CallHierarchyItem,
+  TypeHierarchyItem,
+  Color,
+  ColorInformation,
+  ColorPresentation,
+  SemanticTokens,
+  SemanticTokensBuilder,
+  SemanticTokensLegend,
+  ViewColumn,
+  CodeActionKind,
+  InlineCompletionItem,
+  InlineCompletionList,
+  LinkedEditingRanges,
+  SymbolInformation,
+  WorkspaceSymbol,
+  SymbolTag,
+  DocumentHighlight,
+  DocumentHighlightKind,
+  RelativePattern,
   // Progress types
   QuickPickItem,
   QuickPick,

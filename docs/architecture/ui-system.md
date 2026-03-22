@@ -841,4 +841,4 @@ Extensions can contribute UI through:
 4. **Commands**: Available in command palette
 5. **Menus**: Context menus, editor menus, etc.
 
-See [EXTENSION_SYSTEM.md](EXTENSION_SYSTEM.md) for details.
+See [extension-system.md](extension-system.md) for details.

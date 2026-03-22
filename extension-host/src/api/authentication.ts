@@ -62,7 +62,7 @@ export class AuthenticationAPI {
       providerId,
       scopes,
       options
-    });
+    }) as { session?: AuthenticationSession };
     return result.session;
   }
 
@@ -98,26 +98,42 @@ export class SecretStorageImpl implements SecretStorage {
   private _onDidChange = new EventEmitter<string>();
   readonly onDidChange = this._onDidChange.event;
 
-  constructor(private bridge: ExtensionHostBridge) {
+  constructor(
+    private bridge: ExtensionHostBridge,
+    private extensionId: string
+  ) {
     this.setupListeners();
   }
 
   private setupListeners(): void {
     this.bridge.on('secretChanged', (data: any) => {
-      this._onDidChange.fire(data.key);
+      // Only fire if the change is for this extension
+      if (data.extensionId === this.extensionId) {
+        this._onDidChange.fire(data.key);
+      }
     });
   }
 
   async get(key: string): Promise<string | undefined> {
-    const result = await this.bridge.request('secretGet', { key });
-    return result.value;
+    const result = await this.bridge.request('secretGet', {
+      extensionId: this.extensionId,
+      key
+    }) as { value?: string };
+    return result?.value;
   }
 
   async store(key: string, value: string): Promise<void> {
-    await this.bridge.request('secretStore', { key, value });
+    await this.bridge.request('secretStore', {
+      extensionId: this.extensionId,
+      key,
+      value
+    });
   }
 
   async delete(key: string): Promise<void> {
-    await this.bridge.request('secretDelete', { key });
+    await this.bridge.request('secretDelete', {
+      extensionId: this.extensionId,
+      key
+    });
   }
 }

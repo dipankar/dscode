@@ -274,14 +274,14 @@ Once installed and running:
 4. **Save changes** - Ctrl+S (watch dirty indicator)
 5. **Multiple tabs** - Open multiple files, switch between them
 
-See [FEATURES.md](FEATURES.md) for full feature list!
+See [features.md](features.md) for full feature list!
 
 ## Getting Help
 
 If you encounter issues:
 
 1. Check this troubleshooting guide
-2. See [GETTING_STARTED.md](GETTING_STARTED.md) for development setup
+2. See [getting-started.md](getting-started.md) for development setup
 3. Check GitHub Issues: https://github.com/yourusername/dscode/issues
 4. Join Discord: [link]
 

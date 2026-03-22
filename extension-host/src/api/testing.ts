@@ -165,25 +165,28 @@ class TestRunProfileImpl implements TestRunProfile {
   }
 }
 
-export interface TestController {
-  readonly id: string;
-  label: string;
-  items: any; // TestItemCollection
-  createRunProfile(label: string, kind: TestRunProfileKind, runHandler: (request: TestRunRequest, token: any) => void | Promise<void>, isDefault?: boolean, tag?: any): TestRunProfile;
-  createTestRun(request: TestRunRequest, name?: string, persist?: boolean): TestRun;
-  createTestItem(id: string, label: string, uri?: Uri): TestItem;
-  dispose(): void;
+export class TestController {
+  readonly id!: string;
+  get label(): string { return ''; }
+  set label(value: string) {}
+  get items(): any { return { size: 0 }; }
+  createRunProfile(label: string, kind: TestRunProfileKind, runHandler: (request: TestRunRequest, token: any) => void | Promise<void>, isDefault?: boolean, tag?: any): TestRunProfile { throw new Error('Not implemented'); }
+  createTestRun(request: TestRunRequest, name?: string, persist?: boolean): TestRun { throw new Error('Not implemented'); }
+  createTestItem(id: string, label: string, uri?: Uri): TestItem { throw new Error('Not implemented'); }
+  dispose(): void {}
 }
 
-class TestControllerImpl implements TestController {
+class TestControllerImpl extends TestController {
   private _label: string;
   private _items: any = { size: 0 }; // TestItemCollection mock
 
   constructor(
     private bridge: ExtensionHostBridge,
-    public readonly id: string,
+    id: string,
     label: string
   ) {
+    super();
+    (this as any).id = id;
     this._label = label;
   }
 
