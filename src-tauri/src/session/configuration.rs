@@ -71,7 +71,7 @@ impl ConfigurationStore {
     fn get_section(&self, section: Option<&str>) -> Option<&Value> {
         match section {
             None => Some(&self.data),
-            Some(path) if path.is_empty() => Some(&self.data),
+            Some("") => Some(&self.data),
             Some(path) => {
                 let mut current = &self.data;
                 for segment in path.split('.') {
@@ -134,7 +134,7 @@ impl ConfigurationStore {
 
         let mut path_segments: Vec<&str> = section
             .map(|s| s.split('.').filter(|seg| !seg.is_empty()).collect())
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_default();
         path_segments.extend(segments);
 
         let mut current = &mut self.data;

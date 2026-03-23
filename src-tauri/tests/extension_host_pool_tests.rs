@@ -1,4 +1,4 @@
-/**
+/*
  * Integration tests for Extension Host Pool
  *
  * Tests the critical IPC infrastructure including:
@@ -9,9 +9,6 @@
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use tokio::time::{sleep, Duration};
-
     // Note: These are integration tests that would require actual NNG sockets
     // For now, we'll create unit-style tests for the logic
 

@@ -1,6 +1,5 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 // Allow dead code and unused imports for work-in-progress modules
 // These are scaffolded features that will be integrated in future iterations
 #![allow(dead_code)]
@@ -18,180 +17,29 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 // system-allocator uses the default Rust allocator, no configuration needed
 
+mod bootstrap;
 mod commands;
+mod config;
 mod core;
-mod watcher;
+mod debug;
 mod extension_host;
-mod monitoring;
+mod logging;
 mod lsp;
 mod marketplace;
-mod terminal;
-mod debug;
+mod monitoring;
 mod session;
-mod config;
-mod logging;
+mod terminal;
+mod watcher;
 
 use commands::*;
-use watcher::FileWatcherState;
-use extension_host::{ExtensionHostManager, NngIpcManager};
-use monitoring::ResourceMonitor;
 use lsp::LspManager;
-use terminal::TerminalManager;
-use debug::DebugManager;
-use session::SessionManager;
-use config::AppDirectories;
-use std::sync::{Mutex, Arc};
-use tokio::sync::RwLock;
-use tauri::{Manager, menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, image::Image};
 
 fn main() {
     // Initialize LSP manager with default language servers
     let lsp_manager = LspManager::new();
     lsp_manager.initialize_defaults();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .manage(FileWatcherState::new())
-        .manage(Mutex::new(ExtensionHostManager::new("global".to_string())))
-        .manage(NngIpcManager::new())
-        .manage(ResourceMonitor::new())
-        .manage(Mutex::new(lsp_manager))
-        .manage(Mutex::new(TerminalManager::new()))
-        .manage(Mutex::new(DebugManager::new()))
-        .setup(|app| {
-            let app_dirs = AppDirectories::from_app_config(app.config())
-                .map_err(|e| Box::<dyn std::error::Error>::from(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
-            app.manage(app_dirs.clone());
-
-            // Load tray icon from PNG bytes
-            let icon_bytes = include_bytes!("../icons/tray-icon.png");
-            let icon = Image::from_bytes(icon_bytes)
-                .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to load icon: {}", e))))?;
-
-            // Create tray menu
-            let show = MenuItem::with_id(app, "show", "Show DSCode", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quit])?;
-
-            // Build tray icon
-            let _tray = TrayIconBuilder::new()
-                .icon(icon)
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_tray_icon_event(|tray, event| {
-                    match event {
-                        TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } => {
-                            // Left click on tray - show window
-                            if let Some(app) = tray.app_handle().get_webview_window("main") {
-                                let _ = app.show();
-                                let _ = app.set_focus();
-                                println!("[Tray] Window restored via tray click");
-                            }
-                        }
-                        _ => {}
-                    }
-                })
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                println!("[Tray] Window restored via menu");
-                            }
-                        }
-                        "quit" => {
-                            println!("[Tray] Quit requested");
-                            app.exit(0);
-                        }
-                        _ => {}
-                    }
-                })
-                .build(app)?;
-
-            // Initialize Session Manager
-            let session_manager = Arc::new(RwLock::new(
-                SessionManager::new(app.handle().clone(), app_dirs.clone())
-            ));
-
-            // Store in app state
-            app.manage(session_manager.clone());
-
-            // Initialize command registry
-            let command_registry = CommandRegistry::new(app.handle().clone());
-            app.manage(command_registry);
-
-            // Initialize menu registry
-            let menu_registry = MenuRegistry::new(app.handle().clone());
-            app.manage(menu_registry);
-
-            // Initialize keybinding registry
-            let keybinding_registry = KeybindingRegistry::new(app.handle().clone());
-            app.manage(keybinding_registry);
-
-            // Initialize status bar registry
-            let status_bar_registry = StatusBarRegistry::new(app.handle().clone());
-            app.manage(status_bar_registry);
-
-            // Initialize activity bar registry
-            let activity_bar_registry = ActivityBarRegistry::new(app.handle().clone());
-            app.manage(activity_bar_registry);
-
-            // Initialize language features registry
-            let language_features_registry = LanguageFeaturesRegistry::new(app.handle().clone());
-            app.manage(language_features_registry);
-
-            // Initialize workspace registry
-            let workspace_registry = WorkspaceRegistry::new(app.handle().clone());
-            app.manage(workspace_registry);
-
-            // Initialize file system registry
-            let filesystem_registry = FileSystemRegistry::new(app.handle().clone());
-            app.manage(filesystem_registry);
-
-            // Initialize text document registry
-            let textdocument_registry = TextDocumentRegistry::new(app.handle().clone());
-            app.manage(textdocument_registry);
-
-            // Initialize configuration registry
-            let configuration_registry = ConfigurationRegistry::new(app.handle().clone());
-            let configuration_registry_arc = Arc::new(configuration_registry);
-            app.manage(configuration_registry_arc.clone());
-
-            // Initialize settings UI registry
-            let settings_ui_registry = SettingsUIRegistry::new(app.handle().clone(), configuration_registry_arc.clone());
-            app.manage(settings_ui_registry);
-
-            // Initialize debug configuration registry
-            let debug_configuration_registry = DebugConfigurationRegistry::new(app.handle().clone());
-            app.manage(debug_configuration_registry);
-
-            // Initialize theme registry
-            let theme_registry = ThemeRegistry::new(app.handle().clone());
-            app.manage(theme_registry);
-
-            // Initialize task registry
-            let task_registry = TaskRegistry::new(app.handle().clone());
-            app.manage(task_registry);
-
-            // Initialize marketplace UI registry
-            let marketplace_ui_registry = MarketplaceUIRegistry::new(app.handle().clone());
-            app.manage(marketplace_ui_registry);
-
-            // Initialize test runner registry
-            let test_runner_registry = TestRunnerRegistry::new(app.handle().clone());
-            app.manage(test_runner_registry);
-
-            // Initialize session asynchronously
-            let session = session_manager.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = session.read().await.initialize().await {
-                    eprintln!("[App] Failed to initialize session: {}", e);
-                }
-            });
-
-            Ok(())
-        })
+    bootstrap::configure_builder(tauri::Builder::default(), lsp_manager)
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
