@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { open } from '@tauri-apps/plugin-dialog';
   import { workspaceStore } from '../stores/workspace';
   import { editorStore } from '../stores/editor';
+  import { addWorkspaceFolder } from '../stores/session';
   import type { FileNode } from '../stores/workspace';
   import TreeNode from './TreeNode.svelte';
   import { FolderOpen } from 'lucide-svelte';
@@ -12,6 +13,7 @@
   import GitView from './GitView.svelte';
   import SearchView from './SearchView.svelte';
   import ExtensionView from './ExtensionView.svelte';
+  import { WindowEventName } from '../lib/contracts/events';
 
   let fileTree: FileNode[] = [];
   let selectedFile: string | null = null;
@@ -23,18 +25,32 @@
   }
 
   let extensionViews: ExtensionViewInfo[] = [];
+  let refreshWorkspaceListener: (() => void) | null = null;
 
   $: {
     fileTree = $workspaceStore.fileTree;
     selectedFile = $workspaceStore.selectedFile;
   }
 
-  activeActivity.subscribe((activity) => {
+  const unsubscribeActiveActivity = activeActivity.subscribe((activity) => {
     currentActivity = activity;
   });
 
   onMount(async () => {
+    const handleRefreshWorkspace = () => {
+      void refreshWorkspace();
+    };
+
+    window.addEventListener(WindowEventName.refreshWorkspace, handleRefreshWorkspace);
+    refreshWorkspaceListener = () =>
+      window.removeEventListener(WindowEventName.refreshWorkspace, handleRefreshWorkspace);
+
     await loadExtensionViews();
+  });
+
+  onDestroy(() => {
+    unsubscribeActiveActivity();
+    refreshWorkspaceListener?.();
   });
 
   async function loadExtensionViews() {
@@ -70,6 +86,7 @@
     });
 
     if (selected && typeof selected === 'string') {
+      await addWorkspaceFolder(selected);
       workspaceStore.setRootPath(selected);
       await loadWorkspace(selected);
     }
@@ -136,7 +153,7 @@
       {:else}
         <div class="tree-view">
           {#each fileTree as node}
-            <TreeNode {node} {selectedFile} onFileClick={handleFileClick} onRefresh={refreshWorkspace} depth={0} />
+            <TreeNode {node} {selectedFile} onFileClick={handleFileClick} depth={0} />
           {/each}
         </div>
       {/if}

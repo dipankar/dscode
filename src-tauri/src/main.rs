@@ -35,9 +35,8 @@ use commands::*;
 use lsp::LspManager;
 
 fn main() {
-    // Initialize LSP manager with default language servers
+    // Initialize LSP manager (default servers registered lazily on first use)
     let lsp_manager = LspManager::new();
-    lsp_manager.initialize_defaults();
 
     bootstrap::configure_builder(tauri::Builder::default(), lsp_manager)
         .invoke_handler(tauri::generate_handler![

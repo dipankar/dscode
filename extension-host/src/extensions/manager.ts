@@ -11,6 +11,7 @@ import { ExtensionHostBridge } from '../bridge';
 import * as vscodeAPI from '../api/vscode';
 import { PersistentMemento } from './storage';
 import { ActivationEventManager, ParsedActivationEvent } from './activation';
+import { SecretStorageImpl } from '../api/authentication';
 
 export interface ExtensionManifest {
   name: string;
@@ -54,7 +55,9 @@ export class ExtensionManager {
 
     // Set up activation callback
     this.activationManager.setActivationCallback(async (extensionId, event) => {
-      console.log(`[ExtensionManager] Activation requested for ${extensionId} due to ${event.type}${event.argument ? ':' + event.argument : ''}`);
+      console.log(
+        `[ExtensionManager] Activation requested for ${extensionId} due to ${event.type}${event.argument ? ':' + event.argument : ''}`
+      );
       await this.activateExtension(extensionId);
     });
 
@@ -76,7 +79,7 @@ export class ExtensionManager {
               console.error(`[vscode API] Accessing undefined property: ${prop}`);
             }
             return value;
-          }
+          },
         });
       }
       return originalRequire.apply(this, arguments);
@@ -89,7 +92,7 @@ export class ExtensionManager {
   async loadExtensions() {
     // Get extensions directory from main app
     console.log('[ExtensionManager] Requesting extensions directory...');
-    const extensionsDir = await this.bridge.request('get-extensions-dir', {}) as string;
+    const extensionsDir = (await this.bridge.request('get-extensions-dir', {})) as string;
     console.log('[ExtensionManager] Received extensions directory:', extensionsDir);
 
     if (!fs.existsSync(extensionsDir)) {
@@ -98,9 +101,10 @@ export class ExtensionManager {
     }
 
     console.log('[ExtensionManager] Reading directory contents...');
-    const extensionDirs = fs.readdirSync(extensionsDir, { withFileTypes: true })
-      .filter(dirent => dirent.isDirectory())
-      .map(dirent => dirent.name);
+    const extensionDirs = fs
+      .readdirSync(extensionsDir, { withFileTypes: true })
+      .filter((dirent) => dirent.isDirectory())
+      .map((dirent) => dirent.name);
 
     console.error('[ExtensionManager] Found extension directories:', extensionDirs);
 
@@ -122,7 +126,10 @@ export class ExtensionManager {
       try {
         await this.activateExtension(extensionId);
       } catch (error) {
-        console.error(`[ExtensionManager] Failed to activate immediate extension ${extensionId}:`, error);
+        console.error(
+          `[ExtensionManager] Failed to activate immediate extension ${extensionId}:`,
+          error
+        );
       }
     }
   }
@@ -249,9 +256,7 @@ export class ExtensionManager {
       throw new Error('Extension manifest not found');
     }
 
-    const manifest: ExtensionManifest = JSON.parse(
-      fs.readFileSync(manifestPath, 'utf-8')
-    );
+    const manifest: ExtensionManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
 
     const extensionId = `${manifest.publisher}.${manifest.name}`;
 
@@ -266,9 +271,9 @@ export class ExtensionManager {
     vscodeAPI.registerLoadedExtension(
       extensionId,
       extensionPath,
-      manifest,  // packageJSON
-      false,     // isActive
-      undefined  // exports (not yet activated)
+      manifest, // packageJSON
+      false, // isActive
+      undefined // exports (not yet activated)
     );
 
     console.log(`[ExtensionManager] Loaded: ${extensionId}`);
@@ -279,7 +284,9 @@ export class ExtensionManager {
       this.activationManager.registerExtension(extensionId, activationEvents);
     } else {
       // Extensions without activation events are activated immediately (VS Code behavior)
-      console.log(`[ExtensionManager] No activation events for ${extensionId}, marking for immediate activation`);
+      console.log(
+        `[ExtensionManager] No activation events for ${extensionId}, marking for immediate activation`
+      );
       this.activationManager.registerExtension(extensionId, ['*']);
     }
   }
@@ -312,7 +319,9 @@ export class ExtensionManager {
       const dependencies = extension.manifest.extensionDependencies || [];
       for (const dependencyId of dependencies) {
         if (!this.extensions.has(dependencyId)) {
-          console.error(`[ExtensionManager] Missing dependency ${dependencyId} required by ${extensionId}`);
+          console.error(
+            `[ExtensionManager] Missing dependency ${dependencyId} required by ${extensionId}`
+          );
           continue;
         }
         await this.activateExtension(dependencyId);
@@ -327,8 +336,12 @@ export class ExtensionManager {
         });
         const storagePaths = storageInfo as { global: string; workspace: string; logs: string };
 
-        const globalState = new PersistentMemento(path.join(storagePaths.global, 'globalState.json'));
-        const workspaceState = new PersistentMemento(path.join(storagePaths.workspace, 'workspaceState.json'));
+        const globalState = new PersistentMemento(
+          path.join(storagePaths.global, 'globalState.json')
+        );
+        const workspaceState = new PersistentMemento(
+          path.join(storagePaths.workspace, 'workspaceState.json')
+        );
 
         // Create extension context
         const context: vscodeAPI.ExtensionContext = {
@@ -345,15 +358,17 @@ export class ExtensionManager {
             update: (key: string, value: any) => workspaceState.update(key, value),
             keys: () => workspaceState.keys(),
           },
-          secrets: {
-            get: async (key: string) => undefined,
-            store: async (key: string, value: string) => {},
-            delete: async (key: string) => {},
-            onDidChange: (() => ({ dispose: () => {} })) as any,
-          } as any,
+          secrets: new SecretStorageImpl(this.bridge, extensionId),
           extensionMode: 1, // Production
           asAbsolutePath: (relativePath: string) => {
-            return path.join(extension.extensionPath, relativePath);
+            const resolved = path.resolve(extension.extensionPath, relativePath);
+            if (
+              !resolved.startsWith(extension.extensionPath + path.sep) &&
+              resolved !== extension.extensionPath
+            ) {
+              throw new Error(`Path escapes extension directory: ${relativePath}`);
+            }
+            return resolved;
           },
           storageUri: vscodeAPI.Uri.file(storagePaths.workspace),
           globalStorageUri: vscodeAPI.Uri.file(storagePaths.global),
@@ -406,7 +421,9 @@ export class ExtensionManager {
           console.error(`  SourceControl: ${typeof testVscode.SourceControl}`);
           console.error(`  TestController: ${typeof testVscode.TestController}`);
           console.error(`  CommentController: ${typeof testVscode.CommentController}`);
-          console.error(`  EnvironmentVariableCollection: ${typeof testVscode.EnvironmentVariableCollection}`);
+          console.error(
+            `  EnvironmentVariableCollection: ${typeof testVscode.EnvironmentVariableCollection}`
+          );
         } catch (e) {
           console.error(`[ExtensionManager] Failed to load vscode module:`, e);
         }
@@ -480,8 +497,7 @@ export class ExtensionManager {
    * Deactivate all extensions
    */
   async deactivateAll() {
-    const activeExtensions = Array.from(this.extensions.values())
-      .filter(ext => ext.isActive);
+    const activeExtensions = Array.from(this.extensions.values()).filter((ext) => ext.isActive);
 
     for (const extension of activeExtensions) {
       await this.deactivateExtension(extension.id);

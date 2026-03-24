@@ -45,7 +45,9 @@ class InputValidator {
     }
 
     if (!this.EXTENSION_ID_PATTERN.test(id)) {
-      throw new Error('Extension ID contains invalid characters. Use only alphanumeric, dots, dashes, and underscores');
+      throw new Error(
+        'Extension ID contains invalid characters. Use only alphanumeric, dots, dashes, and underscores'
+      );
     }
 
     // Check for path traversal attempts
@@ -107,7 +109,11 @@ class InputValidator {
   /**
    * Validates a generic string with max length
    */
-  static validateString(value: unknown, fieldName: string, maxLength: number = this.MAX_STRING_LENGTH): string {
+  static validateString(
+    value: unknown,
+    fieldName: string,
+    maxLength: number = this.MAX_STRING_LENGTH
+  ): string {
     if (typeof value !== 'string') {
       throw new Error(`${fieldName} must be a string`);
     }
@@ -180,7 +186,7 @@ export class ExtensionHostBridge extends EventEmitter {
           }
           const delay = attempt * 200;
           console.error(`[Bridge] Connection attempt ${attempt} failed, retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
 
@@ -444,7 +450,11 @@ export class ExtensionHostBridge extends EventEmitter {
     // Trigger onAuthenticationRequest activation event
     this.nng.on('trigger-on-authentication', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
-      const providerId = InputValidator.validateString(validatedPayload.providerId, 'providerId', 256);
+      const providerId = InputValidator.validateString(
+        validatedPayload.providerId,
+        'providerId',
+        256
+      );
       await this.emitAsync('trigger-on-authentication', providerId);
       return { success: true };
     });
@@ -496,6 +506,33 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
+    this.nng.on('provideImplementation', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideImplementation', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideTypeDefinition', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideTypeDefinition', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideDeclaration', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideDeclaration', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
     // References provider request
     this.nng.on('provideReferences', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
@@ -541,6 +578,141 @@ export class ExtensionHostBridge extends EventEmitter {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideCompletion', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideSignatureHelp', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideSignatureHelp', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideRename', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideRename', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('prepareRename', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('prepareRename', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideCodeLenses', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideCodeLenses', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideDocumentLinks', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideDocumentLinks', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideDocumentHighlights', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideDocumentHighlights', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideFoldingRanges', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideFoldingRanges', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideSelectionRanges', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideSelectionRanges', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideWorkspaceSymbols', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideWorkspaceSymbols', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideRangeFormatting', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideRangeFormatting', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideOnTypeFormatting', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideOnTypeFormatting', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideInlineCompletionItems', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideInlineCompletionItems', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideSemanticTokens', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideSemanticTokens', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideDocumentColors', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideDocumentColors', data, (response: unknown) => {
+          resolve(response);
+        });
+      });
+    });
+
+    this.nng.on('provideColorPresentations', async (payload: unknown) => {
+      const data = InputValidator.validatePayload(payload);
+      return new Promise((resolve) => {
+        this.emit('provideColorPresentations', data, (response: unknown) => {
           resolve(response);
         });
       });

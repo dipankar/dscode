@@ -1,18 +1,19 @@
-use tauri::State;
 use crate::commands::{
-    LanguageFeaturesRegistry, HoverProvider, DefinitionProvider,
-    CompletionProvider, CodeActionProvider, Diagnostic,
-    SignatureHelpProvider, ReferencesProvider, CodeLensProvider,
-    DocumentHighlightProvider, FoldingRangeProvider, RenameProvider,
-    DocumentSymbolsProvider, WorkspaceSymbolsProvider,
-    DocumentFormattingProvider, RangeFormattingProvider, OnTypeFormattingProvider,
-    SemanticTokensProvider, InlineValuesProvider, ColorProvider,
-    SelectionRangeProvider, LinkedEditingRangeProvider,
+    CodeActionProvider, CodeLensProvider, ColorProvider, CompletionProvider, DefinitionProvider,
+    Diagnostic, DocumentFormattingProvider, DocumentHighlightProvider, DocumentSymbolsProvider,
+    FoldingRangeProvider, HoverProvider, InlineValuesProvider, LanguageFeaturesRegistry,
+    LinkedEditingRangeProvider, OnTypeFormattingProvider, RangeFormattingProvider,
+    ReferencesProvider, RenameProvider, SelectionRangeProvider, SemanticTokensProvider,
+    SignatureHelpProvider, WorkspaceSymbolsProvider,
 };
-use crate::extension_host::NngIpcManager;
-use std::collections::HashMap;
+use crate::session::SessionManager;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tauri::State;
+use tokio::sync::RwLock;
 
 /// Position in a document
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -505,8 +506,57 @@ pub async fn clear_language_providers(
 // ==================== Provider Invocation Commands ====================
 // These commands invoke the extension host to get language feature results
 
-// Default extension host ID for the global instance
-const DEFAULT_EXT_HOST_ID: &str = "global";
+const EXTENSION_HOST_ID: &str = "main";
+
+fn document_payload(language_id: &str, uri: &str) -> serde_json::Value {
+    json!({
+        "uri": uri,
+        "languageId": language_id,
+    })
+}
+
+fn position_payload(line: u32, character: u32) -> serde_json::Value {
+    json!({
+        "line": line,
+        "character": character,
+    })
+}
+
+async fn request_language_feature(
+    session: Arc<RwLock<SessionManager>>,
+    request_name: &str,
+    operation_name: &str,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let session = session.read().await;
+    session
+        .nng_manager()
+        .request(EXTENSION_HOST_ID, request_name, payload)
+        .await
+        .map_err(|e| format!("Failed to invoke {}: {}", operation_name, e))
+}
+
+fn parse_result<T: DeserializeOwned>(
+    response: serde_json::Value,
+    result_name: &str,
+) -> Result<T, String> {
+    serde_json::from_value(response)
+        .map_err(|e| format!("Failed to parse {} result: {}", result_name, e))
+}
+
+fn parse_result_field<T: DeserializeOwned>(
+    response: serde_json::Value,
+    field: &str,
+    result_name: &str,
+) -> Result<Vec<T>, String> {
+    let values = response
+        .get(field)
+        .cloned()
+        .ok_or_else(|| format!("Missing {} field in {} result", field, result_name))?;
+
+    serde_json::from_value(values)
+        .map_err(|e| format!("Failed to parse {} result: {}", result_name, e))
+}
 
 /// Invoke hover provider via extension host
 #[tauri::command]
@@ -515,31 +565,26 @@ pub async fn invoke_hover_provider(
     uri: String,
     line: u32,
     character: u32,
-    ipc: State<'_, NngIpcManager>,
+    session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Option<HoverResult>, String> {
     let payload = json!({
         "languageId": language_id,
-        "document": {
-            "uri": uri,
-            "languageId": language_id
-        },
-        "position": {
-            "line": line,
-            "character": character
-        }
+        "document": document_payload(&language_id, &uri),
+        "position": position_payload(line, character),
     });
 
-    match ipc.request(DEFAULT_EXT_HOST_ID, "provideHover", payload).await {
-        Ok(response) => {
-            if response.is_null() {
-                Ok(None)
-            } else {
-                serde_json::from_value(response)
-                    .map(Some)
-                    .map_err(|e| format!("Failed to parse hover result: {}", e))
-            }
-        }
-        Err(e) => Err(format!("Failed to invoke hover provider: {}", e)),
+    let response = request_language_feature(
+        session.inner().clone(),
+        "provideHover",
+        "hover provider",
+        payload,
+    )
+    .await?;
+
+    if response.is_null() {
+        Ok(None)
+    } else {
+        parse_result(response, "hover").map(Some)
     }
 }
 
@@ -550,27 +595,23 @@ pub async fn invoke_definition_provider(
     uri: String,
     line: u32,
     character: u32,
-    ipc: State<'_, NngIpcManager>,
+    session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<DefinitionResult, String> {
     let payload = json!({
         "languageId": language_id,
-        "document": {
-            "uri": uri,
-            "languageId": language_id
-        },
-        "position": {
-            "line": line,
-            "character": character
-        }
+        "document": document_payload(&language_id, &uri),
+        "position": position_payload(line, character),
     });
 
-    match ipc.request(DEFAULT_EXT_HOST_ID, "provideDefinition", payload).await {
-        Ok(response) => {
-            serde_json::from_value(response)
-                .map_err(|e| format!("Failed to parse definition result: {}", e))
-        }
-        Err(e) => Err(format!("Failed to invoke definition provider: {}", e)),
-    }
+    let response = request_language_feature(
+        session.inner().clone(),
+        "provideDefinition",
+        "definition provider",
+        payload,
+    )
+    .await?;
+
+    parse_result(response, "definition")
 }
 
 /// Invoke references provider via extension host
@@ -581,33 +622,24 @@ pub async fn invoke_references_provider(
     line: u32,
     character: u32,
     include_declaration: bool,
-    ipc: State<'_, NngIpcManager>,
+    session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Vec<LocationResult>, String> {
     let payload = json!({
         "languageId": language_id,
-        "document": {
-            "uri": uri,
-            "languageId": language_id
-        },
-        "position": {
-            "line": line,
-            "character": character
-        },
+        "document": document_payload(&language_id, &uri),
+        "position": position_payload(line, character),
         "includeDeclaration": include_declaration
     });
 
-    match ipc.request(DEFAULT_EXT_HOST_ID, "provideReferences", payload).await {
-        Ok(response) => {
-            #[derive(Deserialize)]
-            struct RefsResult {
-                references: Vec<LocationResult>,
-            }
-            serde_json::from_value::<RefsResult>(response)
-                .map(|r| r.references)
-                .map_err(|e| format!("Failed to parse references result: {}", e))
-        }
-        Err(e) => Err(format!("Failed to invoke references provider: {}", e)),
-    }
+    let response = request_language_feature(
+        session.inner().clone(),
+        "provideReferences",
+        "references provider",
+        payload,
+    )
+    .await?;
+
+    parse_result_field(response, "references", "references")
 }
 
 /// Invoke code actions provider via extension host
@@ -620,39 +652,27 @@ pub async fn invoke_code_actions_provider(
     end_line: u32,
     end_character: u32,
     diagnostics: Vec<serde_json::Value>,
-    ipc: State<'_, NngIpcManager>,
+    session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Vec<CodeActionResult>, String> {
     let payload = json!({
         "languageId": language_id,
-        "document": {
-            "uri": uri,
-            "languageId": language_id
-        },
+        "document": document_payload(&language_id, &uri),
         "range": {
-            "start": {
-                "line": start_line,
-                "character": start_character
-            },
-            "end": {
-                "line": end_line,
-                "character": end_character
-            }
+            "start": position_payload(start_line, start_character),
+            "end": position_payload(end_line, end_character),
         },
         "diagnostics": diagnostics
     });
 
-    match ipc.request(DEFAULT_EXT_HOST_ID, "provideCodeActions", payload).await {
-        Ok(response) => {
-            #[derive(Deserialize)]
-            struct ActionsResult {
-                actions: Vec<CodeActionResult>,
-            }
-            serde_json::from_value::<ActionsResult>(response)
-                .map(|r| r.actions)
-                .map_err(|e| format!("Failed to parse code actions result: {}", e))
-        }
-        Err(e) => Err(format!("Failed to invoke code actions provider: {}", e)),
-    }
+    let response = request_language_feature(
+        session.inner().clone(),
+        "provideCodeActions",
+        "code actions provider",
+        payload,
+    )
+    .await?;
+
+    parse_result_field(response, "actions", "code actions")
 }
 
 /// Invoke document symbols provider via extension host
@@ -660,28 +680,22 @@ pub async fn invoke_code_actions_provider(
 pub async fn invoke_document_symbols_provider(
     language_id: String,
     uri: String,
-    ipc: State<'_, NngIpcManager>,
+    session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Vec<DocumentSymbolResult>, String> {
     let payload = json!({
         "languageId": language_id,
-        "document": {
-            "uri": uri,
-            "languageId": language_id
-        }
+        "document": document_payload(&language_id, &uri),
     });
 
-    match ipc.request(DEFAULT_EXT_HOST_ID, "provideDocumentSymbols", payload).await {
-        Ok(response) => {
-            #[derive(Deserialize)]
-            struct SymbolsResult {
-                symbols: Vec<DocumentSymbolResult>,
-            }
-            serde_json::from_value::<SymbolsResult>(response)
-                .map(|r| r.symbols)
-                .map_err(|e| format!("Failed to parse document symbols result: {}", e))
-        }
-        Err(e) => Err(format!("Failed to invoke document symbols provider: {}", e)),
-    }
+    let response = request_language_feature(
+        session.inner().clone(),
+        "provideDocumentSymbols",
+        "document symbols provider",
+        payload,
+    )
+    .await?;
+
+    parse_result_field(response, "symbols", "document symbols")
 }
 
 /// Invoke document formatting provider via extension host
@@ -691,32 +705,26 @@ pub async fn invoke_document_formatting_provider(
     uri: String,
     tab_size: u32,
     insert_spaces: bool,
-    ipc: State<'_, NngIpcManager>,
+    session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Vec<TextEditResult>, String> {
     let payload = json!({
         "languageId": language_id,
-        "document": {
-            "uri": uri,
-            "languageId": language_id
-        },
+        "document": document_payload(&language_id, &uri),
         "options": {
             "tabSize": tab_size,
             "insertSpaces": insert_spaces
         }
     });
 
-    match ipc.request(DEFAULT_EXT_HOST_ID, "provideDocumentFormatting", payload).await {
-        Ok(response) => {
-            #[derive(Deserialize)]
-            struct EditsResult {
-                edits: Vec<TextEditResult>,
-            }
-            serde_json::from_value::<EditsResult>(response)
-                .map(|r| r.edits)
-                .map_err(|e| format!("Failed to parse formatting result: {}", e))
-        }
-        Err(e) => Err(format!("Failed to invoke formatting provider: {}", e)),
-    }
+    let response = request_language_feature(
+        session.inner().clone(),
+        "provideDocumentFormatting",
+        "formatting provider",
+        payload,
+    )
+    .await?;
+
+    parse_result_field(response, "edits", "formatting")
 }
 
 /// Invoke completion provider via extension host
@@ -727,41 +735,30 @@ pub async fn invoke_completion_provider(
     line: u32,
     character: u32,
     trigger_character: Option<String>,
-    ipc: State<'_, NngIpcManager>,
+    session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let payload = json!({
         "languageId": language_id,
-        "document": {
-            "uri": uri,
-            "languageId": language_id
-        },
-        "position": {
-            "line": line,
-            "character": character
-        },
+        "document": document_payload(&language_id, &uri),
+        "position": position_payload(line, character),
         "context": {
             "triggerKind": if trigger_character.is_some() { 2 } else { 1 },
             "triggerCharacter": trigger_character
         }
     });
 
-    match ipc.request(DEFAULT_EXT_HOST_ID, "provideCompletion", payload).await {
-        Ok(response) => {
-            #[derive(Deserialize)]
-            struct CompletionResult {
-                items: Vec<serde_json::Value>,
-            }
-            // Handle both array and object with items
-            if response.is_array() {
-                serde_json::from_value(response)
-                    .map_err(|e| format!("Failed to parse completion result: {}", e))
-            } else {
-                serde_json::from_value::<CompletionResult>(response)
-                    .map(|r| r.items)
-                    .map_err(|e| format!("Failed to parse completion result: {}", e))
-            }
-        }
-        Err(e) => Err(format!("Failed to invoke completion provider: {}", e)),
+    let response = request_language_feature(
+        session.inner().clone(),
+        "provideCompletion",
+        "completion provider",
+        payload,
+    )
+    .await?;
+
+    if response.is_array() {
+        parse_result(response, "completion")
+    } else {
+        parse_result_field(response, "items", "completion")
     }
 }
 
@@ -769,14 +766,19 @@ pub async fn invoke_completion_provider(
 #[tauri::command]
 pub async fn trigger_language_activation(
     language_id: String,
-    ipc: State<'_, NngIpcManager>,
+    session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<(), String> {
     let payload = json!({
         "languageId": language_id
     });
 
-    match ipc.request(DEFAULT_EXT_HOST_ID, "trigger-on-language", payload).await {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("Failed to trigger language activation: {}", e)),
-    }
+    request_language_feature(
+        session.inner().clone(),
+        "trigger-on-language",
+        "language activation",
+        payload,
+    )
+    .await?;
+
+    Ok(())
 }

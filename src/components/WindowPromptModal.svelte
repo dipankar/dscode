@@ -1,37 +1,69 @@
 <script lang="ts">
+  import { onMount, tick } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { clearWindowPrompt } from '../stores/windowPrompt';
   import type { WindowPrompt } from '../stores/windowPrompt';
 
   export let prompt: WindowPrompt;
+  let primaryButton: HTMLButtonElement | null = null;
 
   async function choose(action?: string) {
     try {
-      await invoke('window_message_action', {
-        requestId: prompt.id,
-        action,
-      });
+      if (prompt.kind === 'local' && prompt.resolve) {
+        prompt.resolve(action);
+      } else {
+        await invoke('window_message_action', {
+          requestId: prompt.id,
+          action,
+        });
+      }
     } catch (error) {
       console.error('[WindowPromptModal] Failed to respond to message:', error);
     } finally {
       clearWindowPrompt();
     }
   }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      choose(undefined);
+    }
+  }
+
+  onMount(async () => {
+    await tick();
+    primaryButton?.focus();
+  });
 </script>
 
-<div class="prompt-overlay" role="dialog" aria-modal="true">
+<svelte:window on:keydown={handleKeydown} />
+
+<div class="prompt-overlay" role="dialog" aria-modal="true" aria-labelledby="window-prompt-title">
   <div class="prompt-modal">
     <header class={`level-${prompt.level}`}>
-      <h2>{prompt.level === 'error' ? 'Error' : prompt.level === 'warning' ? 'Warning' : 'Information'}</h2>
+      <h2 id="window-prompt-title">
+        {prompt.level === 'error'
+          ? 'Error'
+          : prompt.level === 'warning'
+            ? 'Warning'
+            : 'Information'}
+      </h2>
     </header>
     <main>
       <p>{prompt.message}</p>
     </main>
     <footer>
       {#each prompt.actions as action (action)}
-        <button class="action" on:click={() => choose(action)}>{action}</button>
+        <button bind:this={primaryButton} class="action" on:click={() => choose(action)}
+          >{action}</button
+        >
       {/each}
-      <button class="secondary" on:click={() => choose(undefined)}>Cancel</button>
+      {#if prompt.showCancelButton !== false}
+        <button class="secondary" on:click={() => choose(undefined)} aria-label="Cancel prompt"
+          >{prompt.cancelLabel || 'Cancel'}</button
+        >
+      {/if}
     </footer>
   </div>
 </div>

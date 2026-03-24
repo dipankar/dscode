@@ -3,6 +3,7 @@
   import { listen } from '@tauri-apps/api/event';
   import { workspaceStore } from '../stores/workspace';
   import { onMount, onDestroy } from 'svelte';
+  import { showConfirmPrompt } from '../stores/windowPrompt';
   import BranchSwitcher from './BranchSwitcher.svelte';
 
   interface GitChange {
@@ -29,8 +30,8 @@
   // Debounce time for file change events (ms)
   const DEBOUNCE_MS = 500;
 
-  $: stagedChanges = gitStatus?.changes.filter(c => c.staged) || [];
-  $: unstagedChanges = gitStatus?.changes.filter(c => !c.staged) || [];
+  $: stagedChanges = gitStatus?.changes.filter((c) => c.staged) || [];
+  $: unstagedChanges = gitStatus?.changes.filter((c) => !c.staged) || [];
 
   // Debounced refresh to avoid too many updates
   function debouncedRefresh() {
@@ -53,14 +54,16 @@
       if (path && (path.includes('.git') || !path.includes('node_modules'))) {
         debouncedRefresh();
       }
-    }).then((unlisten) => {
-      fileChangeUnlisten = unlisten;
-    }).catch((e) => {
-      console.error('[GitView] Failed to set up file watcher:', e);
-      // Fallback to polling if file watching fails
-      const interval = setInterval(loadGitStatus, 5000);
-      fileChangeUnlisten = () => clearInterval(interval);
-    });
+    })
+      .then((unlisten) => {
+        fileChangeUnlisten = unlisten;
+      })
+      .catch((e) => {
+        console.error('[GitView] Failed to set up file watcher:', e);
+        // Fallback to polling if file watching fails
+        const interval = setInterval(loadGitStatus, 5000);
+        fileChangeUnlisten = () => clearInterval(interval);
+      });
   });
 
   onDestroy(() => {
@@ -97,23 +100,35 @@
 
   function getStatusIcon(status: string): string {
     switch (status) {
-      case 'added': return '✚';
-      case 'modified': return '●';
-      case 'deleted': return '✖';
-      case 'renamed': return '➜';
-      case 'conflicted': return '⚠';
-      default: return '?';
+      case 'added':
+        return '✚';
+      case 'modified':
+        return '●';
+      case 'deleted':
+        return '✖';
+      case 'renamed':
+        return '➜';
+      case 'conflicted':
+        return '⚠';
+      default:
+        return '?';
     }
   }
 
   function getStatusColor(status: string): string {
     switch (status) {
-      case 'added': return '#89d185';
-      case 'modified': return '#f9c74f';
-      case 'deleted': return '#f48771';
-      case 'renamed': return '#90caf9';
-      case 'conflicted': return '#ff6b6b';
-      default: return 'var(--text-secondary)';
+      case 'added':
+        return '#89d185';
+      case 'modified':
+        return '#f9c74f';
+      case 'deleted':
+        return '#f48771';
+      case 'renamed':
+        return '#90caf9';
+      case 'conflicted':
+        return '#ff6b6b';
+      default:
+        return 'var(--text-secondary)';
     }
   }
 
@@ -125,7 +140,7 @@
     try {
       const commitId = await invoke<string>('git_commit', {
         repoPath: rootPath,
-        message: commitMessage
+        message: commitMessage,
       });
       console.log('[Git] Commit created:', commitId);
       commitMessage = '';
@@ -143,7 +158,7 @@
     try {
       await invoke('git_stage_file', {
         repoPath: rootPath,
-        filePath
+        filePath,
       });
       await loadGitStatus();
     } catch (e) {
@@ -159,7 +174,7 @@
     try {
       await invoke('git_unstage_file', {
         repoPath: rootPath,
-        filePath
+        filePath,
       });
       await loadGitStatus();
     } catch (e) {
@@ -174,7 +189,7 @@
 
     try {
       await invoke('git_stage_all', {
-        repoPath: rootPath
+        repoPath: rootPath,
       });
       await loadGitStatus();
     } catch (e) {
@@ -189,7 +204,7 @@
 
     try {
       const result = await invoke<string>('git_push', {
-        repoPath: rootPath
+        repoPath: rootPath,
       });
       console.log('[Git] Push:', result);
       await loadGitStatus();
@@ -205,7 +220,7 @@
 
     try {
       const result = await invoke<string>('git_pull', {
-        repoPath: rootPath
+        repoPath: rootPath,
       });
       console.log('[Git] Pull:', result);
       await loadGitStatus();
@@ -225,13 +240,17 @@
     const rootPath = $workspaceStore.rootPath;
     if (!rootPath) return;
 
-    const confirmed = confirm(`Discard changes to ${filePath}?`);
+    const confirmed = await showConfirmPrompt(`Discard changes to ${filePath}?`, {
+      level: 'warning',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Cancel',
+    });
     if (!confirmed) return;
 
     try {
       await invoke('git_discard_file', {
         repoPath: rootPath,
-        filePath
+        filePath,
       });
       await loadGitStatus();
     } catch (e) {
@@ -248,18 +267,20 @@
       const diff = await invoke('git_get_diff', {
         repoPath: rootPath,
         filePath,
-        staged
+        staged,
       });
       console.log('[Git] Diff:', diff);
 
       // Dispatch event to open diff viewer
-      window.dispatchEvent(new CustomEvent('openDiff', {
-        detail: {
-          filePath,
-          diff,
-          staged
-        }
-      }));
+      window.dispatchEvent(
+        new CustomEvent('openDiff', {
+          detail: {
+            filePath,
+            diff,
+            staged,
+          },
+        })
+      );
     } catch (e) {
       console.error('[Git] Get diff failed:', e);
       error = `Get diff failed: ${e}`;
@@ -272,8 +293,10 @@
     <h3>SOURCE CONTROL</h3>
     <button class="refresh-btn" on:click={loadGitStatus} title="Refresh">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M13.65 2.35A8 8 0 102.35 13.65 8 8 0 1013.65 2.35zM8 14A6 6 0 118 2a6 6 0 010 12z"/>
-        <path d="M8 4v4l3 1.5"/>
+        <path
+          d="M13.65 2.35A8 8 0 102.35 13.65 8 8 0 1013.65 2.35zM8 14A6 6 0 118 2a6 6 0 010 12z"
+        />
+        <path d="M8 4v4l3 1.5" />
       </svg>
     </button>
   </div>
@@ -292,13 +315,21 @@
     {:else if gitStatus}
       <!-- Branch Info -->
       <div class="branch-info">
-        <button class="branch-name" on:click={() => branchSwitcherVisible = true} title="Switch branch">
+        <button
+          class="branch-name"
+          on:click={() => (branchSwitcherVisible = true)}
+          title="Switch branch"
+        >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z"/>
+            <path
+              d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z"
+            />
           </svg>
           {gitStatus.branch}
           <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+            <path
+              d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"
+            />
           </svg>
         </button>
         <div class="branch-actions">
@@ -314,20 +345,32 @@
           {/if}
           <button class="action-btn" on:click={handleSync} title="Sync (Pull & Push)">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5.75.75 0 0 0 1.5 0 7 7 0 1 0-7 7 .75.75 0 0 0 0-1.5A5.5 5.5 0 1 1 8 2.5z"/>
-              <path d="M13.25 8.75a.75.75 0 0 0 0-1.5h-3.5a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0V9.56l2.22 2.22a.75.75 0 1 0 1.06-1.06l-2.22-2.22h1.69z"/>
+              <path
+                d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5.75.75 0 0 0 1.5 0 7 7 0 1 0-7 7 .75.75 0 0 0 0-1.5A5.5 5.5 0 1 1 8 2.5z"
+              />
+              <path
+                d="M13.25 8.75a.75.75 0 0 0 0-1.5h-3.5a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0V9.56l2.22 2.22a.75.75 0 1 0 1.06-1.06l-2.22-2.22h1.69z"
+              />
             </svg>
           </button>
           <button class="action-btn" on:click={handlePull} title="Pull">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 12.5a.75.75 0 0 1-.75-.75V3.56L5.03 5.78a.75.75 0 0 1-1.06-1.06l3.5-3.5a.75.75 0 0 1 1.06 0l3.5 3.5a.75.75 0 0 1-1.06 1.06L8.75 3.56v8.19a.75.75 0 0 1-.75.75z"/>
-              <path d="M3.5 9.75a.75.75 0 0 1 .75.75v1.75c0 .138.112.25.25.25h6.5a.25.25 0 0 0 .25-.25V10.5a.75.75 0 0 1 1.5 0v1.75A1.75 1.75 0 0 1 11 14H4.5A1.75 1.75 0 0 1 2.75 12.25V10.5a.75.75 0 0 1 .75-.75z"/>
+              <path
+                d="M8 12.5a.75.75 0 0 1-.75-.75V3.56L5.03 5.78a.75.75 0 0 1-1.06-1.06l3.5-3.5a.75.75 0 0 1 1.06 0l3.5 3.5a.75.75 0 0 1-1.06 1.06L8.75 3.56v8.19a.75.75 0 0 1-.75.75z"
+              />
+              <path
+                d="M3.5 9.75a.75.75 0 0 1 .75.75v1.75c0 .138.112.25.25.25h6.5a.25.25 0 0 0 .25-.25V10.5a.75.75 0 0 1 1.5 0v1.75A1.75 1.75 0 0 1 11 14H4.5A1.75 1.75 0 0 1 2.75 12.25V10.5a.75.75 0 0 1 .75-.75z"
+              />
             </svg>
           </button>
           <button class="action-btn" on:click={handlePush} title="Push">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 1a.75.75 0 0 1 .75.75v8.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V1.75A.75.75 0 0 1 8 1z"/>
-              <path d="M3.5 9.75a.75.75 0 0 1 .75.75v1.75c0 .138.112.25.25.25h6.5a.25.25 0 0 0 .25-.25V10.5a.75.75 0 0 1 1.5 0v1.75A1.75 1.75 0 0 1 11 14H4.5A1.75 1.75 0 0 1 2.75 12.25V10.5a.75.75 0 0 1 .75-.75z"/>
+              <path
+                d="M8 1a.75.75 0 0 1 .75.75v8.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V1.75A.75.75 0 0 1 8 1z"
+              />
+              <path
+                d="M3.5 9.75a.75.75 0 0 1 .75.75v1.75c0 .138.112.25.25.25h6.5a.25.25 0 0 0 .25-.25V10.5a.75.75 0 0 1 1.5 0v1.75A1.75 1.75 0 0 1 11 14H4.5A1.75 1.75 0 0 1 2.75 12.25V10.5a.75.75 0 0 1 .75-.75z"
+              />
             </svg>
           </button>
         </div>
@@ -347,11 +390,7 @@
               }
             }}
           />
-          <button
-            class="commit-btn"
-            disabled={!commitMessage.trim()}
-            on:click={handleCommit}
-          >
+          <button class="commit-btn" disabled={!commitMessage.trim()} on:click={handleCommit}>
             Commit ({stagedChanges.length})
           </button>
         </div>
@@ -370,9 +409,14 @@
                   <span class="status-icon" style="color: {getStatusColor(change.status)}">
                     {getStatusIcon(change.status)}
                   </span>
-                  <span class="change-path" title={change.path} on:click={() => viewDiff(change.path, true)}>
+                  <button
+                    class="change-path"
+                    title={change.path}
+                    type="button"
+                    on:click={() => viewDiff(change.path, true)}
+                  >
                     {change.path}
-                  </span>
+                  </button>
                   <div class="file-actions">
                     <button
                       class="file-action-btn"
@@ -380,7 +424,9 @@
                       title="View Diff"
                     >
                       <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M1.5 1.75V13.5h13.75a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1-.75-.75V1.75a.75.75 0 0 1 1.5 0zm14.28 2.53-5.25 5.25a.75.75 0 0 1-1.06 0L7 7.06 4.28 9.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.25-3.25a.75.75 0 0 1 1.06 0L10 7.94l4.72-4.72a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042z"/>
+                        <path
+                          d="M1.5 1.75V13.5h13.75a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1-.75-.75V1.75a.75.75 0 0 1 1.5 0zm14.28 2.53-5.25 5.25a.75.75 0 0 1-1.06 0L7 7.06 4.28 9.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.25-3.25a.75.75 0 0 1 1.06 0L10 7.94l4.72-4.72a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042z"
+                        />
                       </svg>
                     </button>
                     <button
@@ -403,7 +449,9 @@
               <span class="section-title">Changes ({unstagedChanges.length})</span>
               <button class="stage-all-btn" on:click={stageAll} title="Stage All">
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z"/>
+                  <path
+                    d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z"
+                  />
                 </svg>
               </button>
             </div>
@@ -413,9 +461,14 @@
                   <span class="status-icon" style="color: {getStatusColor(change.status)}">
                     {getStatusIcon(change.status)}
                   </span>
-                  <span class="change-path" title={change.path} on:click={() => viewDiff(change.path, false)}>
+                  <button
+                    class="change-path"
+                    title={change.path}
+                    type="button"
+                    on:click={() => viewDiff(change.path, false)}
+                  >
                     {change.path}
-                  </span>
+                  </button>
                   <div class="file-actions">
                     <button
                       class="file-action-btn"
@@ -423,7 +476,9 @@
                       title="View Diff"
                     >
                       <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M1.5 1.75V13.5h13.75a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1-.75-.75V1.75a.75.75 0 0 1 1.5 0zm14.28 2.53-5.25 5.25a.75.75 0 0 1-1.06 0L7 7.06 4.28 9.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.25-3.25a.75.75 0 0 1 1.06 0L10 7.94l4.72-4.72a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042z"/>
+                        <path
+                          d="M1.5 1.75V13.5h13.75a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1-.75-.75V1.75a.75.75 0 0 1 1.5 0zm14.28 2.53-5.25 5.25a.75.75 0 0 1-1.06 0L7 7.06 4.28 9.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.25-3.25a.75.75 0 0 1 1.06 0L10 7.94l4.72-4.72a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042z"
+                        />
                       </svg>
                     </button>
                     <button
@@ -439,7 +494,9 @@
                       title="Discard Changes"
                     >
                       <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25z"/>
+                        <path
+                          d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25z"
+                        />
                       </svg>
                     </button>
                   </div>
@@ -736,6 +793,10 @@
     font-family: 'Fira Code', 'Consolas', monospace;
     color: var(--text-primary);
     cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
   }
 
   .change-path:hover {

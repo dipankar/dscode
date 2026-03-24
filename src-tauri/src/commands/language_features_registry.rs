@@ -261,6 +261,104 @@ pub struct LinkedEditingRangeProvider {
     pub selector: DocumentSelector,
 }
 
+trait OwnedProvider {
+    fn id(&self) -> &str;
+    fn owner(&self) -> &str;
+}
+
+trait SelectableProvider: OwnedProvider {
+    fn matches_document(&self, language: &str, uri: &str) -> bool;
+}
+
+macro_rules! impl_owned_provider {
+    ($($provider:ty),+ $(,)?) => {
+        $(
+            impl OwnedProvider for $provider {
+                fn id(&self) -> &str {
+                    &self.id
+                }
+
+                fn owner(&self) -> &str {
+                    &self.owner
+                }
+            }
+        )+
+    };
+}
+
+macro_rules! impl_selectable_provider {
+    ($($provider:ty),+ $(,)?) => {
+        $(
+            impl SelectableProvider for $provider {
+                fn matches_document(&self, language: &str, uri: &str) -> bool {
+                    self.selector.matches(language, uri)
+                }
+            }
+        )+
+    };
+}
+
+impl_owned_provider!(
+    HoverProvider,
+    DefinitionProvider,
+    CompletionProvider,
+    CodeActionProvider,
+    SignatureHelpProvider,
+    ReferencesProvider,
+    CodeLensProvider,
+    DocumentHighlightProvider,
+    FoldingRangeProvider,
+    RenameProvider,
+    DocumentSymbolsProvider,
+    WorkspaceSymbolsProvider,
+    DocumentFormattingProvider,
+    RangeFormattingProvider,
+    OnTypeFormattingProvider,
+    SemanticTokensProvider,
+    InlineValuesProvider,
+    ColorProvider,
+    SelectionRangeProvider,
+    LinkedEditingRangeProvider,
+);
+
+impl_selectable_provider!(
+    HoverProvider,
+    DefinitionProvider,
+    CompletionProvider,
+    CodeActionProvider,
+    SignatureHelpProvider,
+    ReferencesProvider,
+    CodeLensProvider,
+    DocumentHighlightProvider,
+    FoldingRangeProvider,
+    RenameProvider,
+    DocumentSymbolsProvider,
+    DocumentFormattingProvider,
+    RangeFormattingProvider,
+    OnTypeFormattingProvider,
+    SemanticTokensProvider,
+    InlineValuesProvider,
+    ColorProvider,
+    SelectionRangeProvider,
+    LinkedEditingRangeProvider,
+);
+
+macro_rules! register_provider_method {
+    ($fn_name:ident, $field:ident, $provider_type:ty, $label:literal) => {
+        pub fn $fn_name(&self, provider: $provider_type) -> Result<String, String> {
+            self.register_provider(&self.$field, provider, $label)
+        }
+    };
+}
+
+macro_rules! get_matching_provider_method {
+    ($fn_name:ident, $field:ident, $provider_type:ty) => {
+        pub fn $fn_name(&self, language: &str, uri: &str) -> Vec<$provider_type> {
+            self.get_matching_providers(&self.$field, language, uri)
+        }
+    };
+}
+
 /// Registry for language features contributed by extensions
 pub struct LanguageFeaturesRegistry {
     hover_providers: Arc<RwLock<Vec<HoverProvider>>>,
@@ -315,613 +413,257 @@ impl LanguageFeaturesRegistry {
         }
     }
 
-    /// Register a hover provider
-    pub fn register_hover_provider(&self, provider: HoverProvider) -> Result<String, String> {
-        let mut providers = self.hover_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered hover provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a definition provider
-    pub fn register_definition_provider(
+    fn register_provider<T: OwnedProvider>(
         &self,
-        provider: DefinitionProvider,
+        providers: &Arc<RwLock<Vec<T>>>,
+        provider: T,
+        label: &str,
     ) -> Result<String, String> {
-        let mut providers = self.definition_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
+        let id = provider.id().to_string();
+        let mut providers = providers.write().map_err(|e| e.to_string())?;
         providers.push(provider);
 
-        println!(
-            "[LanguageFeatures] Registered definition provider: {}",
-            id
-        );
+        println!("[LanguageFeatures] Registered {} provider: {}", label, id);
 
         Ok(id)
     }
 
-    /// Register a completion provider
-    pub fn register_completion_provider(
+    fn get_matching_providers<T: SelectableProvider + Clone>(
         &self,
-        provider: CompletionProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.completion_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered completion provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a code action provider
-    pub fn register_code_action_provider(
-        &self,
-        provider: CodeActionProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.code_action_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered code action provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a signature help provider
-    pub fn register_signature_help_provider(
-        &self,
-        provider: SignatureHelpProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.signature_help_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered signature help provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a references provider
-    pub fn register_references_provider(
-        &self,
-        provider: ReferencesProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.references_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered references provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a code lens provider
-    pub fn register_code_lens_provider(
-        &self,
-        provider: CodeLensProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.code_lens_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered code lens provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a document highlight provider
-    pub fn register_document_highlight_provider(
-        &self,
-        provider: DocumentHighlightProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.document_highlight_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered document highlight provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a folding range provider
-    pub fn register_folding_range_provider(
-        &self,
-        provider: FoldingRangeProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.folding_range_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered folding range provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a rename provider
-    pub fn register_rename_provider(
-        &self,
-        provider: RenameProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.rename_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered rename provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a document symbols provider
-    pub fn register_document_symbols_provider(
-        &self,
-        provider: DocumentSymbolsProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.document_symbols_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered document symbols provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a workspace symbols provider
-    pub fn register_workspace_symbols_provider(
-        &self,
-        provider: WorkspaceSymbolsProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.workspace_symbols_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered workspace symbols provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a document formatting provider
-    pub fn register_document_formatting_provider(
-        &self,
-        provider: DocumentFormattingProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.document_formatting_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered document formatting provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a range formatting provider
-    pub fn register_range_formatting_provider(
-        &self,
-        provider: RangeFormattingProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.range_formatting_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered range formatting provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register an on-type formatting provider
-    pub fn register_on_type_formatting_provider(
-        &self,
-        provider: OnTypeFormattingProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.on_type_formatting_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered on-type formatting provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a semantic tokens provider
-    pub fn register_semantic_tokens_provider(
-        &self,
-        provider: SemanticTokensProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.semantic_tokens_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered semantic tokens provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register an inline values provider
-    pub fn register_inline_values_provider(
-        &self,
-        provider: InlineValuesProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.inline_values_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered inline values provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a color provider
-    pub fn register_color_provider(
-        &self,
-        provider: ColorProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.color_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered color provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a selection range provider
-    pub fn register_selection_range_provider(
-        &self,
-        provider: SelectionRangeProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.selection_range_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered selection range provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Register a linked editing range provider
-    pub fn register_linked_editing_range_provider(
-        &self,
-        provider: LinkedEditingRangeProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.linked_editing_range_providers.write().map_err(|e| e.to_string())?;
-        let id = provider.id.clone();
-        providers.push(provider);
-
-        println!(
-            "[LanguageFeatures] Registered linked editing range provider: {}",
-            id
-        );
-
-        Ok(id)
-    }
-
-    /// Get hover providers for a document
-    pub fn get_hover_providers(
-        &self,
+        providers: &Arc<RwLock<Vec<T>>>,
         language: &str,
         uri: &str,
-    ) -> Vec<HoverProvider> {
-        let providers = self.hover_providers.read().unwrap();
+    ) -> Vec<T> {
+        let providers = providers.read().unwrap();
         providers
             .iter()
-            .filter(|p| p.selector.matches(language, uri))
+            .filter(|provider| provider.matches_document(language, uri))
             .cloned()
             .collect()
     }
 
-    /// Get definition providers for a document
-    pub fn get_definition_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<DefinitionProvider> {
-        let providers = self.definition_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get completion providers for a document
-    pub fn get_completion_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<CompletionProvider> {
-        let providers = self.completion_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get code action providers for a document
-    pub fn get_code_action_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<CodeActionProvider> {
-        let providers = self.code_action_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get signature help providers for a document
-    pub fn get_signature_help_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<SignatureHelpProvider> {
-        let providers = self.signature_help_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get references providers for a document
-    pub fn get_references_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<ReferencesProvider> {
-        let providers = self.references_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get code lens providers for a document
-    pub fn get_code_lens_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<CodeLensProvider> {
-        let providers = self.code_lens_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get document highlight providers for a document
-    pub fn get_document_highlight_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<DocumentHighlightProvider> {
-        let providers = self.document_highlight_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get folding range providers for a document
-    pub fn get_folding_range_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<FoldingRangeProvider> {
-        let providers = self.folding_range_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get rename providers for a document
-    pub fn get_rename_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<RenameProvider> {
-        let providers = self.rename_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get document symbols providers for a document
-    pub fn get_document_symbols_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<DocumentSymbolsProvider> {
-        let providers = self.document_symbols_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get all workspace symbols providers
-    pub fn get_workspace_symbols_providers(&self) -> Vec<WorkspaceSymbolsProvider> {
-        let providers = self.workspace_symbols_providers.read().unwrap();
+    fn get_all_providers<T: Clone>(&self, providers: &Arc<RwLock<Vec<T>>>) -> Vec<T> {
+        let providers = providers.read().unwrap();
         providers.iter().cloned().collect()
     }
 
-    /// Get document formatting providers for a document
-    pub fn get_document_formatting_providers(
+    fn clear_owned_provider_list<T: OwnedProvider>(
         &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<DocumentFormattingProvider> {
-        let providers = self.document_formatting_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
+        providers: &Arc<RwLock<Vec<T>>>,
+        owner: &str,
+    ) -> Result<(), String> {
+        let mut providers = providers.write().map_err(|e| e.to_string())?;
+        providers.retain(|provider| provider.owner() != owner);
+        Ok(())
     }
 
-    /// Get range formatting providers for a document
-    pub fn get_range_formatting_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<RangeFormattingProvider> {
-        let providers = self.range_formatting_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
+    register_provider_method!(
+        register_hover_provider,
+        hover_providers,
+        HoverProvider,
+        "hover"
+    );
+    register_provider_method!(
+        register_definition_provider,
+        definition_providers,
+        DefinitionProvider,
+        "definition"
+    );
+    register_provider_method!(
+        register_completion_provider,
+        completion_providers,
+        CompletionProvider,
+        "completion"
+    );
+    register_provider_method!(
+        register_code_action_provider,
+        code_action_providers,
+        CodeActionProvider,
+        "code action"
+    );
+    register_provider_method!(
+        register_signature_help_provider,
+        signature_help_providers,
+        SignatureHelpProvider,
+        "signature help"
+    );
+    register_provider_method!(
+        register_references_provider,
+        references_providers,
+        ReferencesProvider,
+        "references"
+    );
+    register_provider_method!(
+        register_code_lens_provider,
+        code_lens_providers,
+        CodeLensProvider,
+        "code lens"
+    );
+    register_provider_method!(
+        register_document_highlight_provider,
+        document_highlight_providers,
+        DocumentHighlightProvider,
+        "document highlight"
+    );
+    register_provider_method!(
+        register_folding_range_provider,
+        folding_range_providers,
+        FoldingRangeProvider,
+        "folding range"
+    );
+    register_provider_method!(
+        register_rename_provider,
+        rename_providers,
+        RenameProvider,
+        "rename"
+    );
+    register_provider_method!(
+        register_document_symbols_provider,
+        document_symbols_providers,
+        DocumentSymbolsProvider,
+        "document symbols"
+    );
+    register_provider_method!(
+        register_workspace_symbols_provider,
+        workspace_symbols_providers,
+        WorkspaceSymbolsProvider,
+        "workspace symbols"
+    );
+    register_provider_method!(
+        register_document_formatting_provider,
+        document_formatting_providers,
+        DocumentFormattingProvider,
+        "document formatting"
+    );
+    register_provider_method!(
+        register_range_formatting_provider,
+        range_formatting_providers,
+        RangeFormattingProvider,
+        "range formatting"
+    );
+    register_provider_method!(
+        register_on_type_formatting_provider,
+        on_type_formatting_providers,
+        OnTypeFormattingProvider,
+        "on-type formatting"
+    );
+    register_provider_method!(
+        register_semantic_tokens_provider,
+        semantic_tokens_providers,
+        SemanticTokensProvider,
+        "semantic tokens"
+    );
+    register_provider_method!(
+        register_inline_values_provider,
+        inline_values_providers,
+        InlineValuesProvider,
+        "inline values"
+    );
+    register_provider_method!(
+        register_color_provider,
+        color_providers,
+        ColorProvider,
+        "color"
+    );
+    register_provider_method!(
+        register_selection_range_provider,
+        selection_range_providers,
+        SelectionRangeProvider,
+        "selection range"
+    );
+    register_provider_method!(
+        register_linked_editing_range_provider,
+        linked_editing_range_providers,
+        LinkedEditingRangeProvider,
+        "linked editing range"
+    );
 
-    /// Get on-type formatting providers for a document
-    pub fn get_on_type_formatting_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<OnTypeFormattingProvider> {
-        let providers = self.on_type_formatting_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
+    get_matching_provider_method!(get_hover_providers, hover_providers, HoverProvider);
+    get_matching_provider_method!(
+        get_definition_providers,
+        definition_providers,
+        DefinitionProvider
+    );
+    get_matching_provider_method!(
+        get_completion_providers,
+        completion_providers,
+        CompletionProvider
+    );
+    get_matching_provider_method!(
+        get_code_action_providers,
+        code_action_providers,
+        CodeActionProvider
+    );
+    get_matching_provider_method!(
+        get_signature_help_providers,
+        signature_help_providers,
+        SignatureHelpProvider
+    );
+    get_matching_provider_method!(
+        get_references_providers,
+        references_providers,
+        ReferencesProvider
+    );
+    get_matching_provider_method!(
+        get_code_lens_providers,
+        code_lens_providers,
+        CodeLensProvider
+    );
+    get_matching_provider_method!(
+        get_document_highlight_providers,
+        document_highlight_providers,
+        DocumentHighlightProvider
+    );
+    get_matching_provider_method!(
+        get_folding_range_providers,
+        folding_range_providers,
+        FoldingRangeProvider
+    );
+    get_matching_provider_method!(get_rename_providers, rename_providers, RenameProvider);
+    get_matching_provider_method!(
+        get_document_symbols_providers,
+        document_symbols_providers,
+        DocumentSymbolsProvider
+    );
+    get_matching_provider_method!(
+        get_document_formatting_providers,
+        document_formatting_providers,
+        DocumentFormattingProvider
+    );
+    get_matching_provider_method!(
+        get_range_formatting_providers,
+        range_formatting_providers,
+        RangeFormattingProvider
+    );
+    get_matching_provider_method!(
+        get_on_type_formatting_providers,
+        on_type_formatting_providers,
+        OnTypeFormattingProvider
+    );
+    get_matching_provider_method!(
+        get_semantic_tokens_providers,
+        semantic_tokens_providers,
+        SemanticTokensProvider
+    );
+    get_matching_provider_method!(
+        get_inline_values_providers,
+        inline_values_providers,
+        InlineValuesProvider
+    );
+    get_matching_provider_method!(get_color_providers, color_providers, ColorProvider);
+    get_matching_provider_method!(
+        get_selection_range_providers,
+        selection_range_providers,
+        SelectionRangeProvider
+    );
+    get_matching_provider_method!(
+        get_linked_editing_range_providers,
+        linked_editing_range_providers,
+        LinkedEditingRangeProvider
+    );
 
-    /// Get semantic tokens providers for a document
-    pub fn get_semantic_tokens_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<SemanticTokensProvider> {
-        let providers = self.semantic_tokens_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get inline values providers for a document
-    pub fn get_inline_values_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<InlineValuesProvider> {
-        let providers = self.inline_values_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get color providers for a document
-    pub fn get_color_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<ColorProvider> {
-        let providers = self.color_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get selection range providers for a document
-    pub fn get_selection_range_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<SelectionRangeProvider> {
-        let providers = self.selection_range_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
-    }
-
-    /// Get linked editing range providers for a document
-    pub fn get_linked_editing_range_providers(
-        &self,
-        language: &str,
-        uri: &str,
-    ) -> Vec<LinkedEditingRangeProvider> {
-        let providers = self.linked_editing_range_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.selector.matches(language, uri))
-            .cloned()
-            .collect()
+    pub fn get_workspace_symbols_providers(&self) -> Vec<WorkspaceSymbolsProvider> {
+        self.get_all_providers(&self.workspace_symbols_providers)
     }
 
     /// Publish diagnostics for a document
@@ -941,7 +683,10 @@ impl LanguageFeaturesRegistry {
         }
 
         // Emit event to frontend
-        if let Err(e) = self.app_handle.emit("diagnostics-changed", &(uri, diagnostics)) {
+        if let Err(e) = self
+            .app_handle
+            .emit("diagnostics-changed", &(uri, diagnostics))
+        {
             eprintln!("[LanguageFeatures] Failed to emit diagnostics event: {}", e);
         }
 
@@ -966,15 +711,16 @@ impl LanguageFeaturesRegistry {
 
         // Remove diagnostics that belong to this owner
         all_diagnostics.retain(|_, diagnostics| {
-            diagnostics.retain(|d| {
-                d.source.as_ref().map(|s| s.as_str()) != Some(owner)
-            });
+            diagnostics.retain(|d| d.source.as_ref().map(|s| s.as_str()) != Some(owner));
             !diagnostics.is_empty()
         });
 
         // Emit event to frontend
         if let Err(e) = self.app_handle.emit("diagnostics-cleared", owner) {
-            eprintln!("[LanguageFeatures] Failed to emit diagnostics cleared event: {}", e);
+            eprintln!(
+                "[LanguageFeatures] Failed to emit diagnostics cleared event: {}",
+                e
+            );
         }
 
         Ok(())
@@ -982,110 +728,34 @@ impl LanguageFeaturesRegistry {
 
     /// Clear all providers from a specific owner (for cleanup)
     pub fn clear_owner_providers(&self, owner: &str) -> Result<(), String> {
-        {
-            let mut hover_providers = self.hover_providers.write().map_err(|e| e.to_string())?;
-            hover_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut definition_providers = self.definition_providers.write().map_err(|e| e.to_string())?;
-            definition_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut completion_providers = self.completion_providers.write().map_err(|e| e.to_string())?;
-            completion_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut code_action_providers = self.code_action_providers.write().map_err(|e| e.to_string())?;
-            code_action_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut signature_help_providers = self.signature_help_providers.write().map_err(|e| e.to_string())?;
-            signature_help_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut references_providers = self.references_providers.write().map_err(|e| e.to_string())?;
-            references_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut code_lens_providers = self.code_lens_providers.write().map_err(|e| e.to_string())?;
-            code_lens_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut document_highlight_providers = self.document_highlight_providers.write().map_err(|e| e.to_string())?;
-            document_highlight_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut folding_range_providers = self.folding_range_providers.write().map_err(|e| e.to_string())?;
-            folding_range_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut rename_providers = self.rename_providers.write().map_err(|e| e.to_string())?;
-            rename_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut document_symbols_providers = self.document_symbols_providers.write().map_err(|e| e.to_string())?;
-            document_symbols_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut workspace_symbols_providers = self.workspace_symbols_providers.write().map_err(|e| e.to_string())?;
-            workspace_symbols_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut document_formatting_providers = self.document_formatting_providers.write().map_err(|e| e.to_string())?;
-            document_formatting_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut range_formatting_providers = self.range_formatting_providers.write().map_err(|e| e.to_string())?;
-            range_formatting_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut on_type_formatting_providers = self.on_type_formatting_providers.write().map_err(|e| e.to_string())?;
-            on_type_formatting_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut semantic_tokens_providers = self.semantic_tokens_providers.write().map_err(|e| e.to_string())?;
-            semantic_tokens_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut inline_values_providers = self.inline_values_providers.write().map_err(|e| e.to_string())?;
-            inline_values_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut color_providers = self.color_providers.write().map_err(|e| e.to_string())?;
-            color_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut selection_range_providers = self.selection_range_providers.write().map_err(|e| e.to_string())?;
-            selection_range_providers.retain(|p| p.owner != owner);
-        }
-
-        {
-            let mut linked_editing_range_providers = self.linked_editing_range_providers.write().map_err(|e| e.to_string())?;
-            linked_editing_range_providers.retain(|p| p.owner != owner);
-        }
+        self.clear_owned_provider_list(&self.hover_providers, owner)?;
+        self.clear_owned_provider_list(&self.definition_providers, owner)?;
+        self.clear_owned_provider_list(&self.completion_providers, owner)?;
+        self.clear_owned_provider_list(&self.code_action_providers, owner)?;
+        self.clear_owned_provider_list(&self.signature_help_providers, owner)?;
+        self.clear_owned_provider_list(&self.references_providers, owner)?;
+        self.clear_owned_provider_list(&self.code_lens_providers, owner)?;
+        self.clear_owned_provider_list(&self.document_highlight_providers, owner)?;
+        self.clear_owned_provider_list(&self.folding_range_providers, owner)?;
+        self.clear_owned_provider_list(&self.rename_providers, owner)?;
+        self.clear_owned_provider_list(&self.document_symbols_providers, owner)?;
+        self.clear_owned_provider_list(&self.workspace_symbols_providers, owner)?;
+        self.clear_owned_provider_list(&self.document_formatting_providers, owner)?;
+        self.clear_owned_provider_list(&self.range_formatting_providers, owner)?;
+        self.clear_owned_provider_list(&self.on_type_formatting_providers, owner)?;
+        self.clear_owned_provider_list(&self.semantic_tokens_providers, owner)?;
+        self.clear_owned_provider_list(&self.inline_values_providers, owner)?;
+        self.clear_owned_provider_list(&self.color_providers, owner)?;
+        self.clear_owned_provider_list(&self.selection_range_providers, owner)?;
+        self.clear_owned_provider_list(&self.linked_editing_range_providers, owner)?;
 
         // Also clear diagnostics
         self.clear_diagnostics(owner)?;
 
-        println!("[LanguageFeatures] Cleared all providers for owner: {}", owner);
+        println!(
+            "[LanguageFeatures] Cleared all providers for owner: {}",
+            owner
+        );
 
         Ok(())
     }

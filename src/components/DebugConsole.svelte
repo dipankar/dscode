@@ -69,7 +69,7 @@
     <span class="title">Debug Console</span>
     <button class="clear-btn" on:click={clearConsole} title="Clear Console">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M8 1a7 7 0 110 14A7 7 0 018 1zM4 7h8v2H4z"/>
+        <path d="M8 1a7 7 0 110 14A7 7 0 018 1zM4 7h8v2H4z" />
       </svg>
     </button>
   </div>
@@ -84,7 +84,14 @@
     {:else}
       <div class="messages">
         {#each messages as message}
-          <div class="message" class:type={getMessageType(message)}>
+          <div
+            class="message"
+            class:input={getMessageType(message) === 'input'}
+            class:output={getMessageType(message) === 'output'}
+            class:error={getMessageType(message) === 'error'}
+            class:info={getMessageType(message) === 'info'}
+            aria-hidden={!visible}
+          >
             <pre>{message}</pre>
           </div>
         {/each}

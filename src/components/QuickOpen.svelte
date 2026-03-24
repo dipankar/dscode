@@ -38,14 +38,12 @@
   $: {
     if (searchQuery.trim() === '') {
       // Show recently opened files when no query
-      const recentFiles = allFiles.filter(file =>
-        $editorStore.openFiles.has(file.path)
-      );
+      const recentFiles = allFiles.filter((file) => $editorStore.openFiles.has(file.path));
       filteredFiles = recentFiles.length > 0 ? recentFiles : allFiles.slice(0, 20);
     } else {
       const query = searchQuery.toLowerCase();
       filteredFiles = allFiles
-        .filter(file => {
+        .filter((file) => {
           const fileName = file.name.toLowerCase();
           const filePath = file.path.toLowerCase();
           return fileName.includes(query) || filePath.includes(query);
@@ -93,11 +91,17 @@
     }
   }
 
+  function handleOverlayClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  }
+
   async function openFile(file: FileNode) {
     try {
       // Check if already open
       if ($editorStore.openFiles.has(file.path)) {
-        const tab = $editorStore.tabs.find(t => t.path === file.path);
+        const tab = $editorStore.tabs.find((t) => t.path === file.path);
         if (tab) {
           editorStore.switchTab(tab.id);
           onClose();
@@ -150,8 +154,14 @@
 </script>
 
 {#if visible}
-  <div class="quick-open-overlay" on:click={onClose}>
-    <div class="quick-open" on:click|stopPropagation>
+  <div
+    class="quick-open-overlay"
+    on:click={handleOverlayClick}
+    on:keydown={handleKeydown}
+    role="presentation"
+    tabindex="-1"
+  >
+    <div class="quick-open" role="dialog" aria-modal="true" aria-label="Quick open">
       <div class="search-container">
         <input
           bind:this={inputElement}
@@ -159,10 +169,12 @@
           type="text"
           placeholder="Search files by name..."
           class="search-input"
+          aria-label="Search files"
+          aria-controls="quick-open-list"
         />
       </div>
 
-      <div class="files-list">
+      <div class="files-list" id="quick-open-list" role="listbox" aria-label="Files">
         {#if filteredFiles.length === 0}
           <div class="no-results">
             {#if allFiles.length === 0}
@@ -178,6 +190,8 @@
               class:selected={index === selectedIndex}
               on:click={() => openFile(file)}
               on:mouseenter={() => (selectedIndex = index)}
+              role="option"
+              aria-selected={index === selectedIndex}
             >
               <span class="file-icon">{getFileIcon(file.name)}</span>
               <div class="file-info">

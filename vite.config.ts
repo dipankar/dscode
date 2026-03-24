@@ -34,11 +34,7 @@ export default defineConfig({
 
   // Optimize dependencies for faster loading
   optimizeDeps: {
-    include: [
-      '@tauri-apps/api',
-      '@tauri-apps/plugin-dialog',
-      'lucide-svelte',
-    ],
+    include: ['@tauri-apps/api', '@tauri-apps/plugin-dialog', 'lucide-svelte'],
     // Don't exclude monaco-editor - let Vite handle the dependency
   },
 
@@ -57,14 +53,15 @@ export default defineConfig({
       output: {
         // Manual chunks for better code splitting
         manualChunks: {
-          'monaco': ['monaco-editor'],
-          'xterm': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links'],
-          'lucide': ['lucide-svelte'],
+          monaco: ['monaco-editor'],
+          xterm: ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links'],
+          lucide: ['lucide-svelte'],
         },
       },
     },
-    // Increase chunk size warning limit for large bundles like Monaco
-    chunkSizeWarningLimit: 1000,
+    // Monaco workers are intentionally large and split from the app bundle.
+    // Keep warnings focused on unexpected growth in the main application chunks.
+    chunkSizeWarningLimit: 5000,
     // Enable CSS code splitting
     cssCodeSplit: true,
   },

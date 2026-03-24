@@ -128,7 +128,11 @@ impl ConfigurationStore {
         false
     }
 
-    fn ensure_path<'a>(&'a mut self, section: Option<&str>, key: &'a str) -> (&'a mut Map<String, Value>, &'a str) {
+    fn ensure_path<'a>(
+        &'a mut self,
+        section: Option<&str>,
+        key: &'a str,
+    ) -> (&'a mut Map<String, Value>, &'a str) {
         let mut segments: Vec<&str> = key.split('.').collect();
         let final_key = segments.pop().unwrap_or(key);
 
@@ -158,8 +162,12 @@ impl ConfigurationStore {
 
     fn save(&self) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create configuration directory {:?}: {}", parent, e))?;
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Failed to create configuration directory {:?}: {}",
+                    parent, e
+                )
+            })?;
         }
 
         let content = serde_json::to_string_pretty(&self.data)

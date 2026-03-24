@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
-  import { editorStore } from '../stores/editor';
-  import { workspaceStore } from '../stores/workspace';
+  import { getCommandContext, type CommandContext } from '../lib/command-context';
   import { keybindingManager } from '../lib/keybinding-manager';
+  import { executeCommand as dispatchCommand } from '../lib/command-dispatcher';
+  import { registryCommands } from '../lib/contracts/commands';
+  import { evaluateWhenClause } from '../lib/when-clause';
 
   export let visible: boolean = false;
   export let onClose: () => void;
@@ -31,50 +32,20 @@
   let selectedIndex = 0;
   let inputElement: HTMLInputElement;
   let allCommands: Command[] = [];
-
-  // Built-in command actions (these execute in the frontend)
-  const builtinActions: Record<string, () => void | Promise<void>> = {
-    'file.save': async () => {
-      const activeTab = $editorStore.tabs.find(t => t.id === $editorStore.activeTabId);
-      if (activeTab && $editorStore.monacoInstance) {
-        const content = $editorStore.monacoInstance.getValue();
-        await invoke('write_file', { path: activeTab.path, content });
-        editorStore.markClean(activeTab.path);
-      }
-    },
-    'file.close': () => {
-      if ($editorStore.activeTabId) {
-        editorStore.closeTab($editorStore.activeTabId);
-      }
-    },
-    'file.closeAll': () => {
-      const tabIds = $editorStore.tabs.map(t => t.id);
-      tabIds.forEach(id => editorStore.closeTab(id));
-    },
-    'view.toggleSidebar': () => {
-      window.dispatchEvent(new CustomEvent('toggleSidebar'));
-    },
-    'view.togglePanel': () => {
-      window.dispatchEvent(new CustomEvent('togglePanel'));
-    },
-    'editor.action.formatDocument': () => {
-      if ($editorStore.monacoInstance) {
-        $editorStore.monacoInstance.getAction('editor.action.formatDocument')?.run();
-      }
-    },
-    'workbench.action.reloadWindow': () => {
-      window.location.reload();
-    },
-  };
+  let commandContext: CommandContext = getCommandContext();
+  let wasVisible = false;
 
   // Load commands from the command registry
-  async function loadCommands() {
+  async function loadCommands(context: CommandContext = commandContext) {
     try {
-      const commandInfos = await invoke<CommandInfo[]>('get_all_commands');
+      const commandInfos = await registryCommands.getAllCommands<CommandInfo>();
+      const availableCommands = commandInfos.filter((cmdInfo) =>
+        evaluateWhenClause(cmdInfo.when, context)
+      );
 
       // Map commands and fetch keybindings
       allCommands = await Promise.all(
-        commandInfos.map(async cmdInfo => {
+        availableCommands.map(async (cmdInfo) => {
           const keybinding = await keybindingManager.getKeybindingForCommand(cmdInfo.id);
 
           return {
@@ -83,14 +54,8 @@
             category: cmdInfo.category,
             keybinding: keybinding || undefined,
             action: async () => {
-              // Check if it's a builtin command with a local action
-              if (builtinActions[cmdInfo.id]) {
-                await builtinActions[cmdInfo.id]();
-              } else {
-                // Execute via extension host
-                await executeExtensionCommand(cmdInfo.id);
-              }
-            }
+              await dispatchCommand(cmdInfo.id);
+            },
           };
         })
       );
@@ -98,23 +63,7 @@
       updateFilteredCommands();
     } catch (error) {
       console.error('[CommandPalette] Failed to load commands:', error);
-      // Fallback to built-in commands only
-      allCommands = Object.entries(builtinActions).map(([id, action]) => ({
-        id,
-        label: id,
-        action
-      }));
-    }
-  }
-
-  async function executeExtensionCommand(commandId: string, args: any[] = []) {
-    try {
-      await invoke('extension_execute_command', {
-        command: commandId,
-        args
-      });
-    } catch (error) {
-      console.error(`[CommandPalette] Failed to execute command ${commandId}:`, error);
+      allCommands = [];
     }
   }
 
@@ -124,9 +73,9 @@
     } else {
       const query = searchQuery.toLowerCase();
       filteredCommands = allCommands
-        .filter(cmd =>
-          cmd.label.toLowerCase().includes(query) ||
-          cmd.category?.toLowerCase().includes(query)
+        .filter(
+          (cmd) =>
+            cmd.label.toLowerCase().includes(query) || cmd.category?.toLowerCase().includes(query)
         )
         .sort((a, b) => {
           // Prioritize exact matches
@@ -145,6 +94,15 @@
   // Watch for search query changes
   $: {
     updateFilteredCommands();
+  }
+
+  $: if (visible && !wasVisible) {
+    commandContext = getCommandContext();
+    wasVisible = true;
+  }
+
+  $: if (!visible && wasVisible) {
+    wasVisible = false;
   }
 
   // Listen for command registry updates
@@ -176,6 +134,12 @@
     }
   }
 
+  function handleOverlayClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  }
+
   async function executeCommand(command: Command) {
     try {
       await command.action();
@@ -188,7 +152,7 @@
   $: if (visible && inputElement) {
     inputElement.focus();
     // Reload commands when palette opens to get latest
-    loadCommands();
+    loadCommands(commandContext);
   }
 
   onMount(async () => {
@@ -221,8 +185,14 @@
 </script>
 
 {#if visible}
-  <div class="command-palette-overlay" on:click={onClose}>
-    <div class="command-palette" on:click|stopPropagation>
+  <div
+    class="command-palette-overlay"
+    on:click={handleOverlayClick}
+    on:keydown={handleKeydown}
+    role="presentation"
+    tabindex="-1"
+  >
+    <div class="command-palette" role="dialog" aria-modal="true" aria-label="Command palette">
       <div class="search-container">
         <input
           bind:this={inputElement}
@@ -230,10 +200,17 @@
           type="text"
           placeholder="Type a command or search..."
           class="search-input"
+          aria-label="Search commands"
+          aria-controls="command-palette-list"
         />
       </div>
 
-      <div class="commands-list">
+      <div
+        class="commands-list"
+        id="command-palette-list"
+        role="listbox"
+        aria-label="Available commands"
+      >
         {#if filteredCommands.length === 0}
           <div class="no-results">No commands found</div>
         {:else}
@@ -243,6 +220,8 @@
               class:selected={index === selectedIndex}
               on:click={() => executeCommand(command)}
               on:mouseenter={() => (selectedIndex = index)}
+              role="option"
+              aria-selected={index === selectedIndex}
             >
               <span class="command-label">{command.label}</span>
               <div class="command-meta">

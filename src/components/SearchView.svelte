@@ -2,6 +2,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { workspaceStore } from '../stores/workspace';
   import { editorStore } from '../stores/editor';
+  import { showAlertPrompt, showConfirmPrompt } from '../stores/windowPrompt';
 
   interface SearchResult {
     path: string;
@@ -63,7 +64,7 @@
           includePattern: includePattern || null,
           excludePattern: excludePattern || null,
           maxResults: 500, // Reduced for better performance
-        }
+        },
       });
 
       searchResults = results;
@@ -128,7 +129,10 @@
     const rootPath = $workspaceStore.rootPath;
     if (!rootPath || !searchQuery.trim()) return;
 
-    const confirmed = confirm(`Replace all occurrences of "${searchQuery}" with "${replaceText}"?`);
+    const confirmed = await showConfirmPrompt(
+      `Replace all occurrences of "${searchQuery}" with "${replaceText}"?`,
+      { level: 'warning', confirmLabel: 'Replace All', cancelLabel: 'Cancel' }
+    );
     if (!confirmed) return;
 
     replacing = true;
@@ -145,16 +149,16 @@
           includePattern: includePattern || null,
           excludePattern: excludePattern || null,
           maxResults: 500,
-        }
+        },
       });
 
-      alert(`Replaced in ${filesModified} file(s)`);
+      await showAlertPrompt(`Replaced in ${filesModified} file(s)`);
 
       // Re-run search to update results
       await search();
     } catch (error) {
       console.error('[Replace] Error:', error);
-      alert(`Replace failed: ${error}`);
+      await showAlertPrompt(`Replace failed: ${error}`, { level: 'error' });
     } finally {
       replacing = false;
     }
@@ -185,11 +189,13 @@
     <button
       class="toggle-replace-btn"
       class:active={showReplace}
-      on:click={() => showReplace = !showReplace}
+      on:click={() => (showReplace = !showReplace)}
       title="Toggle Replace"
     >
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M8.75 1a.75.75 0 0 0-1.5 0v1.5H5.5a.75.75 0 0 0 0 1.5h1.75v1.75a.75.75 0 0 0 1.5 0V4h1.75a.75.75 0 0 0 0-1.5H8.75V1zM4 7.75A.75.75 0 0 1 4.75 7h6.5a.75.75 0 0 1 0 1.5h-6.5A.75.75 0 0 1 4 7.75zm0 3.5a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1-.75-.75z"/>
+        <path
+          d="M8.75 1a.75.75 0 0 0-1.5 0v1.5H5.5a.75.75 0 0 0 0 1.5h1.75v1.75a.75.75 0 0 0 1.5 0V4h1.75a.75.75 0 0 0 0-1.5H8.75V1zM4 7.75A.75.75 0 0 1 4.75 7h6.5a.75.75 0 0 1 0 1.5h-6.5A.75.75 0 0 1 4 7.75zm0 3.5a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1-.75-.75z"
+        />
       </svg>
     </button>
   </div>
@@ -207,7 +213,9 @@
       {#if searchQuery}
         <button class="clear-btn" on:click={clearSearch}>
           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+            <path
+              d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"
+            />
           </svg>
         </button>
       {/if}
@@ -228,7 +236,7 @@
       <button
         class="option-btn"
         class:active={caseSensitive}
-        on:click={() => caseSensitive = !caseSensitive}
+        on:click={() => (caseSensitive = !caseSensitive)}
         title="Match Case"
       >
         Aa
@@ -236,7 +244,7 @@
       <button
         class="option-btn"
         class:active={wholeWord}
-        on:click={() => wholeWord = !wholeWord}
+        on:click={() => (wholeWord = !wholeWord)}
         title="Match Whole Word"
       >
         |ab|
@@ -244,7 +252,7 @@
       <button
         class="option-btn"
         class:active={useRegex}
-        on:click={() => useRegex = !useRegex}
+        on:click={() => (useRegex = !useRegex)}
         title="Use Regular Expression"
       >
         .*
@@ -267,11 +275,7 @@
     </div>
 
     <div class="action-buttons">
-      <button
-        class="search-btn"
-        on:click={search}
-        disabled={!searchQuery.trim() || searching}
-      >
+      <button class="search-btn" on:click={search} disabled={!searchQuery.trim() || searching}>
         {searching ? 'Searching...' : 'Search'}
       </button>
       {#if showReplace && searchResults.length > 0}
@@ -293,14 +297,17 @@
       </div>
     {:else if searchResults.length > 0}
       <div class="results-summary">
-        {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} in {groupedResults.size} file{groupedResults.size !== 1 ? 's' : ''}
+        {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} in {groupedResults.size}
+        file{groupedResults.size !== 1 ? 's' : ''}
       </div>
       <div class="results-list">
         {#each [...groupedResults.entries()] as [path, results]}
           <div class="file-group">
             <div class="file-header">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M4 1.75C4 .784 4.784 0 5.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0114.25 15h-9a1.75 1.75 0 01-1.75-1.75V1.75z"/>
+                <path
+                  d="M4 1.75C4 .784 4.784 0 5.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0114.25 15h-9a1.75 1.75 0 01-1.75-1.75V1.75z"
+                />
               </svg>
               <span class="file-path">{path}</span>
               <span class="result-count">{results.length}</span>

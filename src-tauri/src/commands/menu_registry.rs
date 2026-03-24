@@ -151,6 +151,26 @@ impl MenuRegistry {
 
             // Explorer context menu
             MenuItem {
+                command: "explorer.newFile".to_string(),
+                location: Some("explorer/context".to_string()),
+                when: Some("explorerResourceIsDirectory".to_string()),
+                group: Some("1_new".to_string()),
+                title: Some("New File".to_string()),
+                icon: None,
+                owner: "__builtin__".to_string(),
+                alt: None,
+            },
+            MenuItem {
+                command: "explorer.newFolder".to_string(),
+                location: Some("explorer/context".to_string()),
+                when: Some("explorerResourceIsDirectory".to_string()),
+                group: Some("1_new".to_string()),
+                title: Some("New Folder".to_string()),
+                icon: None,
+                owner: "__builtin__".to_string(),
+                alt: None,
+            },
+            MenuItem {
                 command: "file.delete".to_string(),
                 location: Some("explorer/context".to_string()),
                 when: None,
@@ -176,6 +196,16 @@ impl MenuRegistry {
                 when: None,
                 group: Some("5_cutcopypaste".to_string()),
                 title: Some("Copy Path".to_string()),
+                icon: None,
+                owner: "__builtin__".to_string(),
+                alt: None,
+            },
+            MenuItem {
+                command: "copyRelativeFilePath".to_string(),
+                location: Some("explorer/context".to_string()),
+                when: None,
+                group: Some("5_cutcopypaste".to_string()),
+                title: Some("Copy Relative Path".to_string()),
                 icon: None,
                 owner: "__builtin__".to_string(),
                 alt: None,

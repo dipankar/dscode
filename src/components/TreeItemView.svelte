@@ -32,7 +32,7 @@
     data-tree-item={getItemKey(node)}
     title={node.item.tooltip ?? getLabel(node)}
     on:click|stopPropagation={() => onItemClick(node)}
-    role="button"
+    role="treeitem"
     tabindex="0"
     aria-selected={isItemSelected(node)}
     on:keydown={(e) => e.key === 'Enter' && onItemClick(node)}
@@ -52,12 +52,7 @@
 
   {#if node.item.collapsibleState === 2 && node.children}
     {#each node.children as child, idx (getRenderKey(child, idx))}
-      <svelte:self
-        node={child}
-        depth={depth + 1}
-        {onItemClick}
-        {isItemSelected}
-      />
+      <svelte:self node={child} depth={depth + 1} {onItemClick} {isItemSelected} />
     {/each}
   {/if}
 </div>

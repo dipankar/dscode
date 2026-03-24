@@ -33,22 +33,43 @@
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp);
   }
+
+  function handleKeyDown(e: KeyboardEvent) {
+    const step = e.shiftKey ? 24 : 8;
+    const isHorizontal = direction === 'horizontal';
+
+    if ((isHorizontal && e.key === 'ArrowLeft') || (!isHorizontal && e.key === 'ArrowUp')) {
+      e.preventDefault();
+      dispatch('resize', { delta: -step });
+    }
+
+    if ((isHorizontal && e.key === 'ArrowRight') || (!isHorizontal && e.key === 'ArrowDown')) {
+      e.preventDefault();
+      dispatch('resize', { delta: step });
+    }
+  }
 </script>
 
+<!-- svelte-ignore a11y-no-noninteractive-element-interactions a11y-no-noninteractive-tabindex -->
 <div
   class="resize-handle"
   class:horizontal={direction === 'horizontal'}
   class:vertical={direction === 'vertical'}
   class:resizing={isResizing}
   on:mousedown={handleMouseDown}
+  on:keydown={handleKeyDown}
   role="separator"
   aria-orientation={direction}
+  tabindex="0"
+  aria-label={direction === 'horizontal' ? 'Resize horizontally' : 'Resize vertically'}
 />
 
 <style>
   .resize-handle {
     position: relative;
     user-select: none;
+    border: none;
+    padding: 0;
   }
 
   .resize-handle.horizontal {

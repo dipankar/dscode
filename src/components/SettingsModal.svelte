@@ -1,5 +1,6 @@
 <script lang="ts">
   import { settingsStore, type Settings } from '../lib/settings-store';
+  import { showConfirmPrompt } from '../stores/windowPrompt';
 
   export let visible = false;
   export let onClose: () => void;
@@ -16,8 +17,14 @@
     onClose();
   }
 
-  function handleReset() {
-    if (confirm('Reset all settings to defaults?')) {
+  async function handleReset() {
+    const confirmed = await showConfirmPrompt('Reset all settings to defaults?', {
+      level: 'warning',
+      confirmLabel: 'Reset',
+      cancelLabel: 'Cancel',
+    });
+
+    if (confirmed) {
       settingsStore.reset();
       settingsStore.subscribe((s) => {
         settings = JSON.parse(JSON.stringify(s));
@@ -43,7 +50,9 @@
         <h2>Settings</h2>
         <button class="close-btn" on:click={onClose}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+            <path
+              d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"
+            />
           </svg>
         </button>
       </div>
@@ -53,28 +62,28 @@
           <button
             class="tab-btn"
             class:active={activeTab === 'editor'}
-            on:click={() => activeTab = 'editor'}
+            on:click={() => (activeTab = 'editor')}
           >
             Editor
           </button>
           <button
             class="tab-btn"
             class:active={activeTab === 'theme'}
-            on:click={() => activeTab = 'theme'}
+            on:click={() => (activeTab = 'theme')}
           >
             Theme
           </button>
           <button
             class="tab-btn"
             class:active={activeTab === 'terminal'}
-            on:click={() => activeTab = 'terminal'}
+            on:click={() => (activeTab = 'terminal')}
           >
             Terminal
           </button>
           <button
             class="tab-btn"
             class:active={activeTab === 'git'}
-            on:click={() => activeTab = 'git'}
+            on:click={() => (activeTab = 'git')}
           >
             Git
           </button>
@@ -140,7 +149,6 @@
                 <span>Show Minimap</span>
               </label>
             </div>
-
           {:else if activeTab === 'theme'}
             <h3>Theme Settings</h3>
 
@@ -154,7 +162,6 @@
                 </select>
               </label>
             </div>
-
           {:else if activeTab === 'terminal'}
             <h3>Terminal Settings</h3>
 
@@ -171,7 +178,6 @@
                 <input type="text" bind:value={settings.terminal.fontFamily} />
               </label>
             </div>
-
           {:else if activeTab === 'git'}
             <h3>Git Settings</h3>
 
@@ -326,8 +332,8 @@
     font-weight: 500;
   }
 
-  input[type="text"],
-  input[type="number"],
+  input[type='text'],
+  input[type='number'],
   select {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
@@ -338,8 +344,8 @@
     font-family: inherit;
   }
 
-  input[type="text"]:focus,
-  input[type="number"]:focus,
+  input[type='text']:focus,
+  input[type='number']:focus,
   select:focus {
     outline: none;
     border-color: var(--accent-color);
@@ -351,7 +357,7 @@
     gap: 8px !important;
   }
 
-  input[type="checkbox"] {
+  input[type='checkbox'] {
     width: 16px;
     height: 16px;
     cursor: pointer;

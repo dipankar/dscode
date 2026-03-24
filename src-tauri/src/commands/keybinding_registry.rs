@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 /// A single keybinding contribution
@@ -126,7 +126,7 @@ impl KeybindingRegistry {
             Keybinding {
                 command: "file.save".to_string(),
                 key: format!("{}+S", modifier),
-                when: None,
+                when: Some("activeEditor".to_string()),
                 platform: None,
                 owner: "__builtin__".to_string(),
                 args: None,
@@ -134,7 +134,7 @@ impl KeybindingRegistry {
             Keybinding {
                 command: "file.saveAll".to_string(),
                 key: format!("{}+K {}+S", modifier, modifier),
-                when: None,
+                when: Some("activeEditor".to_string()),
                 platform: None,
                 owner: "__builtin__".to_string(),
                 args: None,
@@ -142,7 +142,7 @@ impl KeybindingRegistry {
             Keybinding {
                 command: "file.close".to_string(),
                 key: format!("{}+W", modifier),
-                when: None,
+                when: Some("activeEditor".to_string()),
                 platform: None,
                 owner: "__builtin__".to_string(),
                 args: None,
@@ -150,12 +150,11 @@ impl KeybindingRegistry {
             Keybinding {
                 command: "file.closeAll".to_string(),
                 key: format!("{}+K {}+W", modifier, modifier),
-                when: None,
+                when: Some("activeEditor".to_string()),
                 platform: None,
                 owner: "__builtin__".to_string(),
                 args: None,
             },
-
             // View operations
             Keybinding {
                 command: "view.toggleSidebar".to_string(),
@@ -173,7 +172,6 @@ impl KeybindingRegistry {
                 owner: "__builtin__".to_string(),
                 args: None,
             },
-
             // Editor operations
             Keybinding {
                 command: "editor.action.formatDocument".to_string(),
@@ -183,7 +181,6 @@ impl KeybindingRegistry {
                 owner: "__builtin__".to_string(),
                 args: None,
             },
-
             // Command palette and quick open
             Keybinding {
                 command: "workbench.action.showCommands".to_string(),
@@ -201,7 +198,62 @@ impl KeybindingRegistry {
                 owner: "__builtin__".to_string(),
                 args: None,
             },
-
+            Keybinding {
+                command: "workbench.action.showAllSymbols".to_string(),
+                key: format!("{}+T", modifier),
+                when: None,
+                platform: None,
+                owner: "__builtin__".to_string(),
+                args: None,
+            },
+            Keybinding {
+                command: "workbench.view.explorer".to_string(),
+                key: format!("{}+Shift+E", modifier),
+                when: None,
+                platform: None,
+                owner: "__builtin__".to_string(),
+                args: None,
+            },
+            Keybinding {
+                command: "workbench.action.findInFiles".to_string(),
+                key: format!("{}+Shift+F", modifier),
+                when: None,
+                platform: None,
+                owner: "__builtin__".to_string(),
+                args: None,
+            },
+            Keybinding {
+                command: "workbench.view.scm".to_string(),
+                key: format!("{}+Shift+G", modifier),
+                when: None,
+                platform: None,
+                owner: "__builtin__".to_string(),
+                args: None,
+            },
+            Keybinding {
+                command: "workbench.view.extensions".to_string(),
+                key: format!("{}+Shift+X", modifier),
+                when: None,
+                platform: None,
+                owner: "__builtin__".to_string(),
+                args: None,
+            },
+            Keybinding {
+                command: "workbench.action.openSettings".to_string(),
+                key: format!("{}+,", modifier),
+                when: None,
+                platform: None,
+                owner: "__builtin__".to_string(),
+                args: None,
+            },
+            Keybinding {
+                command: "dscode.toggleResourceMetrics".to_string(),
+                key: format!("{}+Shift+M", modifier),
+                when: None,
+                platform: None,
+                owner: "__builtin__".to_string(),
+                args: None,
+            },
             // Developer
             Keybinding {
                 command: "workbench.action.reloadWindow".to_string(),
@@ -211,12 +263,11 @@ impl KeybindingRegistry {
                 owner: "__builtin__".to_string(),
                 args: None,
             },
-
             // Find and replace
             Keybinding {
                 command: "editor.action.startFindReplaceAction".to_string(),
                 key: format!("{}+H", modifier),
-                when: Some("editorFocus".to_string()),
+                when: Some("editorTextFocus".to_string()),
                 platform: None,
                 owner: "__builtin__".to_string(),
                 args: None,
@@ -224,12 +275,11 @@ impl KeybindingRegistry {
             Keybinding {
                 command: "actions.find".to_string(),
                 key: format!("{}+F", modifier),
-                when: None,
+                when: Some("editorTextFocus".to_string()),
                 platform: None,
                 owner: "__builtin__".to_string(),
                 args: None,
             },
-
             // Navigation
             Keybinding {
                 command: "workbench.action.navigateBack".to_string(),
@@ -311,7 +361,8 @@ impl KeybindingRegistry {
         let normalized_key = Keybinding::normalize_key(key);
         let keybindings = self.keybindings.read().unwrap();
 
-        keybindings.get(&normalized_key)
+        keybindings
+            .get(&normalized_key)
             .cloned()
             .unwrap_or_default()
     }
@@ -319,16 +370,14 @@ impl KeybindingRegistry {
     /// Get all keybindings
     pub fn get_all_keybindings(&self) -> Vec<Keybinding> {
         let keybindings = self.keybindings.read().unwrap();
-        keybindings.values()
-            .flatten()
-            .cloned()
-            .collect()
+        keybindings.values().flatten().cloned().collect()
     }
 
     /// Get keybindings for a specific command
     pub fn get_keybindings_for_command(&self, command: &str) -> Vec<Keybinding> {
         let keybindings = self.keybindings.read().unwrap();
-        keybindings.values()
+        keybindings
+            .values()
             .flatten()
             .filter(|kb| kb.command == command)
             .cloned()
@@ -364,7 +413,10 @@ mod tests {
     fn test_normalize_key() {
         assert_eq!(Keybinding::normalize_key("Ctrl+S"), "ctrl+s");
         assert_eq!(Keybinding::normalize_key("Cmd+Shift+P"), "cmd+shift+p");
-        assert_eq!(Keybinding::normalize_key("Control+Alt+Delete"), "ctrl+alt+delete");
+        assert_eq!(
+            Keybinding::normalize_key("Control+Alt+Delete"),
+            "ctrl+alt+delete"
+        );
     }
 
     #[test]

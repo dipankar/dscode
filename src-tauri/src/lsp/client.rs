@@ -1,6 +1,7 @@
 use lsp_types::*;
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use crate::extension_host::nng_ipc::NngExtensionIpc;
 
 #[derive(Debug)]
@@ -10,7 +11,7 @@ pub struct LspClient {
     language_id: String,
     server_command: String,
     server_args: Vec<String>,
-    request_id: Arc<Mutex<i32>>,
+    request_id: Arc<Mutex<u64>>,
     ipc_url: String,
 }
 
@@ -29,14 +30,12 @@ impl LspClient {
     }
 
     pub async fn start(&self) -> Result<(), String> {
-        let mut process_guard = self.process.lock().unwrap();
+        let mut process_guard = self.process.lock().await;
 
-        // Check if already running
         if process_guard.is_some() {
             return Ok(());
         }
 
-        // Spawn language server process with NNG IPC URL
         let child = Command::new(&self.server_command)
             .args(&self.server_args)
             .env("LSP_IPC_URL", &self.ipc_url)
@@ -51,19 +50,38 @@ impl LspClient {
         *process_guard = Some(child);
         drop(process_guard);
 
-        // Wait for LSP server to bind
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        // Wait for LSP server to become available with exponential backoff
+        let max_attempts = 10;
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            let delay = std::cmp::min(100 * 2u64.pow(attempt), 2000);
+            tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
 
-        // Connect NNG IPC
-        let ipc = NngExtensionIpc::new(&self.ipc_url)?;
-        *self.ipc.lock().unwrap() = Some(Arc::new(ipc));
-
-        println!("[LSP] Connected NNG IPC for {}", self.language_id);
-        Ok(())
+            // Try to connect
+            match NngExtensionIpc::new(&self.ipc_url) {
+                Ok(ipc) => {
+                    let mut ipc_guard = self.ipc.lock().await;
+                    *ipc_guard = Some(Arc::new(ipc));
+                    println!("[LSP] Connected NNG IPC for {}", self.language_id);
+                    return Ok(());
+                }
+                Err(_) if attempt < max_attempts => {
+                    // Server not ready yet, retry
+                    continue;
+                }
+                Err(e) => {
+                    return Err(format!(
+                        "Failed to connect to LSP server after {} attempts: {}",
+                        max_attempts, e
+                    ));
+                }
+            }
+        }
     }
 
-    pub fn stop(&self) -> Result<(), String> {
-        let mut process_guard = self.process.lock().unwrap();
+    pub async fn stop(&self) -> Result<(), String> {
+        let mut process_guard = self.process.lock().await;
 
         if let Some(mut child) = process_guard.take() {
             child.kill()
@@ -71,17 +89,31 @@ impl LspClient {
             println!("[LSP] Stopped {} language server", self.language_id);
         }
 
+        // Clear IPC connection
+        let mut ipc_guard = self.ipc.lock().await;
+        *ipc_guard = None;
+
         Ok(())
     }
 
-    pub fn is_running(&self) -> bool {
-        self.process.lock().unwrap().is_some()
+    pub async fn is_running(&self) -> bool {
+        let mut process_guard = self.process.lock().await;
+        if let Some(child) = process_guard.as_mut() {
+            match child.try_wait() {
+                Ok(None) => true,
+                Ok(Some(_)) => false,
+                Err(_) => false,
+            }
+        } else {
+            false
+        }
     }
 
-    fn next_request_id(&self) -> i32 {
-        let mut id = self.request_id.lock().unwrap();
-        *id += 1;
-        *id
+    fn next_request_id(&self) -> u64 {
+        // Use a blocking scope since we just need a simple counter increment
+        // This is fine because u64 overflow is practically impossible
+        static ATOMIC_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        ATOMIC_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
 
     pub async fn initialize(&self, root_uri: Url) -> Result<InitializeResult, String> {
@@ -183,8 +215,7 @@ impl LspClient {
             "params": params,
         });
 
-        // Send via NNG IPC
-        let ipc_guard = self.ipc.lock().unwrap();
+        let ipc_guard = self.ipc.lock().await;
         let ipc = ipc_guard.as_ref()
             .ok_or("LSP client not connected via NNG")?;
 
@@ -212,8 +243,7 @@ impl LspClient {
             "params": params,
         });
 
-        // Send via NNG IPC (notifications don't wait for response)
-        let ipc_guard = self.ipc.lock().unwrap();
+        let ipc_guard = self.ipc.lock().await;
         let ipc = ipc_guard.as_ref()
             .ok_or("LSP client not connected via NNG")?;
 
@@ -223,6 +253,7 @@ impl LspClient {
 
 impl Drop for LspClient {
     fn drop(&mut self) {
-        let _ = self.stop();
+        // Best-effort stop — can't await in Drop
+        // The async stop will be handled by the LspManager or debug cleanup
     }
 }

@@ -5,10 +5,10 @@
   import DebugConsole from './DebugConsole.svelte';
   import Terminal from './Terminal.svelte';
   import GitHistoryPanel from './GitHistoryPanel.svelte';
-import { editorStore } from '../stores/editor';
-import { invoke } from '@tauri-apps/api/core';
-import { Plus, X } from 'lucide-svelte';
-import { outputChannelReveal } from '../stores/outputChannels';
+  import { editorStore } from '../stores/editor';
+  import { invoke } from '@tauri-apps/api/core';
+  import { Plus, X } from 'lucide-svelte';
+  import { outputChannelReveal } from '../stores/outputChannels';
 
   let activePanel = 'terminal';
 
@@ -33,7 +33,7 @@ import { outputChannelReveal } from '../stores/outputChannels';
       const terminalId = await invoke<string>('create_terminal', {
         name: `Terminal ${terminals.length + 1}`,
         shell: null,
-        cwd: null
+        cwd: null,
       });
 
       terminals = [...terminals, { id: terminalId, name: `Terminal ${terminals.length + 1}` }];
@@ -46,7 +46,7 @@ import { outputChannelReveal } from '../stores/outputChannels';
   }
 
   function closeTerminal(terminalId: string) {
-    terminals = terminals.filter(t => t.id !== terminalId);
+    terminals = terminals.filter((t) => t.id !== terminalId);
     if (activeTerminalId === terminalId) {
       activeTerminalId = terminals.length > 0 ? terminals[0].id : null;
     }
@@ -96,10 +96,11 @@ import { outputChannelReveal } from '../stores/outputChannels';
         {#if terminals.length > 0}
           <div class="terminal-tabs">
             {#each terminals as terminal (terminal.id)}
-              <div
+              <button
                 class="terminal-tab"
                 class:active={activeTerminalId === terminal.id}
-                on:click={() => activeTerminalId = terminal.id}
+                type="button"
+                on:click={() => (activeTerminalId = terminal.id)}
               >
                 <span class="terminal-tab-name">{terminal.name}</span>
                 <button
@@ -109,7 +110,7 @@ import { outputChannelReveal } from '../stores/outputChannels';
                 >
                   <X size={14} />
                 </button>
-              </div>
+              </button>
             {/each}
             <button class="terminal-tab-new" on:click={createNewTerminal} title="New Terminal">
               <Plus size={14} />

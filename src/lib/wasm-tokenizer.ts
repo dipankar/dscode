@@ -1,7 +1,21 @@
-import init, { FastTokenizer } from '../../monaco-wasm/pkg/monaco_wasm.js';
-
 let wasmInitialized = false;
-let tokenizer: FastTokenizer | null = null;
+type FastTokenizerModule = {
+  default: () => Promise<void>;
+  FastTokenizer: new (language: string) => {
+    tokenize(text: string): Uint32Array;
+  };
+};
+
+let tokenizer: InstanceType<FastTokenizerModule['FastTokenizer']> | null = null;
+let wasmModulePromise: Promise<FastTokenizerModule> | null = null;
+
+async function loadWasmModule(): Promise<FastTokenizerModule> {
+  if (!wasmModulePromise) {
+    const modulePath = '../../monaco-wasm/pkg/monaco_wasm.js';
+    wasmModulePromise = import(/* @vite-ignore */ modulePath) as Promise<FastTokenizerModule>;
+  }
+  return wasmModulePromise;
+}
 
 /**
  * Initialize the WASM tokenizer
@@ -9,15 +23,15 @@ let tokenizer: FastTokenizer | null = null;
  */
 export async function initializeWasmTokenizer(language: string = 'javascript'): Promise<void> {
   if (wasmInitialized) return;
-  
+
   try {
-    // Initialize the WASM module
-    await init();
-    
+    const wasmModule = await loadWasmModule();
+    await wasmModule.default();
+
     // Create tokenizer instance
-    tokenizer = new FastTokenizer(language);
+    tokenizer = new wasmModule.FastTokenizer(language);
     wasmInitialized = true;
-    
+
     console.log('[WASM] Tokenizer initialized for', language);
   } catch (error) {
     console.error('[WASM] Failed to initialize tokenizer:', error);
@@ -28,7 +42,7 @@ export async function initializeWasmTokenizer(language: string = 'javascript'): 
 /**
  * Tokenize text using WASM
  * Returns array of tokens: [start, length, type, start, length, type, ...]
- * 
+ *
  * Token types:
  * 0 = Keyword
  * 1 = Identifier
@@ -43,7 +57,7 @@ export function tokenizeText(text: string): Uint32Array | null {
     console.warn('[WASM] Tokenizer not initialized');
     return null;
   }
-  
+
   try {
     return tokenizer.tokenize(text);
   } catch (error) {
@@ -57,13 +71,19 @@ export function tokenizeText(text: string): Uint32Array | null {
  */
 export function setTokenizerLanguage(language: string): void {
   if (!wasmInitialized) return;
-  
-  try {
-    tokenizer = new FastTokenizer(language);
-    console.log('[WASM] Tokenizer language changed to', language);
-  } catch (error) {
-    console.error('[WASM] Failed to change tokenizer language:', error);
+
+  if (!wasmModulePromise) {
+    return;
   }
+
+  void loadWasmModule()
+    .then((wasmModule) => {
+      tokenizer = new wasmModule.FastTokenizer(language);
+      console.log('[WASM] Tokenizer language changed to', language);
+    })
+    .catch((error) => {
+      console.error('[WASM] Failed to change tokenizer language:', error);
+    });
 }
 
 /**
@@ -71,28 +91,22 @@ export function setTokenizerLanguage(language: string): void {
  */
 export function convertToMonacoTokens(tokens: Uint32Array, text: string) {
   const result = [];
-  
+
   for (let i = 0; i < tokens.length; i += 3) {
     const start = tokens[i];
     const length = tokens[i + 1];
     const type = tokens[i + 2];
-    
-    const tokenType = [
-      'keyword',
-      'identifier', 
-      'string',
-      'number',
-      'comment',
-      'operator',
-      'whitespace'
-    ][type] || 'identifier';
-    
+
+    const tokenType =
+      ['keyword', 'identifier', 'string', 'number', 'comment', 'operator', 'whitespace'][type] ||
+      'identifier';
+
     result.push({
       startIndex: start,
       length: length,
-      type: tokenType
+      type: tokenType,
     });
   }
-  
+
   return result;
 }

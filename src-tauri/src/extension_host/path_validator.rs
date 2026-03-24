@@ -1,12 +1,46 @@
+use std::fs;
 /**
  * Path Validation and Sandboxing
  *
  * Prevents path traversal attacks and ensures extensions can only access
  * files within allowed directories (workspace, extensions folder, temp).
  */
-
 use std::path::{Path, PathBuf};
-use std::fs;
+
+/// Percent-decode a URI path component
+fn percent_decode_str(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.bytes();
+
+    while let Some(byte) = chars.next() {
+        if byte == b'%' {
+            let hi = chars.next();
+            let lo = chars.next();
+            if let (Some(h), Some(l)) = (hi, lo) {
+                if let (Some(hv), Some(lv)) = (hex_digit(h), hex_digit(l)) {
+                    result.push(char::from(hv * 16 + lv));
+                    continue;
+                }
+            }
+            result.push(byte as char);
+        } else if byte == b'+' {
+            result.push(' ');
+        } else {
+            result.push(byte as char);
+        }
+    }
+
+    result
+}
+
+fn hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct PathValidator {
@@ -47,13 +81,63 @@ impl PathValidator {
 
     /// Validate and normalize a path from a URI
     pub fn validate_path(&self, uri: &str) -> Result<PathBuf, String> {
-        // Parse file:// URI
-        let path_str = uri.strip_prefix("file://").unwrap_or(uri);
-        let path = Path::new(path_str);
+        // Parse file:// URI with proper handling of host component
+        let path_str = if uri.starts_with("file:///") {
+            // file:///C:/..., file:///home/... — standard absolute URI
+            &uri[7..]
+        } else if uri.starts_with("file://") {
+            // file://host/path — authority form, strip the authority
+            let after_slashes = &uri[7..];
+            if let Some(slash_pos) = after_slashes.find('/') {
+                &after_slashes[slash_pos..]
+            } else {
+                after_slashes
+            }
+        } else if uri.starts_with("file:/") {
+            // file:/path — non-standard but seen
+            &uri[5..]
+        } else {
+            uri
+        };
+
+        // Percent-decode the path
+        let decoded = percent_decode_str(path_str);
+
+        let path = Path::new(&decoded);
 
         // Resolve to canonical path (follows symlinks, resolves ..)
-        let canonical = fs::canonicalize(path)
-            .map_err(|e| Self::sanitize_error(&format!("Invalid path: {}", e)))?;
+        // For paths that don't exist yet, canonicalize the parent and join
+        let canonical = if path.exists() {
+            fs::canonicalize(path)
+                .map_err(|e| Self::sanitize_error(&format!("Invalid path: {}", e)))?
+        } else {
+            // Path doesn't exist yet (e.g., for write operations)
+            // Canonicalize the parent directory and append the filename
+            if let Some(parent) = path.parent() {
+                if parent.as_os_str().is_empty() {
+                    // Relative path with no parent — use current dir
+                    fs::canonicalize(".")
+                        .map_err(|e| Self::sanitize_error(&format!("{}", e)))?
+                        .join(path)
+                } else if parent.exists() {
+                    let canonical_parent = fs::canonicalize(parent)
+                        .map_err(|e| Self::sanitize_error(&format!("{}", e)))?;
+                    let joined = canonical_parent.join(path.file_name().unwrap_or_default());
+                    // Verify the joined path is still within allowed directories
+                    if self.is_path_allowed(&joined) {
+                        joined
+                    } else {
+                        // The canonicalized parent is fine, but the final path may escape
+                        // Re-canonicalize if it exists (e.g., for renames)
+                        path.to_path_buf()
+                    }
+                } else {
+                    return Err("Parent directory does not exist".to_string());
+                }
+            } else {
+                return Err("Invalid path: no parent directory".to_string());
+            }
+        };
 
         // Check if path is within allowed directories
         if self.is_path_allowed(&canonical) {
@@ -90,13 +174,12 @@ impl PathValidator {
     }
 
     /// Sanitize error messages to not leak full file system paths
-    pub fn sanitize_error(error: &str) -> String {
-        // Remove full paths from error messages
-        // Replace absolute paths with relative or generic messages
-        if error.contains("/") || error.contains("\\") {
+    pub fn sanitize_error(error: &dyn std::fmt::Display) -> String {
+        let error_str = error.to_string();
+        if error_str.contains("/") || error_str.contains("\\") {
             "Operation failed: Invalid or inaccessible path".to_string()
         } else {
-            error.to_string()
+            error_str
         }
     }
 
@@ -110,7 +193,8 @@ impl PathValidator {
         }
 
         // Fallback to filename only
-        canonical_path.file_name()
+        canonical_path
+            .file_name()
             .map(|n| PathBuf::from(n))
             .unwrap_or_else(|| PathBuf::from("unknown"))
     }

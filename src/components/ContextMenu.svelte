@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
+  import { getCommandContext, type CommandContext } from '../lib/command-context';
+  import { executeCommand as dispatchCommand } from '../lib/command-dispatcher';
+  import { registryCommands } from '../lib/contracts/commands';
+  import { evaluateWhenClause } from '../lib/when-clause';
 
   export let visible: boolean = false;
   export let x: number = 0;
@@ -33,15 +36,52 @@
 
   let menuItems: MenuItem[] = [];
   let menuElement: HTMLDivElement;
+  let commandContext: CommandContext = getCommandContext();
+  let wasVisible = false;
+  const explorerResourceCommands = new Set([
+    'explorer.newFile',
+    'explorer.newFolder',
+    'file.rename',
+    'file.delete',
+    'copyFilePath',
+    'copyRelativeFilePath',
+  ]);
+
+  function toCommandContext(location: string, menuContext: MenuContext): CommandContext {
+    const base = getCommandContext();
+    const editorFocus = menuContext.editor_focused ?? base.editorFocus;
+    const explorerFocus =
+      menuContext.explorer_focused ?? location === 'explorer/context';
+    const sideBarFocus =
+      menuContext.explorer_focused !== undefined
+        ? menuContext.explorer_focused
+        : editorFocus
+          ? false
+          : base.sideBarFocus;
+    const resourceExtname = menuContext.resource_extension
+      ? menuContext.resource_extension.startsWith('.')
+        ? menuContext.resource_extension
+        : `.${menuContext.resource_extension}`
+      : base.resourceExtname;
+
+    return {
+      ...base,
+      activeEditor: base.activeEditor || editorFocus || !!menuContext.language_id,
+      editorFocus,
+      editorTextFocus: menuContext.editor_focused ?? base.editorTextFocus,
+      editorHasSelection: menuContext.has_selection ?? base.editorHasSelection,
+      explorerViewletFocus: explorerFocus,
+      sideBarFocus,
+      resourceExtname,
+      activeEditorLangId: menuContext.language_id ?? base.activeEditorLangId,
+      custom: menuContext.custom ?? base.custom,
+    };
+  }
 
   async function loadMenuItems() {
     try {
-      const items = await invoke<MenuItem[]>('get_menu_items_filtered', {
-        location,
-        context,
-      });
-
-      menuItems = items;
+      const items = await registryCommands.getMenuItems<MenuItem>(location);
+      menuItems = items.filter((item) => evaluateWhenClause(item.when, commandContext));
     } catch (error) {
       console.error('[ContextMenu] Failed to load menu items:', error);
       menuItems = [];
@@ -50,10 +90,14 @@
 
   async function executeMenuItem(item: MenuItem) {
     try {
-      await invoke('extension_execute_command', {
-        command: item.command,
-        args: context.resource_path ? [context.resource_path] : [],
-      });
+      const args: unknown[] = context.resource_path ? [context.resource_path] : [];
+      if (explorerResourceCommands.has(item.command)) {
+        args.push({
+          resourceType: context.custom?.explorerResourceIsDirectory ? 'directory' : 'file',
+        });
+      }
+
+      await dispatchCommand(item.command, args);
       onClose();
     } catch (error) {
       console.error(`[ContextMenu] Failed to execute command ${item.command}:`, error);
@@ -92,6 +136,11 @@
     return sortedGroups;
   }
 
+  $: if (visible && !wasVisible) {
+    commandContext = toCommandContext(location, context);
+    wasVisible = true;
+  }
+
   $: if (visible) {
     loadMenuItems();
 
@@ -116,6 +165,10 @@
   }
 
   $: groupedItems = groupMenuItems(menuItems);
+
+  $: if (!visible && wasVisible) {
+    wasVisible = false;
+  }
 
   onMount(() => {
     document.addEventListener('click', handleClickOutside);

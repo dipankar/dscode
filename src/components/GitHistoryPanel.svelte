@@ -34,7 +34,7 @@
       error = null;
       commits = await invoke<GitCommit[]>('git_log', {
         repoPath: rootPath,
-        limit
+        limit,
       });
     } catch (e) {
       error = e as string;
@@ -87,8 +87,10 @@
     <h3>COMMIT HISTORY</h3>
     <button class="refresh-btn" on:click={loadHistory} title="Refresh">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M13.65 2.35A8 8 0 102.35 13.65 8 8 0 1013.65 2.35zM8 14A6 6 0 118 2a6 6 0 010 12z"/>
-        <path d="M8 4v4l3 1.5"/>
+        <path
+          d="M13.65 2.35A8 8 0 102.35 13.65 8 8 0 1013.65 2.35zM8 14A6 6 0 118 2a6 6 0 010 12z"
+        />
+        <path d="M8 4v4l3 1.5" />
       </svg>
     </button>
   </div>
@@ -112,9 +114,10 @@
     {:else}
       <div class="commits-list">
         {#each commits as commit}
-          <div
+          <button
             class="commit-item"
             class:selected={selectedCommit?.id === commit.id}
+            type="button"
             on:click={() => selectCommit(commit)}
           >
             <div class="commit-header">
@@ -140,7 +143,9 @@
                 {#if commit.parent_ids.length > 0}
                   <div class="detail-row">
                     <span class="label">Parents:</span>
-                    <span class="value">{commit.parent_ids.map(id => getCommitShortId(id)).join(', ')}</span>
+                    <span class="value"
+                      >{commit.parent_ids.map((id) => getCommitShortId(id)).join(', ')}</span
+                    >
                   </div>
                 {/if}
                 <div class="commit-full-message">
@@ -148,7 +153,7 @@
                 </div>
               </div>
             {/if}
-          </div>
+          </button>
         {/each}
       </div>
 
@@ -240,10 +245,17 @@
   }
 
   .commit-item {
+    width: 100%;
     padding: 10px 16px;
     border-bottom: 1px solid var(--color-border);
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    background: transparent;
     cursor: pointer;
     transition: background 0.1s;
+    text-align: left;
+    color: var(--color-text);
   }
 
   .commit-item:hover {

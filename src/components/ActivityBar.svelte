@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { activeActivity, type ActivityId } from '../lib/activity-store';
+  import { registryCommands } from '../lib/contracts/commands';
+  import { WindowEventName, dispatchWindowEvent } from '../lib/contracts/events';
 
   export let sidebarVisible: boolean;
 
@@ -22,13 +23,13 @@
   let currentActivity: ActivityId = 'explorer';
   let unlistenActivityBarChanged: (() => void) | null = null;
 
-  activeActivity.subscribe((activity) => {
+  const unsubscribeActiveActivity = activeActivity.subscribe((activity) => {
     currentActivity = activity;
   });
 
   async function loadActivityBarItems() {
     try {
-      const items = await invoke<ActivityBarItem[]>('get_activity_bar_items');
+      const items = await registryCommands.getActivityBarItems<ActivityBarItem>();
       activities = items;
       console.log('[ActivityBar] Loaded items:', items.length);
     } catch (error) {
@@ -51,6 +52,7 @@
   });
 
   onDestroy(() => {
+    unsubscribeActiveActivity();
     if (unlistenActivityBarChanged) {
       unlistenActivityBarChanged();
     }
@@ -59,7 +61,7 @@
   function handleClick(id: string) {
     // Extensions opens as modal/overlay
     if (id === 'extensions') {
-      window.dispatchEvent(new CustomEvent('openExtensions'));
+      dispatchWindowEvent(WindowEventName.openExtensions);
       return;
     }
 
@@ -72,17 +74,19 @@
   }
 
   function handleSettingsClick() {
-    window.dispatchEvent(new CustomEvent('openSettings'));
+    dispatchWindowEvent(WindowEventName.openSettings);
   }
 </script>
 
-<div class="activity-bar">
+<div class="activity-bar" role="navigation" aria-label="Activity bar">
   {#each activities as activity}
     <button
       class="activity-item"
       class:active={currentActivity === activity.id}
       on:click={() => handleClick(activity.id)}
       title={activity.title}
+      aria-label={activity.title}
+      aria-pressed={currentActivity === activity.id}
     >
       <span class="icon">{activity.icon || '📦'}</span>
       {#if activity.badge_count || activity.badge_text}
@@ -95,7 +99,12 @@
 
   <div class="spacer"></div>
 
-  <button class="activity-item" title="Settings" on:click={handleSettingsClick}>
+  <button
+    class="activity-item"
+    title="Settings"
+    on:click={handleSettingsClick}
+    aria-label="Settings"
+  >
     <span class="icon">⚙️</span>
   </button>
 </div>

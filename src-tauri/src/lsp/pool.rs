@@ -127,7 +127,7 @@ impl LspServerPool {
 
         if let Some(server_list) = servers.remove(language_id) {
             for server_info in server_list {
-                server_info.client.stop()?;
+                server_info.client.stop().await?;
             }
             println!("[LSP Pool] Stopped all servers for {}", language_id);
             Ok(())
@@ -142,7 +142,7 @@ impl LspServerPool {
 
         for (language_id, server_list) in servers.iter() {
             for server_info in server_list {
-                server_info.client.stop()?;
+                server_info.client.stop().await?;
             }
             println!("[LSP Pool] Stopped servers for {}", language_id);
         }

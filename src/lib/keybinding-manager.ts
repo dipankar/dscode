@@ -1,5 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCommandContext, initializeCommandContextTracking } from './command-context';
+import { executeCommand } from './command-dispatcher';
+import { registryCommands, systemCommands } from './contracts/commands';
+import { evaluateWhenClause } from './when-clause';
 
 interface Keybinding {
   command: string;
@@ -26,8 +29,10 @@ export class KeybindingManager {
   }
 
   private async init() {
+    initializeCommandContextTracking();
+
     // Get current platform
-    this.platform = await invoke<string>('get_platform');
+    this.platform = await systemCommands.getPlatform();
 
     // Load all keybindings
     await this.loadKeybindings();
@@ -47,7 +52,7 @@ export class KeybindingManager {
 
   private async loadKeybindings() {
     try {
-      const bindings = await invoke<Keybinding[]>('get_all_keybindings');
+      const bindings = await registryCommands.getAllKeybindings<Keybinding>();
 
       // Clear existing
       this.keybindings.clear();
@@ -232,32 +237,34 @@ export class KeybindingManager {
   }
 
   private selectKeybinding(bindings: Keybinding[]): Keybinding | null {
+    const context = getCommandContext();
+
+    const matchingBindings = bindings.filter((binding) =>
+      evaluateWhenClause(binding.when, context),
+    );
+
+    if (matchingBindings.length === 0) {
+      return null;
+    }
+
     // If only one binding, use it
-    if (bindings.length === 1) {
-      return bindings[0];
+    if (matchingBindings.length === 1) {
+      return matchingBindings[0];
     }
 
-    // Multiple bindings - evaluate when clauses
-    // TODO: Implement full when clause evaluation
-    // For now, prefer bindings without when clause
-    const noWhenClause = bindings.find(b => !b.when);
-    if (noWhenClause) {
-      return noWhenClause;
+    const contextualBinding = matchingBindings.find((binding) => binding.when);
+    if (contextualBinding) {
+      return contextualBinding;
     }
 
-    // Return first binding (will need better selection logic)
-    return bindings[0];
+    return matchingBindings.find((binding) => !binding.when) ?? matchingBindings[0];
   }
 
   private async executeCommand(command: string, args?: any) {
     try {
       console.log(`[KeybindingManager] Executing command: ${command}`, args);
 
-      // Try to execute via extension host
-      await invoke('extension_execute_command', {
-        command,
-        args: args || [],
-      });
+      await executeCommand(command, args || []);
     } catch (error) {
       console.error(`[KeybindingManager] Failed to execute command ${command}:`, error);
     }
@@ -282,9 +289,7 @@ export class KeybindingManager {
    */
   async getKeybindingForCommand(command: string): Promise<string | null> {
     try {
-      const bindings = await invoke<Keybinding[]>('get_keybindings_for_command', {
-        command,
-      });
+      const bindings = await registryCommands.getKeybindingsForCommand<Keybinding>(command);
 
       if (bindings.length > 0) {
         // Return the first keybinding

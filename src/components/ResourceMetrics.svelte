@@ -227,6 +227,12 @@
     }
   }
 
+  function handleOverlayClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      close();
+    }
+  }
+
   onMount(() => {
     if (visible) {
       initCharts();
@@ -264,8 +270,8 @@
 <svelte:window on:keydown={handleKeydown} />
 
 {#if visible}
-  <div class="metrics-overlay" on:click={close}>
-    <div class="metrics-modal" on:click|stopPropagation>
+  <div class="metrics-overlay" on:click={handleOverlayClick} role="presentation" tabindex="-1">
+    <div class="metrics-modal" role="dialog" aria-modal="true" aria-label="Resource metrics">
       <div class="metrics-header">
         <h2>Resource Metrics</h2>
         <button class="close-btn" on:click={close}>

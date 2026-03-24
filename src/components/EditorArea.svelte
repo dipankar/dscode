@@ -8,7 +8,10 @@
   import { File, FileCode, FileJson, FileText } from 'lucide-svelte';
   import { initializeMonaco } from '../main';
   import ContextMenu from './ContextMenu.svelte';
+  import { systemCommands } from '../lib/contracts/commands';
+  import { WindowEventName } from '../lib/contracts/events';
   import { languageFeaturesManager } from '../lib/language-features';
+  import { showAlertPrompt, showConfirmPrompt } from '../stores/windowPrompt';
 
   let editorContainer: HTMLDivElement;
   let editor: any = null; // Will be monaco.editor.IStandaloneCodeEditor
@@ -22,6 +25,8 @@
   const decorationHandles = new Map<string, string[]>();
   let decorationsListener: ((event: Event) => void) | null = null;
   let lastActivePath: string | null = null;
+  let settingsUnsubscribe: (() => void) | null = null;
+  let debugUnsubscribe: (() => void) | null = null;
 
   // Context menu state
   let contextMenuVisible = false;
@@ -32,9 +37,7 @@
   $: tabs = $editorStore.tabs;
   $: activeTabId = $editorStore.activeTabId;
   $: activeTab = tabs.find((t) => t.id === activeTabId);
-  $: activeFile = activeTab
-    ? $editorStore.openFiles.get(activeTab.path)
-    : null;
+  $: activeFile = activeTab ? $editorStore.openFiles.get(activeTab.path) : null;
   $: breadcrumbs = activeTab ? activeTab.path.split('/').filter(Boolean) : [];
 
   // Update editor when active file changes
@@ -105,10 +108,14 @@
     // Map theme setting to Monaco theme
     const getMonacoTheme = (theme: string) => {
       switch (theme) {
-        case 'light': return 'vs-light';
-        case 'dark': return 'vs-dark';
-        case 'high-contrast': return 'hc-black';
-        default: return 'vs-dark';
+        case 'light':
+          return 'vs-light';
+        case 'dark':
+          return 'vs-dark';
+        case 'high-contrast':
+          return 'hc-black';
+        default:
+          return 'vs-dark';
       }
     };
 
@@ -180,7 +187,7 @@
     }
 
     // Subscribe to settings changes and update editor
-    settingsStore.subscribe((settings) => {
+    settingsUnsubscribe = settingsStore.subscribe((settings) => {
       if (!editor) return;
 
       // Update editor options
@@ -203,19 +210,19 @@
     });
 
     // Subscribe to breakpoint changes and update decorations
-    debugStore.subscribe((debugState) => {
+    debugUnsubscribe = debugStore.subscribe((debugState) => {
       if (!editor || !activeTab) return;
 
       const fileBreakpoints = debugState.breakpoints.get(activeTab.path) || [];
 
       // Create decorations for breakpoints
-      const decorations = fileBreakpoints.map(bp => ({
+      const decorations = fileBreakpoints.map((bp) => ({
         range: new monaco.Range(bp.line, 1, bp.line, 1),
         options: {
           isWholeLine: false,
           glyphMarginClassName: bp.enabled ? 'breakpoint-glyph' : 'breakpoint-glyph-disabled',
           glyphMarginHoverMessage: { value: bp.enabled ? 'Breakpoint' : 'Disabled breakpoint' },
-        }
+        },
       }));
 
       // Update decorations
@@ -265,11 +272,11 @@
     });
 
     // Listen for content changes
-  editor.onDidChangeModelContent((_e: any) => {
-    // Ignore programmatic changes (like when opening/switching files)
-    if (isProgrammaticChange) {
-      return;
-    }
+    editor.onDidChangeModelContent((_e: any) => {
+      // Ignore programmatic changes (like when opening/switching files)
+      if (isProgrammaticChange) {
+        return;
+      }
 
       if (activeTab) {
         const content = editor.getValue();
@@ -315,7 +322,10 @@
     decorationsListener = (event: Event) => {
       handleDecorationEvent(event as CustomEvent<any>);
     };
-    window.addEventListener('editor-decorations', decorationsListener as EventListener);
+    window.addEventListener(
+      WindowEventName.editorDecorations,
+      decorationsListener as EventListener
+    );
 
     // Listen for file change events
     fileWatchUnlisten = await listen('file-changed', async (event: any) => {
@@ -402,7 +412,10 @@
     }
 
     if (decorationsListener) {
-      window.removeEventListener('editor-decorations', decorationsListener as EventListener);
+      window.removeEventListener(
+        WindowEventName.editorDecorations,
+        decorationsListener as EventListener
+      );
       decorationsListener = null;
     }
 
@@ -412,6 +425,10 @@
     if (fileWatchUnlisten) {
       fileWatchUnlisten();
     }
+
+    // Clean up store subscriptions
+    if (settingsUnsubscribe) settingsUnsubscribe();
+    if (debugUnsubscribe) debugUnsubscribe();
 
     // Clean up auto-save timeout
     if (autoSaveTimeout !== null) {
@@ -433,10 +450,7 @@
 
     try {
       const content = editor.getValue();
-      await invoke('write_file', {
-        path: activeTab.path,
-        content,
-      });
+      await systemCommands.writeFile(activeTab.path, content);
 
       editorStore.markClean(activeTab.path);
       console.log('File saved:', activeTab.path);
@@ -447,7 +461,7 @@
 
   async function saveAllFiles() {
     await editorStore.saveAll(async (path: string, content: string) => {
-      await invoke('write_file', { path, content });
+      await systemCommands.writeFile(path, content);
       console.log('File saved:', path);
     });
   }
@@ -466,27 +480,22 @@
     // Check if tab has unsaved changes
     if (tab.isDirty) {
       const filename = tab.label;
-      const response = confirm(
+      const response = await showConfirmPrompt(
         `Do you want to save the changes you made to ${filename}?\n\n` +
-        `Your changes will be lost if you don't save them.`
+          `Your changes will be lost if you don't save them.`,
+        { level: 'warning', confirmLabel: 'Save', cancelLabel: "Don't Save" }
       );
 
-      if (response === null) {
-        // User cancelled
-        return;
-      } else if (response === true) {
+      if (response === true) {
         // User wants to save
         const file = $editorStore.openFiles.get(tab.path);
         if (file) {
           try {
-            await invoke('write_file', {
-              path: tab.path,
-              content: file.content,
-            });
+            await systemCommands.writeFile(tab.path, file.content);
             editorStore.markClean(tab.path);
           } catch (error) {
             console.error('Failed to save file:', error);
-            alert(`Failed to save file: ${error}`);
+            await showAlertPrompt(`Failed to save file: ${error}`, { level: 'error' });
             return;
           }
         }
@@ -501,7 +510,7 @@
   async function syncBreakpointsWithBackend(filePath: string) {
     try {
       const breakpoints = debugStore.getBreakpoints(filePath);
-      const backendBreakpoints = breakpoints.map(bp => ({
+      const backendBreakpoints = breakpoints.map((bp) => ({
         line: bp.line,
         condition: bp.condition || null,
       }));
@@ -522,7 +531,10 @@
     return {
       start: { line: selection.startLineNumber - 1, character: selection.startColumn - 1 },
       end: { line: selection.endLineNumber - 1, character: selection.endColumn - 1 },
-      anchor: { line: selection.selectionStartLineNumber - 1, character: selection.selectionStartColumn - 1 },
+      anchor: {
+        line: selection.selectionStartLineNumber - 1,
+        character: selection.selectionStartColumn - 1,
+      },
       active: { line: selection.positionLineNumber - 1, character: selection.positionColumn - 1 },
       isReversed: selection.direction === monaco.SelectionDirection.RTL,
     };
@@ -692,9 +704,7 @@
   </div>
 
   {#if activeFile && activeFile.isDirty}
-    <div class="save-indicator">
-      Unsaved changes - Press Ctrl+S to save
-    </div>
+    <div class="save-indicator">Unsaved changes - Press Ctrl+S to save</div>
   {/if}
 </div>
 

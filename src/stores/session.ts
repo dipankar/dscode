@@ -1,6 +1,5 @@
 import { writable, derived } from 'svelte/store';
 import { listen } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
 import { setStatusBarItems, type StatusBarItemState } from './statusbar';
 import { toastStore } from '../lib/error-handler';
 import { showWindowPrompt } from './windowPrompt';
@@ -8,6 +7,8 @@ import { showQuickPick } from './quickPick';
 import { showInputBox } from './inputBox';
 import { showStatusBarMessage, clearStatusBarMessage } from './statusBarMessage';
 import { editorStore } from './editor';
+import { TauriEventName, WindowEventName, dispatchWindowDetailEvent } from '../lib/contracts/events';
+import { sessionCommands } from '../lib/contracts/commands';
 import {
     registerOutputChannel,
     appendOutputChannel,
@@ -61,17 +62,17 @@ export async function initializeSession() {
         sessionError.set(null);
 
         // Initialize backend session
-        await invoke('initialize_session');
+        await sessionCommands.initialize();
 
         // Load initial state
-        const state = await invoke<SessionState>('get_session_state');
+        const state = await sessionCommands.getState<SessionState>();
         sessionState.set(state);
         setStatusBarItems(state.status_bar_items || []);
 
         console.log('[Session] Initial state loaded:', state);
 
         // Listen for session events
-        await listen('session-event', (event: any) => {
+        await listen(TauriEventName.session, (event: any) => {
             const { type, data } = event.payload;
 
             console.log('[Session] Event received:', type, data);
@@ -155,7 +156,7 @@ export async function initializeSession() {
 
                 case 'TreeViewReveal':
                     if (typeof window !== 'undefined') {
-                        window.dispatchEvent(new CustomEvent('extensionTreeReveal', { detail: data }));
+                        dispatchWindowDetailEvent(WindowEventName.extensionTreeReveal, data);
                     }
                     break;
 
@@ -170,7 +171,7 @@ export async function initializeSession() {
 
                 case 'EditorDecorations':
                     if (typeof window !== 'undefined') {
-                        window.dispatchEvent(new CustomEvent('editor-decorations', { detail: data }));
+                        dispatchWindowDetailEvent(WindowEventName.editorDecorations, data);
                     }
                     break;
 
@@ -255,7 +256,7 @@ export const availableCommands = derived(
 // Extension operations
 export async function loadExtension(id: string): Promise<void> {
     try {
-        await invoke('session_load_extension', { extension_id: id });
+        await sessionCommands.loadExtension(id);
         console.log('[Session] Extension load requested:', id);
     } catch (error) {
         console.error('[Session] Failed to load extension:', error);
@@ -265,7 +266,7 @@ export async function loadExtension(id: string): Promise<void> {
 
 export async function unloadExtension(id: string): Promise<void> {
     try {
-        await invoke('session_unload_extension', { extension_id: id });
+        await sessionCommands.unloadExtension(id);
         console.log('[Session] Extension unload requested:', id);
     } catch (error) {
         console.error('[Session] Failed to unload extension:', error);
@@ -275,7 +276,7 @@ export async function unloadExtension(id: string): Promise<void> {
 
 export async function deleteExtension(id: string): Promise<void> {
     try {
-        await invoke('session_delete_extension', { extension_id: id });
+        await sessionCommands.deleteExtension(id);
         console.log('[Session] Extension delete requested:', id);
         // UI will auto-update via session events
     } catch (error) {
@@ -287,7 +288,7 @@ export async function deleteExtension(id: string): Promise<void> {
 // Workspace operations
 export async function addWorkspaceFolder(path: string): Promise<void> {
     try {
-        await invoke('add_workspace_folder', { path });
+        await sessionCommands.addWorkspaceFolder(path);
         console.log('[Session] Workspace folder add requested:', path);
     } catch (error) {
         console.error('[Session] Failed to add workspace folder:', error);
@@ -297,7 +298,7 @@ export async function addWorkspaceFolder(path: string): Promise<void> {
 
 export async function removeWorkspaceFolder(path: string): Promise<void> {
     try {
-        await invoke('remove_workspace_folder', { path });
+        await sessionCommands.removeWorkspaceFolder(path);
         console.log('[Session] Workspace folder remove requested:', path);
     } catch (error) {
         console.error('[Session] Failed to remove workspace folder:', error);
@@ -308,7 +309,7 @@ export async function removeWorkspaceFolder(path: string): Promise<void> {
 // Query functions
 export async function refreshSessionState(): Promise<void> {
     try {
-        const state = await invoke<SessionState>('get_session_state');
+        const state = await sessionCommands.getState<SessionState>();
         sessionState.set(state);
         console.log('[Session] State refreshed');
     } catch (error) {

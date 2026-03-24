@@ -1,7 +1,8 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
   import { workspaceStore } from '../stores/workspace';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import { showConfirmPrompt } from '../stores/windowPrompt';
 
   export let visible = false;
 
@@ -17,12 +18,14 @@
   let searchQuery = '';
   let newBranchName = '';
   let showCreateForm = false;
+  let searchInput: HTMLInputElement | null = null;
+  let branchNameInput: HTMLInputElement | null = null;
 
-  $: filteredBranches = branches.filter(b =>
+  $: filteredBranches = branches.filter((b) =>
     b.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  $: localBranches = filteredBranches.filter(b => !b.is_remote);
-  $: remoteBranches = filteredBranches.filter(b => b.is_remote);
+  $: localBranches = filteredBranches.filter((b) => !b.is_remote);
+  $: remoteBranches = filteredBranches.filter((b) => b.is_remote);
 
   onMount(() => {
     if (visible) {
@@ -42,7 +45,7 @@
       loading = true;
       error = null;
       branches = await invoke<GitBranch[]>('git_list_branches', {
-        repoPath: rootPath
+        repoPath: rootPath,
       });
     } catch (e) {
       error = e as string;
@@ -59,7 +62,7 @@
     try {
       await invoke('git_checkout_branch', {
         repoPath: rootPath,
-        branchName
+        branchName,
       });
       await loadBranches();
       close();
@@ -77,11 +80,11 @@
     try {
       await invoke('git_create_branch', {
         repoPath: rootPath,
-        branchName: newBranchName.trim()
+        branchName: newBranchName.trim(),
       });
       await invoke('git_checkout_branch', {
         repoPath: rootPath,
-        branchName: newBranchName.trim()
+        branchName: newBranchName.trim(),
       });
       newBranchName = '';
       showCreateForm = false;
@@ -93,7 +96,11 @@
   }
 
   async function deleteBranch(branchName: string) {
-    const confirmed = confirm(`Delete branch '${branchName}'?`);
+    const confirmed = await showConfirmPrompt(`Delete branch '${branchName}'?`, {
+      level: 'warning',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+    });
     if (!confirmed) return;
 
     const rootPath = $workspaceStore.rootPath;
@@ -102,7 +109,7 @@
     try {
       await invoke('git_delete_branch', {
         repoPath: rootPath,
-        branchName
+        branchName,
       });
       await loadBranches();
     } catch (e) {
@@ -122,11 +129,33 @@
       close();
     }
   }
+
+  function handleOverlayClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      close();
+    }
+  }
+
+  $: if (visible) {
+    tick().then(() => {
+      if (showCreateForm) {
+        branchNameInput?.focus();
+      } else {
+        searchInput?.focus();
+      }
+    });
+  }
 </script>
 
 {#if visible}
-  <div class="modal-overlay" on:click={close} on:keydown={handleKeydown} role="button" tabindex="-1">
-    <div class="modal-content" on:click|stopPropagation role="dialog">
+  <div
+    class="modal-overlay"
+    on:click={handleOverlayClick}
+    on:keydown={handleKeydown}
+    role="presentation"
+    tabindex="-1"
+  >
+    <div class="modal-content" role="dialog" aria-modal="true" aria-label="Switch branch dialog">
       <div class="modal-header">
         <h2>Switch Branch</h2>
         <button class="close-btn" on:click={close}>×</button>
@@ -136,11 +165,11 @@
         {#if !showCreateForm}
           <div class="search-box">
             <input
+              bind:this={searchInput}
               type="text"
               bind:value={searchQuery}
               placeholder="Search branches..."
               class="search-input"
-              autofocus
             />
           </div>
         {/if}
@@ -152,23 +181,27 @@
         {#if showCreateForm}
           <div class="create-branch-form">
             <input
+              bind:this={branchNameInput}
               type="text"
               bind:value={newBranchName}
               placeholder="New branch name..."
               class="branch-name-input"
-              autofocus
               on:keydown={(e) => e.key === 'Enter' && createBranch()}
             />
             <div class="form-actions">
               <button class="btn btn-primary" on:click={createBranch}>Create</button>
-              <button class="btn btn-secondary" on:click={() => showCreateForm = false}>Cancel</button>
+              <button class="btn btn-secondary" on:click={() => (showCreateForm = false)}
+                >Cancel</button
+              >
             </div>
           </div>
         {:else}
           <div class="create-branch-action">
-            <button class="btn btn-create" on:click={() => showCreateForm = true}>
+            <button class="btn btn-create" on:click={() => (showCreateForm = true)}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z"/>
+                <path
+                  d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z"
+                />
               </svg>
               Create New Branch
             </button>
@@ -190,7 +223,9 @@
                           disabled={branch.is_head}
                         >
                           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z"/>
+                            <path
+                              d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z"
+                            />
                           </svg>
                           <span class="branch-name">{branch.name}</span>
                           {#if branch.is_head}
@@ -204,7 +239,9 @@
                             title="Delete branch"
                           >
                             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                              <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25z"/>
+                              <path
+                                d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25z"
+                              />
                             </svg>
                           </button>
                         {/if}
@@ -220,12 +257,11 @@
                   <div class="branch-list">
                     {#each remoteBranches as branch}
                       <div class="branch-item remote">
-                        <button
-                          class="branch-button"
-                          on:click={() => switchBranch(branch.name)}
-                        >
+                        <button class="branch-button" on:click={() => switchBranch(branch.name)}>
                           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"/>
+                            <path
+                              d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"
+                            />
                           </svg>
                           <span class="branch-name">{branch.name}</span>
                         </button>

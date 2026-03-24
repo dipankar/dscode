@@ -20,7 +20,7 @@
   let errorCount = 0;
   let warningCount = 0;
   let infoCount = 0;
-  let updateInterval: number;
+  let markersListener: monaco.IDisposable | null = null;
 
   function updateProblems() {
     if (!editor) return;
@@ -31,7 +31,7 @@
     // Get all markers (diagnostics) for the current model
     const markers = monaco.editor.getModelMarkers({ resource: model.uri });
 
-    problems = markers.map(marker => ({
+    problems = markers.map((marker) => ({
       severity: marker.severity,
       message: marker.message,
       resource: model.uri.path,
@@ -42,9 +42,11 @@
     }));
 
     // Count by severity
-    errorCount = problems.filter(p => p.severity === monaco.MarkerSeverity.Error).length;
-    warningCount = problems.filter(p => p.severity === monaco.MarkerSeverity.Warning).length;
-    infoCount = problems.filter(p => p.severity === monaco.MarkerSeverity.Info || p.severity === monaco.MarkerSeverity.Hint).length;
+    errorCount = problems.filter((p) => p.severity === monaco.MarkerSeverity.Error).length;
+    warningCount = problems.filter((p) => p.severity === monaco.MarkerSeverity.Warning).length;
+    infoCount = problems.filter(
+      (p) => p.severity === monaco.MarkerSeverity.Info || p.severity === monaco.MarkerSeverity.Hint
+    ).length;
   }
 
   function getSeverityIcon(severity: monaco.MarkerSeverity) {
@@ -83,13 +85,14 @@
 
   onMount(() => {
     updateProblems();
-    // Update problems every second
-    updateInterval = window.setInterval(updateProblems, 1000);
+    markersListener = monaco.editor.onDidChangeMarkers(() => {
+      updateProblems();
+    });
   });
 
   onDestroy(() => {
-    if (updateInterval) {
-      clearInterval(updateInterval);
+    if (markersListener) {
+      markersListener.dispose();
     }
   });
 
@@ -133,7 +136,10 @@
         </div>
       {:else}
         {#each problems as problem}
-          <button class="problem-item {getSeverityClass(problem.severity)}" on:click={() => handleProblemClick(problem)}>
+          <button
+            class="problem-item {getSeverityClass(problem.severity)}"
+            on:click={() => handleProblemClick(problem)}
+          >
             <span class="problem-icon">
               <svelte:component this={getSeverityIcon(problem.severity)} size={16} />
             </span>

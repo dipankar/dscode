@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,7 +48,7 @@ impl CommandRegistry {
                 category: Some("File".to_string()),
                 owner: "__builtin__".to_string(),
                 keybinding: Some("Ctrl+S".to_string()),
-                when: None,
+                when: Some("activeEditor".to_string()),
             },
             CommandInfo {
                 id: "file.saveAll".to_string(),
@@ -56,7 +56,7 @@ impl CommandRegistry {
                 category: Some("File".to_string()),
                 owner: "__builtin__".to_string(),
                 keybinding: Some("Ctrl+K S".to_string()),
-                when: None,
+                when: Some("activeEditor".to_string()),
             },
             CommandInfo {
                 id: "file.close".to_string(),
@@ -64,7 +64,7 @@ impl CommandRegistry {
                 category: Some("File".to_string()),
                 owner: "__builtin__".to_string(),
                 keybinding: Some("Ctrl+W".to_string()),
-                when: None,
+                when: Some("activeEditor".to_string()),
             },
             CommandInfo {
                 id: "file.closeAll".to_string(),
@@ -72,7 +72,7 @@ impl CommandRegistry {
                 category: Some("File".to_string()),
                 owner: "__builtin__".to_string(),
                 keybinding: Some("Ctrl+K W".to_string()),
-                when: None,
+                when: Some("activeEditor".to_string()),
             },
             CommandInfo {
                 id: "view.toggleSidebar".to_string(),
@@ -96,7 +96,23 @@ impl CommandRegistry {
                 category: Some("Editor".to_string()),
                 owner: "__builtin__".to_string(),
                 keybinding: Some("Shift+Alt+F".to_string()),
-                when: None,
+                when: Some("editorTextFocus".to_string()),
+            },
+            CommandInfo {
+                id: "actions.find".to_string(),
+                label: "Edit: Find".to_string(),
+                category: Some("Edit".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+F".to_string()),
+                when: Some("editorTextFocus".to_string()),
+            },
+            CommandInfo {
+                id: "editor.action.startFindReplaceAction".to_string(),
+                label: "Edit: Replace".to_string(),
+                category: Some("Edit".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+H".to_string()),
+                when: Some("editorTextFocus".to_string()),
             },
             CommandInfo {
                 id: "workbench.action.showCommands".to_string(),
@@ -115,11 +131,83 @@ impl CommandRegistry {
                 when: None,
             },
             CommandInfo {
+                id: "workbench.action.showAllSymbols".to_string(),
+                label: "Go to Symbol in Workspace...".to_string(),
+                category: Some("View".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+T".to_string()),
+                when: None,
+            },
+            CommandInfo {
+                id: "workbench.view.explorer".to_string(),
+                label: "View: Show Explorer".to_string(),
+                category: Some("View".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+Shift+E".to_string()),
+                when: None,
+            },
+            CommandInfo {
+                id: "workbench.action.findInFiles".to_string(),
+                label: "Search: Find in Files".to_string(),
+                category: Some("Search".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+Shift+F".to_string()),
+                when: None,
+            },
+            CommandInfo {
+                id: "workbench.view.scm".to_string(),
+                label: "View: Show Source Control".to_string(),
+                category: Some("View".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+Shift+G".to_string()),
+                when: None,
+            },
+            CommandInfo {
+                id: "workbench.view.extensions".to_string(),
+                label: "View: Show Extensions".to_string(),
+                category: Some("View".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+Shift+X".to_string()),
+                when: None,
+            },
+            CommandInfo {
+                id: "workbench.action.openSettings".to_string(),
+                label: "Preferences: Open Settings".to_string(),
+                category: Some("Preferences".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+,".to_string()),
+                when: None,
+            },
+            CommandInfo {
+                id: "dscode.toggleResourceMetrics".to_string(),
+                label: "Developer: Toggle Resource Metrics".to_string(),
+                category: Some("Developer".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+Shift+M".to_string()),
+                when: None,
+            },
+            CommandInfo {
                 id: "workbench.action.reloadWindow".to_string(),
                 label: "Developer: Reload Window".to_string(),
                 category: Some("Developer".to_string()),
                 owner: "__builtin__".to_string(),
                 keybinding: Some("Ctrl+R".to_string()),
+                when: None,
+            },
+            CommandInfo {
+                id: "workbench.action.navigateBack".to_string(),
+                label: "Go: Navigate Back".to_string(),
+                category: Some("Go".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+Alt+Left".to_string()),
+                when: None,
+            },
+            CommandInfo {
+                id: "workbench.action.navigateForward".to_string(),
+                label: "Go: Navigate Forward".to_string(),
+                category: Some("Go".to_string()),
+                owner: "__builtin__".to_string(),
+                keybinding: Some("Ctrl+Alt+Right".to_string()),
                 when: None,
             },
         ];
@@ -198,7 +286,8 @@ impl CommandRegistry {
             .filter(|cmd| {
                 cmd.label.to_lowercase().contains(&query_lower)
                     || cmd.id.to_lowercase().contains(&query_lower)
-                    || cmd.category
+                    || cmd
+                        .category
                         .as_ref()
                         .map(|c| c.to_lowercase().contains(&query_lower))
                         .unwrap_or(false)

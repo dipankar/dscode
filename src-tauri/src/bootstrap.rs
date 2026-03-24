@@ -2,11 +2,10 @@ use crate::commands::{
     ActivityBarRegistry, CommandRegistry, ConfigurationRegistry, DebugConfigurationRegistry,
     FileSystemRegistry, KeybindingRegistry, LanguageFeaturesRegistry, MarketplaceUIRegistry,
     MenuRegistry, SettingsUIRegistry, StatusBarRegistry, TaskRegistry, TestRunnerRegistry,
-    TextDocumentRegistry, ThemeRegistry, WorkspaceRegistry,
+    TextDocumentRegistry, ThemeRegistry,
 };
 use crate::config::AppDirectories;
 use crate::debug::DebugManager;
-use crate::extension_host::{ExtensionHostManager, NngIpcManager};
 use crate::lsp::LspManager;
 use crate::monitoring::ResourceMonitor;
 use crate::session::SessionManager;
@@ -31,10 +30,8 @@ pub fn configure_builder(
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(FileWatcherState::new())
-        .manage(Mutex::new(ExtensionHostManager::new("global".to_string())))
-        .manage(NngIpcManager::new())
         .manage(ResourceMonitor::new())
-        .manage(Mutex::new(lsp_manager))
+        .manage(tokio::sync::Mutex::new(lsp_manager))
         .manage(Mutex::new(TerminalManager::new()))
         .manage(Mutex::new(DebugManager::new()))
         .setup(setup_app)
@@ -126,7 +123,6 @@ fn register_feature_registries(app: &mut tauri::App<Wry>) {
     app.manage(StatusBarRegistry::new(app_handle.clone()));
     app.manage(ActivityBarRegistry::new(app_handle.clone()));
     app.manage(LanguageFeaturesRegistry::new(app_handle.clone()));
-    app.manage(WorkspaceRegistry::new(app_handle.clone()));
     app.manage(FileSystemRegistry::new(app_handle.clone()));
     app.manage(TextDocumentRegistry::new(app_handle.clone()));
 
@@ -149,5 +145,13 @@ fn start_session_initialization(session_manager: Arc<RwLock<SessionManager>>) {
         if let Err(error) = session_manager.read().await.initialize().await {
             eprintln!("[App] Failed to initialize session: {error}");
         }
+    });
+}
+
+/// Register default LSP servers asynchronously after app startup
+pub fn register_defaults_async(lsp_manager: Arc<tokio::sync::Mutex<LspManager>>) {
+    tauri::async_runtime::spawn(async move {
+        let manager = lsp_manager.lock().await;
+        manager.register_defaults().await;
     });
 }

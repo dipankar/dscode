@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
   import { Download, Search, Trash2, Star, Users } from 'lucide-svelte';
+  import { extensionCommands } from '../lib/contracts/commands';
 
   export let visible: boolean = false;
   export let onClose: () => void;
@@ -46,11 +46,8 @@
     error = null;
 
     try {
-      marketplaceExtensions = await invoke('search_marketplace', {
-        query: searchQuery,
-        page: 1,
-        pageSize: 20
-      });
+      marketplaceExtensions =
+        await extensionCommands.searchMarketplace<MarketplaceExtension>(searchQuery);
     } catch (e) {
       error = `Search failed: ${e}`;
       console.error(error);
@@ -60,23 +57,10 @@
   }
 
   async function loadInstalledExtensions() {
-    // Retry up to 3 times with delay to allow extension host to connect
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        installedExtensions = await invoke('list_extensions');
-        return; // Success
-      } catch (e) {
-        const errorStr = String(e);
-        if (errorStr.includes('not connected') && attempt < 2) {
-          // Extension host not ready yet, wait and retry
-          console.log(`[ExtensionGallery] Extension host not ready, retrying in ${(attempt + 1) * 500}ms...`);
-          await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 500));
-          continue;
-        }
-        // Final attempt failed or different error
-        console.warn('Failed to load installed extensions:', e);
-        return; // Exit gracefully
-      }
+    try {
+      installedExtensions = await extensionCommands.list<InstalledExtension>();
+    } catch (e) {
+      console.warn('Failed to load installed extensions:', e);
     }
   }
 
@@ -85,11 +69,7 @@
     installingExt = extId;
 
     try {
-      await invoke('install_from_marketplace', {
-        publisher: ext.publisher,
-        name: ext.name,
-        version: ext.version
-      });
+      await extensionCommands.installFromMarketplace(ext.publisher, ext.name, ext.version);
 
       await loadInstalledExtensions();
       error = null;
@@ -103,7 +83,7 @@
 
   async function uninstallExtension(extensionId: string) {
     try {
-      await invoke('uninstall_extension', { extension_id: extensionId });
+      await extensionCommands.uninstall(extensionId);
       await loadInstalledExtensions();
       error = null;
     } catch (e) {
@@ -114,7 +94,7 @@
 
   function isInstalled(ext: MarketplaceExtension): boolean {
     const extId = `${ext.publisher}.${ext.name}`;
-    return installedExtensions.some(installed => installed.id === extId);
+    return installedExtensions.some((installed) => installed.id === extId);
   }
 
   function formatNumber(num: number): string {
@@ -128,133 +108,139 @@
       searchMarketplace();
     }
   }
+
+  function handleOverlayClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  }
 </script>
 
 {#if visible}
-  <div class="gallery-overlay" on:click={onClose}>
-    <div class="extension-gallery" on:click|stopPropagation>
+  <div class="gallery-overlay" on:click={handleOverlayClick} role="presentation" tabindex="-1">
+    <div class="extension-gallery" role="dialog" aria-modal="true" aria-label="Extensions gallery">
       <!-- Header -->
       <div class="gallery-header">
-    <h2>Extensions</h2>
-    <div class="tabs">
-      <button
-        class:active={activeTab === 'marketplace'}
-        on:click={() => activeTab = 'marketplace'}
-      >
-        Marketplace
-      </button>
-      <button
-        class:active={activeTab === 'installed'}
-        on:click={() => activeTab = 'installed'}
-      >
-        Installed ({installedExtensions.length})
-      </button>
-    </div>
-  </div>
-
-  {#if error}
-    <div class="error-banner">{error}</div>
-  {/if}
-
-  <!-- Marketplace Tab -->
-  {#if activeTab === 'marketplace'}
-    <div class="search-box">
-      <Search size={16} />
-      <input
-        type="text"
-        placeholder="Search extensions..."
-        bind:value={searchQuery}
-        on:keypress={handleKeyPress}
-      />
-      <button on:click={searchMarketplace} disabled={loading}>
-        {loading ? 'Searching...' : 'Search'}
-      </button>
-    </div>
-
-    <div class="extensions-grid">
-      {#each marketplaceExtensions as ext (ext.publisher + '.' + ext.name)}
-        <div class="extension-card">
-          {#if ext.icon_url}
-            <img src={ext.icon_url} alt={ext.display_name} class="ext-icon" />
-          {:else}
-            <div class="ext-icon-placeholder">{ext.display_name[0]}</div>
-          {/if}
-
-          <div class="ext-info">
-            <h3>{ext.display_name}</h3>
-            <p class="ext-id">{ext.publisher}.{ext.name}</p>
-            <p class="ext-description">{ext.description || 'No description'}</p>
-
-            <div class="ext-meta">
-              <span class="meta-item">
-                <Star size={14} />
-                {ext.rating.toFixed(1)} ({formatNumber(ext.rating_count)})
-              </span>
-              <span class="meta-item">
-                <Users size={14} />
-                {formatNumber(ext.install_count)} installs
-              </span>
-            </div>
-
-            <div class="ext-actions">
-              {#if isInstalled(ext)}
-                <button class="btn-installed" disabled>Installed</button>
-              {:else if installingExt === `${ext.publisher}.${ext.name}`}
-                <button class="btn-installing" disabled>Installing...</button>
-              {:else}
-                <button class="btn-install" on:click={() => installExtension(ext)}>
-                  <Download size={16} />
-                  Install
-                </button>
-              {/if}
-              <span class="ext-version">v{ext.version}</span>
-            </div>
-          </div>
-        </div>
-      {/each}
-
-      {#if !loading && marketplaceExtensions.length === 0 && searchQuery}
-        <div class="empty-state">
-          <p>No extensions found. Try a different search.</p>
-        </div>
-      {/if}
-
-      {#if !searchQuery}
-        <div class="empty-state">
-          <Search size={48} />
-          <p>Search for extensions from the VS Code Marketplace</p>
-        </div>
-      {/if}
-    </div>
-  {/if}
-
-  <!-- Installed Tab -->
-  {#if activeTab === 'installed'}
-    <div class="extensions-list">
-      {#each installedExtensions as ext (ext.id)}
-        <div class="installed-extension">
-          <div class="ext-info">
-            <h3>{ext.name}</h3>
-            <p class="ext-id">{ext.id}</p>
-            <p class="ext-description">{ext.description || 'No description'}</p>
-            <span class="ext-version">v{ext.version}</span>
-          </div>
-
-          <button class="btn-uninstall" on:click={() => uninstallExtension(ext.id)}>
-            <Trash2 size={16} />
-            Uninstall
+        <h2>Extensions</h2>
+        <div class="tabs">
+          <button
+            class:active={activeTab === 'marketplace'}
+            on:click={() => (activeTab = 'marketplace')}
+          >
+            Marketplace
+          </button>
+          <button
+            class:active={activeTab === 'installed'}
+            on:click={() => (activeTab = 'installed')}
+          >
+            Installed ({installedExtensions.length})
           </button>
         </div>
-      {/each}
+      </div>
 
-      {#if installedExtensions.length === 0}
-        <div class="empty-state">
-          <p>No extensions installed yet.</p>
-          <p>Browse the marketplace to install extensions.</p>
+      {#if error}
+        <div class="error-banner">{error}</div>
+      {/if}
+
+      <!-- Marketplace Tab -->
+      {#if activeTab === 'marketplace'}
+        <div class="search-box">
+          <Search size={16} />
+          <input
+            type="text"
+            placeholder="Search extensions..."
+            bind:value={searchQuery}
+            on:keypress={handleKeyPress}
+          />
+          <button on:click={searchMarketplace} disabled={loading}>
+            {loading ? 'Searching...' : 'Search'}
+          </button>
+        </div>
+
+        <div class="extensions-grid">
+          {#each marketplaceExtensions as ext (ext.publisher + '.' + ext.name)}
+            <div class="extension-card">
+              {#if ext.icon_url}
+                <img src={ext.icon_url} alt={ext.display_name} class="ext-icon" />
+              {:else}
+                <div class="ext-icon-placeholder">{ext.display_name[0]}</div>
+              {/if}
+
+              <div class="ext-info">
+                <h3>{ext.display_name}</h3>
+                <p class="ext-id">{ext.publisher}.{ext.name}</p>
+                <p class="ext-description">{ext.description || 'No description'}</p>
+
+                <div class="ext-meta">
+                  <span class="meta-item">
+                    <Star size={14} />
+                    {ext.rating.toFixed(1)} ({formatNumber(ext.rating_count)})
+                  </span>
+                  <span class="meta-item">
+                    <Users size={14} />
+                    {formatNumber(ext.install_count)} installs
+                  </span>
+                </div>
+
+                <div class="ext-actions">
+                  {#if isInstalled(ext)}
+                    <button class="btn-installed" disabled>Installed</button>
+                  {:else if installingExt === `${ext.publisher}.${ext.name}`}
+                    <button class="btn-installing" disabled>Installing...</button>
+                  {:else}
+                    <button class="btn-install" on:click={() => installExtension(ext)}>
+                      <Download size={16} />
+                      Install
+                    </button>
+                  {/if}
+                  <span class="ext-version">v{ext.version}</span>
+                </div>
+              </div>
+            </div>
+          {/each}
+
+          {#if !loading && marketplaceExtensions.length === 0 && searchQuery}
+            <div class="empty-state">
+              <p>No extensions found. Try a different search.</p>
+            </div>
+          {/if}
+
+          {#if !searchQuery}
+            <div class="empty-state">
+              <Search size={48} />
+              <p>Search for extensions from the VS Code Marketplace</p>
+            </div>
+          {/if}
         </div>
       {/if}
-    </div>
-  {/if}
+
+      <!-- Installed Tab -->
+      {#if activeTab === 'installed'}
+        <div class="extensions-list">
+          {#each installedExtensions as ext (ext.id)}
+            <div class="installed-extension">
+              <div class="ext-info">
+                <h3>{ext.name}</h3>
+                <p class="ext-id">{ext.id}</p>
+                <p class="ext-description">{ext.description || 'No description'}</p>
+                <span class="ext-version">v{ext.version}</span>
+              </div>
+
+              <button class="btn-uninstall" on:click={() => uninstallExtension(ext.id)}>
+                <Trash2 size={16} />
+                Uninstall
+              </button>
+            </div>
+          {/each}
+
+          {#if installedExtensions.length === 0}
+            <div class="empty-state">
+              <p>No extensions installed yet.</p>
+              <p>Browse the marketplace to install extensions.</p>
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
   </div>
 {/if}
@@ -272,7 +258,6 @@
     align-items: center;
     z-index: 1000;
   }
-
 
   .extension-gallery {
     display: flex;
@@ -428,6 +413,7 @@
     text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
   }
 
@@ -451,7 +437,8 @@
     gap: 8px;
   }
 
-  .btn-install, .btn-uninstall {
+  .btn-install,
+  .btn-uninstall {
     padding: 6px 12px;
     border-radius: 4px;
     font-size: 13px;

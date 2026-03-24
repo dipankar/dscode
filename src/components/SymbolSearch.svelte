@@ -116,6 +116,12 @@
     }
   }
 
+  function handleOverlayClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  }
+
   $: if (visible && searchInput) {
     searchInput.focus();
     searchQuery = '';
@@ -135,8 +141,14 @@
 </script>
 
 {#if visible}
-  <div class="symbol-search-overlay" on:click={onClose}>
-    <div class="symbol-search-container" on:click|stopPropagation>
+  <div
+    class="symbol-search-overlay"
+    on:click={handleOverlayClick}
+    on:keydown={handleKeydown}
+    role="presentation"
+    tabindex="-1"
+  >
+    <div class="symbol-search-container" role="dialog" aria-modal="true" aria-label="Symbol search">
       <input
         bind:this={searchInput}
         bind:value={searchQuery}
@@ -145,13 +157,17 @@
         placeholder="Search symbols in current file... (Ctrl+T)"
         autocomplete="off"
         spellcheck="false"
+        aria-label="Search symbols in current file"
+        aria-controls="symbol-search-results"
       />
 
-      <div class="symbol-results">
+      <div class="symbol-results" id="symbol-search-results" role="listbox" aria-label="Symbols">
         {#if symbols.length === 0 && searchQuery.trim()}
           <div class="no-results">No symbols found</div>
         {:else if symbols.length === 0}
-          <div class="no-results">Type to search for symbols (functions, classes, variables...)</div>
+          <div class="no-results">
+            Type to search for symbols (functions, classes, variables...)
+          </div>
         {:else}
           {#each symbols as symbol, index}
             <button
@@ -159,6 +175,8 @@
               class:selected={index === selectedIndex}
               on:click={() => selectSymbol(symbol)}
               on:mouseenter={() => (selectedIndex = index)}
+              role="option"
+              aria-selected={index === selectedIndex}
             >
               <div class="symbol-icon">
                 <svelte:component this={getSymbolKindIcon(symbol.kind)} size={16} />

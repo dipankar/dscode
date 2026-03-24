@@ -1,6 +1,7 @@
 use super::{SessionEvent, SessionManager, TextEditPayload};
 use crate::commands::{CommandInfo, CommandRegistry};
 use crate::extension_host::IncomingRequestHandler;
+use crate::extension_host::path_validator::PathValidator;
 use serde_json::{json, Map, Value};
 use std::fs;
 use std::path::PathBuf;
@@ -101,10 +102,14 @@ impl SessionManager {
             editor_decorations: Arc::clone(&self.editor_decorations),
             decoration_types: Arc::clone(&self.decoration_types),
             extension_watchers: Arc::clone(&self.extension_watchers),
+            workspace_configurations: Arc::clone(&self.workspace_configurations),
+            file_decoration_providers: Arc::clone(&self.file_decoration_providers),
+            file_decorations: Arc::clone(&self.file_decorations),
             extension_host_ready: Arc::clone(&self.extension_host_ready),
             extension_host_ready_flag: Arc::clone(&self.extension_host_ready_flag),
             initialized: Arc::clone(&self.initialized),
             secrets: Arc::clone(&self.secrets),
+            path_validator: Arc::clone(&self.path_validator),
         })
     }
 
@@ -985,19 +990,23 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let path = if uri.starts_with("file://") {
-                    uri.strip_prefix("file://").unwrap_or(uri)
-                } else {
-                    uri
-                };
+                let validated_path = self.path_validator.read().await.validate_path(uri)
+                    .map_err(|e| PathValidator::sanitize_error(&e))?;
 
-                match std::fs::read(path) {
-                    Ok(contents) => {
-                        let data: Vec<u8> = contents;
-                        Ok(json!({ "data": data }))
-                    }
-                    Err(e) => Err(format!("Failed to read file: {}", e)),
+                // Limit file size to 50MB to prevent OOM
+                const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
+                let metadata = std::fs::metadata(&validated_path)
+                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                if metadata.len() > MAX_FILE_SIZE {
+                    return Err("File too large to read".to_string());
                 }
+
+                let contents = tokio::task::spawn_blocking(move || std::fs::read(&validated_path))
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))?
+                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+
+                Ok(json!({ "data": contents }))
             }
             "fsStat" => {
                 let uri = payload
@@ -1005,49 +1014,46 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let path = if uri.starts_with("file://") {
-                    uri.strip_prefix("file://").unwrap_or(uri)
+                let validated_path = self.path_validator.read().await.validate_path(uri)
+                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+
+                let metadata = tokio::task::spawn_blocking(move || std::fs::metadata(&validated_path))
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))?
+                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+
+                let file_type = if metadata.is_file() {
+                    1
+                } else if metadata.is_dir() {
+                    2
+                } else if metadata.is_symlink() {
+                    64
                 } else {
-                    uri
+                    0
                 };
 
-                match std::fs::metadata(path) {
-                    Ok(metadata) => {
-                        let file_type = if metadata.is_file() {
-                            1
-                        } else if metadata.is_dir() {
-                            2
-                        } else if metadata.is_symlink() {
-                            64
-                        } else {
-                            0
-                        };
+                let mtime = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
 
-                        let mtime = metadata
-                            .modified()
-                            .ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_millis() as u64)
-                            .unwrap_or(0);
+                let ctime = metadata
+                    .created()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
 
-                        let ctime = metadata
-                            .created()
-                            .ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_millis() as u64)
-                            .unwrap_or(0);
-
-                        Ok(json!({
-                            "stat": {
-                                "type": file_type,
-                                "ctime": ctime,
-                                "mtime": mtime,
-                                "size": metadata.len(),
-                            }
-                        }))
+                Ok(json!({
+                    "stat": {
+                        "type": file_type,
+                        "ctime": ctime,
+                        "mtime": mtime,
+                        "size": metadata.len(),
                     }
-                    Err(e) => Err(format!("Failed to stat file: {}", e)),
-                }
+                }))
             }
             "fsReadDirectory" => {
                 let uri = payload
@@ -1055,32 +1061,30 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let path = if uri.starts_with("file://") {
-                    uri.strip_prefix("file://").unwrap_or(uri)
-                } else {
-                    uri
-                };
+                let validated_path = self.path_validator.read().await.validate_path(uri)
+                    .map_err(|e| PathValidator::sanitize_error(&e))?;
 
-                match std::fs::read_dir(path) {
-                    Ok(entries) => {
-                        let mut result: Vec<(String, u8)> = Vec::new();
-                        for entry in entries.flatten() {
-                            let name = entry.file_name().to_string_lossy().to_string();
-                            let file_type = if entry.path().is_file() {
-                                1
-                            } else if entry.path().is_dir() {
-                                2
-                            } else if entry.path().is_symlink() {
-                                64
-                            } else {
-                                0
-                            };
-                            result.push((name, file_type));
-                        }
-                        Ok(json!({ "entries": result }))
+                let entries = tokio::task::spawn_blocking(move || {
+                    let mut result: Vec<(String, u8)> = Vec::new();
+                    let dir_entries = match std::fs::read_dir(&validated_path) {
+                        Ok(e) => e,
+                        Err(e) => return Err(format!("{}", e)),
+                    };
+                    for entry in dir_entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        let ft = if entry.path().is_file() { 1 }
+                            else if entry.path().is_dir() { 2 }
+                            else if entry.path().is_symlink() { 64 }
+                            else { 0 };
+                        result.push((name, ft));
                     }
-                    Err(e) => Err(format!("Failed to read directory: {}", e)),
-                }
+                    Ok(result)
+                })
+                .await
+                .map_err(|e| format!("Task failed: {}", e))?
+                .map_err(|e| PathValidator::sanitize_error(&e))?;
+
+                Ok(json!({ "entries": entries }))
             }
             "fsCreateDirectory" => {
                 let uri = payload
@@ -1088,16 +1092,15 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let path = if uri.starts_with("file://") {
-                    uri.strip_prefix("file://").unwrap_or(uri)
-                } else {
-                    uri
-                };
+                let validated_path = self.path_validator.read().await.validate_path(uri)
+                    .map_err(|e| PathValidator::sanitize_error(&e))?;
 
-                match std::fs::create_dir_all(path) {
-                    Ok(()) => Ok(json!({ "success": true })),
-                    Err(e) => Err(format!("Failed to create directory: {}", e)),
-                }
+                tokio::task::spawn_blocking(move || std::fs::create_dir_all(&validated_path))
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))?
+                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+
+                Ok(json!({ "success": true }))
             }
             "fsWriteFile" => {
                 let uri = payload
@@ -1108,11 +1111,8 @@ impl SessionManager {
                     .get("content")
                     .ok_or_else(|| "Missing content".to_string())?;
 
-                let path = if uri.starts_with("file://") {
-                    uri.strip_prefix("file://").unwrap_or(uri)
-                } else {
-                    uri
-                };
+                let validated_path = self.path_validator.read().await.validate_path(uri)
+                    .map_err(|e| PathValidator::sanitize_error(&e))?;
 
                 let bytes: Vec<u8> = if let Some(arr) = content.as_array() {
                     arr.iter()
@@ -1124,10 +1124,18 @@ impl SessionManager {
                     return Err("Invalid content format".to_string());
                 };
 
-                match std::fs::write(path, bytes) {
-                    Ok(()) => Ok(json!({ "success": true })),
-                    Err(e) => Err(format!("Failed to write file: {}", e)),
+                // Limit write size to 100MB
+                const MAX_WRITE_SIZE: usize = 100 * 1024 * 1024;
+                if bytes.len() > MAX_WRITE_SIZE {
+                    return Err("File content exceeds maximum allowed size".to_string());
                 }
+
+                tokio::task::spawn_blocking(move || std::fs::write(&validated_path, bytes))
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))?
+                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+
+                Ok(json!({ "success": true }))
             }
             "fsDelete" => {
                 let uri = payload
@@ -1140,27 +1148,25 @@ impl SessionManager {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
-                let path = if uri.starts_with("file://") {
-                    uri.strip_prefix("file://").unwrap_or(uri)
-                } else {
-                    uri
-                };
+                let validated_path = self.path_validator.read().await.validate_path(uri)
+                    .map_err(|e| PathValidator::sanitize_error(&e))?;
 
-                let path_ref = std::path::Path::new(path);
-                let result = if path_ref.is_dir() {
-                    if recursive {
-                        std::fs::remove_dir_all(path)
+                tokio::task::spawn_blocking(move || {
+                    if validated_path.is_dir() {
+                        if recursive {
+                            std::fs::remove_dir_all(&validated_path)
+                        } else {
+                            std::fs::remove_dir(&validated_path)
+                        }
                     } else {
-                        std::fs::remove_dir(path)
+                        std::fs::remove_file(&validated_path)
                     }
-                } else {
-                    std::fs::remove_file(path)
-                };
+                })
+                .await
+                .map_err(|e| format!("Task failed: {}", e))?
+                .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
 
-                match result {
-                    Ok(()) => Ok(json!({ "success": true })),
-                    Err(e) => Err(format!("Failed to delete: {}", e)),
-                }
+                Ok(json!({ "success": true }))
             }
             "fsRename" => {
                 let old_uri = payload
@@ -1172,21 +1178,17 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing newUri".to_string())?;
 
-                let old_path = if old_uri.starts_with("file://") {
-                    old_uri.strip_prefix("file://").unwrap_or(old_uri)
-                } else {
-                    old_uri
-                };
-                let new_path = if new_uri.starts_with("file://") {
-                    new_uri.strip_prefix("file://").unwrap_or(new_uri)
-                } else {
-                    new_uri
-                };
+                let old_validated = self.path_validator.read().await.validate_path(old_uri)
+                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                let new_validated = self.path_validator.read().await.validate_path(new_uri)
+                    .map_err(|e| PathValidator::sanitize_error(&e))?;
 
-                match std::fs::rename(old_path, new_path) {
-                    Ok(()) => Ok(json!({ "success": true })),
-                    Err(e) => Err(format!("Failed to rename: {}", e)),
-                }
+                tokio::task::spawn_blocking(move || std::fs::rename(&old_validated, &new_validated))
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))?
+                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+
+                Ok(json!({ "success": true }))
             }
             "fsCopy" => {
                 let source_uri = payload
@@ -1198,21 +1200,17 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing destination".to_string())?;
 
-                let source_path = if source_uri.starts_with("file://") {
-                    source_uri.strip_prefix("file://").unwrap_or(source_uri)
-                } else {
-                    source_uri
-                };
-                let dest_path = if dest_uri.starts_with("file://") {
-                    dest_uri.strip_prefix("file://").unwrap_or(dest_uri)
-                } else {
-                    dest_uri
-                };
+                let source_validated = self.path_validator.read().await.validate_path(source_uri)
+                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                let dest_validated = self.path_validator.read().await.validate_path(dest_uri)
+                    .map_err(|e| PathValidator::sanitize_error(&e))?;
 
-                match std::fs::copy(source_path, dest_path) {
-                    Ok(_) => Ok(json!({ "success": true })),
-                    Err(e) => Err(format!("Failed to copy: {}", e)),
-                }
+                tokio::task::spawn_blocking(move || std::fs::copy(&source_validated, &dest_validated))
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))?
+                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+
+                Ok(json!({ "success": true }))
             }
             "startProgress" => {
                 let _location = payload.get("location");

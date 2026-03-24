@@ -3,28 +3,28 @@
   import { invoke } from '@tauri-apps/api/core';
   import { clearQuickPick, type QuickPickEntry, type QuickPickState } from '../stores/quickPick';
 
-export let request: QuickPickState;
+  export let request: QuickPickState;
 
-let filter = '';
-let selectedIndex = 0;
-let submitting = false;
-let searchInput: HTMLInputElement | null = null;
-let selections = new Set<number>();
-let items: QuickPickEntry[] = [];
-let lastRequestId = '';
+  let filter = '';
+  let selectedIndex = 0;
+  let submitting = false;
+  let searchInput: HTMLInputElement | null = null;
+  let selections = new Set<number>();
+  let items: QuickPickEntry[] = [];
+  let lastRequestId = '';
 
-$: items = request.items;
-$: if (request.id !== lastRequestId) {
-  lastRequestId = request.id;
-  filter = '';
-  selectedIndex = 0;
-  selections = new Set<number>();
-  submitting = false;
-  initializeSelection();
-  queueMicrotask(() => {
-    searchInput?.focus();
-  });
-}
+  $: items = request.items;
+  $: if (request.id !== lastRequestId) {
+    lastRequestId = request.id;
+    filter = '';
+    selectedIndex = 0;
+    selections = new Set<number>();
+    submitting = false;
+    initializeSelection();
+    queueMicrotask(() => {
+      searchInput?.focus();
+    });
+  }
 
   $: filteredItems = items.filter((item) => matchesFilter(item, filter));
   $: ensureSelectionWithinBounds();
@@ -104,9 +104,7 @@ $: if (request.id !== lastRequestId) {
 
     try {
       if (request.canPickMany) {
-        const selected = items
-          .filter((item) => selections.has(item.id))
-          .map((item) => item.raw);
+        const selected = items.filter((item) => selections.has(item.id)).map((item) => item.raw);
         await invoke('window_quick_pick_select', {
           requestId: request.id,
           selection: selected.length > 0 ? selected : null,
@@ -139,6 +137,12 @@ $: if (request.id !== lastRequestId) {
       console.error('[QuickPickModal] Failed to cancel quick pick:', error);
     } finally {
       clearQuickPick();
+    }
+  }
+
+  function handleOverlayClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      void cancel();
     }
   }
 
@@ -187,8 +191,15 @@ $: if (request.id !== lastRequestId) {
   }
 </script>
 
-<div class="quickpick-overlay" role="dialog" aria-modal="true" on:keydown={handleKeydown}>
-  <div class="quickpick-modal">
+<svelte:window on:keydown={handleKeydown} />
+
+<div class="quickpick-overlay" role="presentation" tabindex="-1" on:click={handleOverlayClick}>
+  <div
+    class="quickpick-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-label={request.title ?? 'Quick pick'}
+  >
     {#if request.title}
       <header>
         <h2>{request.title}</h2>
@@ -204,26 +215,33 @@ $: if (request.id !== lastRequestId) {
       />
     </div>
 
-    <ul class="quickpick-list">
+    <ul class="quickpick-list" role="listbox" aria-label={request.title ?? 'Quick pick options'}>
       {#if filteredItems.length === 0}
         <li class="empty">No matches</li>
       {:else}
         {#each filteredItems as item, index}
-          <li
-            class:selected={!request.canPickMany && index === selectedIndex}
-            class:checked={request.canPickMany && selections.has(item.id)}
-            on:mouseenter={() => (selectedIndex = index)}
-            on:click={() => (request.canPickMany ? toggleSelection(index) : void chooseSingle(index))}
-          >
-            <div class="primary-line">
-              <span class="label">{item.label}</span>
-              {#if item.detail}
-                <span class="detail">{item.detail}</span>
+          <li>
+            <button
+              type="button"
+              class:selected={!request.canPickMany && index === selectedIndex}
+              class:checked={request.canPickMany && selections.has(item.id)}
+              on:mouseenter={() => (selectedIndex = index)}
+              on:click={() =>
+                request.canPickMany ? toggleSelection(index) : void chooseSingle(index)}
+              role="option"
+              aria-selected={!request.canPickMany && index === selectedIndex}
+              aria-checked={request.canPickMany ? selections.has(item.id) : undefined}
+            >
+              <div class="primary-line">
+                <span class="label">{item.label}</span>
+                {#if item.detail}
+                  <span class="detail">{item.detail}</span>
+                {/if}
+              </div>
+              {#if item.description}
+                <div class="description">{item.description}</div>
               {/if}
-            </div>
-            {#if item.description}
-              <div class="description">{item.description}</div>
-            {/if}
+            </button>
           </li>
         {/each}
       {/if}
@@ -232,11 +250,15 @@ $: if (request.id !== lastRequestId) {
     {#if request.canPickMany}
       <footer>
         <button on:click={() => void submitSelection()} disabled={submitting}>Select</button>
-        <button class="secondary" on:click={() => void cancel()} disabled={submitting}>Cancel</button>
+        <button class="secondary" on:click={() => void cancel()} disabled={submitting}
+          >Cancel</button
+        >
       </footer>
     {:else}
       <footer>
-        <button class="secondary" on:click={() => void cancel()} disabled={submitting}>Cancel</button>
+        <button class="secondary" on:click={() => void cancel()} disabled={submitting}
+          >Cancel</button
+        >
       </footer>
     {/if}
   </div>
@@ -304,6 +326,12 @@ $: if (request.id !== lastRequestId) {
   }
 
   .quickpick-list li {
+    margin: 0;
+    padding: 0;
+  }
+
+  .quickpick-list li > button {
+    width: 100%;
     padding: 10px 16px;
     display: flex;
     flex-direction: column;
@@ -311,14 +339,19 @@ $: if (request.id !== lastRequestId) {
     cursor: pointer;
     border-top: 1px solid transparent;
     border-bottom: 1px solid transparent;
+    border-left: none;
+    border-right: none;
+    background: transparent;
+    color: var(--color-text);
+    text-align: left;
   }
 
-  .quickpick-list li:hover {
+  .quickpick-list li > button:hover {
     background: rgba(255, 255, 255, 0.04);
   }
 
-  .quickpick-list li.selected,
-  .quickpick-list li.checked {
+  .quickpick-list li > button.selected,
+  .quickpick-list li > button.checked {
     background: var(--color-selection, rgba(46, 134, 222, 0.18));
     color: var(--color-selection-foreground, var(--color-text));
   }

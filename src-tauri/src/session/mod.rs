@@ -12,6 +12,9 @@ mod configuration;
 mod documents;
 mod extensions;
 mod ipc;
+mod workspace;
+
+pub use extensions::{ExtensionContribution, InstalledExtension};
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
@@ -33,6 +36,7 @@ use tokio::time::Duration;
 use crate::config::AppDirectories;
 use crate::debug::DebugAdapterPool;
 use crate::extension_host::{ExtensionHostManager, NngIpcManager, SecretStorage};
+use crate::extension_host::path_validator::PathValidator;
 use crate::lsp::{LspServerPool, LspServerStrategy};
 use configuration::ConfigurationStore;
 
@@ -334,10 +338,14 @@ pub struct SessionManager {
     editor_decorations: Arc<RwLock<HashMap<String, HashMap<String, Value>>>>,
     decoration_types: Arc<RwLock<HashMap<String, Value>>>,
     extension_watchers: Arc<Mutex<HashMap<String, RecommendedWatcher>>>,
+    workspace_configurations: Arc<RwLock<HashMap<String, crate::commands::WorkspaceConfiguration>>>,
+    file_decoration_providers: Arc<RwLock<Vec<crate::commands::FileDecorationProvider>>>,
+    file_decorations: Arc<RwLock<HashMap<String, Vec<crate::commands::FileDecoration>>>>,
     extension_host_ready: Arc<tokio::sync::Notify>,
     extension_host_ready_flag: Arc<RwLock<bool>>,
     initialized: Arc<RwLock<bool>>,
     secrets: Arc<SecretStorage>,
+    path_validator: Arc<RwLock<PathValidator>>,
 }
 
 impl SessionManager {
@@ -393,10 +401,14 @@ impl SessionManager {
             editor_decorations: Arc::new(RwLock::new(HashMap::new())),
             decoration_types: Arc::new(RwLock::new(HashMap::new())),
             extension_watchers: Arc::new(Mutex::new(HashMap::new())),
+            workspace_configurations: Arc::new(RwLock::new(HashMap::new())),
+            file_decoration_providers: Arc::new(RwLock::new(Vec::new())),
+            file_decorations: Arc::new(RwLock::new(HashMap::new())),
             extension_host_ready: Arc::new(tokio::sync::Notify::new()),
             extension_host_ready_flag: Arc::new(RwLock::new(false)),
             initialized: Arc::new(RwLock::new(false)),
             secrets: Arc::new(SecretStorage::new()),
+            path_validator: Arc::new(RwLock::new(PathValidator::new())),
         }
     }
 
@@ -1098,31 +1110,6 @@ impl SessionManager {
         if changed {
             self.publish_status_bar_items().await;
         }
-    }
-
-    /// Add workspace folder
-    pub async fn add_workspace_folder(&self, path: PathBuf) -> Result<(), String> {
-        let mut state = self.state.write().await;
-
-        if !state.workspace_folders.contains(&path) {
-            state.workspace_folders.push(path.clone());
-            drop(state);
-
-            self.emit_event(SessionEvent::WorkspaceFolderAdded { path });
-        }
-
-        Ok(())
-    }
-
-    /// Remove workspace folder
-    pub async fn remove_workspace_folder(&self, path: &PathBuf) -> Result<(), String> {
-        let mut state = self.state.write().await;
-        state.workspace_folders.retain(|p| p != path);
-        drop(state);
-
-        self.emit_event(SessionEvent::WorkspaceFolderRemoved { path: path.clone() });
-
-        Ok(())
     }
 
     /// Shutdown session

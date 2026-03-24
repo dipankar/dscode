@@ -59,7 +59,6 @@ impl NngExtensionIpc {
 
     /// Send a request to the extension host and wait for response
     pub async fn request(&self, msg_type: &str, payload: Value) -> Result<Value, String> {
-        // Generate unique message ID
         let id = {
             let mut message_id = self.message_id.lock().await;
             *message_id += 1;
@@ -72,23 +71,21 @@ impl NngExtensionIpc {
             payload,
         };
 
-        // Serialize message
         let json = serde_json::to_string(&message)
             .map_err(|e| format!("Failed to serialize message: {}", e))?;
 
-        let msg_bytes = json.as_bytes();
+        let socket = Arc::clone(&self.socket);
 
-        // Send request
-        let socket = self.socket.lock().await;
-
-        socket.send(msg_bytes)
-            .map_err(|(_, e)| format!("Failed to send message: {:?}", e))?;
-
-        // Wait for response
-        let response_msg = socket.recv()
-            .map_err(|e| format!("Failed to receive response: {}", e))?;
-
-        drop(socket); // Release lock
+        // Use spawn_blocking to avoid blocking the async runtime
+        let response_msg = tokio::task::spawn_blocking(move || {
+            let sock = socket.blocking_lock();
+            sock.send(json.as_bytes())
+                .map_err(|(_, e)| format!("Failed to send message: {:?}", e))?;
+            sock.recv()
+                .map_err(|e| format!("Failed to receive response: {}", e))
+        })
+        .await
+        .map_err(|e| format!("Blocking task failed: {}", e))??;
 
         // Parse response
         let response_str = std::str::from_utf8(&response_msg)
@@ -125,16 +122,20 @@ impl NngExtensionIpc {
         let json = serde_json::to_string(&message)
             .map_err(|e| format!("Failed to serialize message: {}", e))?;
 
-        let socket = self.socket.lock().await;
+        let socket = Arc::clone(&self.socket);
 
-        socket.send(json.as_bytes())
-            .map_err(|(_, e)| format!("Failed to send message: {:?}", e))?;
-
-        // For one-way messages, we still need to receive the ack since we're using REQ/REP
-        let _ = socket.recv()
-            .map_err(|e| format!("Failed to receive ack: {}", e))?;
-
-        Ok(())
+        // Use spawn_blocking for the REQ/REP send+recv cycle
+        tokio::task::spawn_blocking(move || {
+            let sock = socket.blocking_lock();
+            sock.send(json.as_bytes())
+                .map_err(|(_, e)| format!("Failed to send message: {:?}", e))?;
+            // REQ/REP requires receiving the ack
+            let _ = sock.recv()
+                .map_err(|e| format!("Failed to receive ack: {}", e))?;
+            Ok::<(), String>(())
+        })
+        .await
+        .map_err(|e| format!("Blocking task failed: {}", e))?
     }
 }
 
@@ -200,15 +201,22 @@ impl NngIncomingIpc {
                     }
                 }
 
-                // Receive request
-                let request_msg = {
-                    let sock = socket.lock().await;
-                    match sock.recv() {
-                        Ok(msg) => msg,
-                        Err(e) => {
-                            eprintln!("[NNG Incoming] Failed to receive: {}", e);
-                            continue;
-                        }
+                // Receive request using spawn_blocking to avoid blocking async runtime
+                let socket_clone = Arc::clone(&socket);
+                let request_msg = match tokio::task::spawn_blocking(move || {
+                    let sock = socket_clone.blocking_lock();
+                    sock.recv()
+                }).await {
+                    Ok(Ok(msg)) => msg,
+                    Ok(Err(e)) => {
+                        eprintln!("[NNG Incoming] Failed to receive: {}", e);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        continue;
+                    }
+                    Err(e) => {
+                        eprintln!("[NNG Incoming] Blocking task error: {}", e);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        continue;
                     }
                 };
 
@@ -248,10 +256,11 @@ impl NngIncomingIpc {
                             }
                         };
 
-                        let sock = socket.lock().await;
-                        if let Err(e) = sock.send(json.as_bytes()) {
-                            eprintln!("[NNG Incoming] Failed to send error response: {:?}", e);
-                        }
+                        let socket_clone = Arc::clone(&socket);
+                        let _ = tokio::task::spawn_blocking(move || {
+                            let sock = socket_clone.blocking_lock();
+                            sock.send(json.as_bytes())
+                        }).await;
                         continue;
                     }
                 };
@@ -271,10 +280,11 @@ impl NngIncomingIpc {
                     }
                 };
 
-                let sock = socket.lock().await;
-                if let Err(e) = sock.send(json.as_bytes()) {
-                    eprintln!("[NNG Incoming] Failed to send response: {:?}", e);
-                }
+                let socket_clone = Arc::clone(&socket);
+                let _ = tokio::task::spawn_blocking(move || {
+                    let sock = socket_clone.blocking_lock();
+                    sock.send(json.as_bytes())
+                }).await;
             }
 
             println!("[NNG Incoming] Stopped listening");

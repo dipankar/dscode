@@ -18,8 +18,9 @@
 
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
   import TreeItemView from './TreeItemView.svelte';
+  import { extensionCommands } from '../lib/contracts/commands';
+  import { WindowEventName } from '../lib/contracts/events';
 
   export let viewId: string;
   export let title: string;
@@ -44,12 +45,15 @@
       void handleReveal(detail);
     };
 
-    window.addEventListener('extensionTreeReveal', revealListener as EventListener);
+    window.addEventListener(WindowEventName.extensionTreeReveal, revealListener as EventListener);
   });
 
   onDestroy(() => {
     if (revealListener) {
-      window.removeEventListener('extensionTreeReveal', revealListener as EventListener);
+      window.removeEventListener(
+        WindowEventName.extensionTreeReveal,
+        revealListener as EventListener
+      );
     }
     void notifyTreeEvent('didChangeVisibility', { visible: false });
   });
@@ -87,13 +91,7 @@
 
   async function notifyTreeEvent(event: string, details: Record<string, any> = {}) {
     try {
-      await invoke('extension_tree_notify_event', {
-        viewId,
-        event,
-        element: details.element,
-        selection: details.selection,
-        visible: details.visible,
-      });
+      await extensionCommands.treeNotifyEvent(viewId, event, details);
     } catch (err) {
       console.error(`[ExtensionView] Failed to notify tree event ${event}:`, err);
     }
@@ -104,10 +102,7 @@
       loading = true;
       error = null;
 
-      const children = await invoke<any[]>('extension_tree_get_children', {
-        viewId,
-        element: null,
-      });
+      const children = await extensionCommands.treeGetChildren<any>(viewId, null);
 
       rootItems = Array.isArray(children) ? children.map(normalizeNode) : [];
       selectedIds = new Set();
@@ -121,10 +116,7 @@
 
   async function loadChildren(node: TreeNode): Promise<TreeNode[]> {
     try {
-      const children = await invoke<any[]>('extension_tree_get_children', {
-        viewId,
-        element: node.element,
-      });
+      const children = await extensionCommands.treeGetChildren<any>(viewId, node.element);
       return Array.isArray(children) ? children.map(normalizeNode) : [];
     } catch (err) {
       console.error(`[ExtensionView] Failed to load children for node:`, err);
@@ -143,10 +135,10 @@
 
     if (node.item.command) {
       try {
-        await invoke('extension_execute_command', {
-          command: node.item.command.command,
-          args: node.item.command.arguments || [],
-        });
+        await extensionCommands.executeCommand(
+          node.item.command.command,
+          node.item.command.arguments || []
+        );
       } catch (err) {
         console.error('Failed to execute command:', err);
       }
@@ -181,7 +173,12 @@
     }
   }
 
-  function findPath(nodes: TreeNode[], key: string, targetElement: any, path: TreeNode[] = []): TreeNode[] | null {
+  function findPath(
+    nodes: TreeNode[],
+    key: string,
+    targetElement: any,
+    path: TreeNode[] = []
+  ): TreeNode[] | null {
     for (const node of nodes) {
       const currentPath = [...path, node];
       if (getItemKey(node) === key || elementsEqual(node.element, targetElement)) {
@@ -207,7 +204,7 @@
     let treeItem: any = detail?.item;
     if (!treeItem) {
       try {
-        treeItem = await invoke<any>('extension_tree_get_item', { viewId, element });
+        treeItem = await extensionCommands.treeGetItem<any>(viewId, element);
       } catch (err) {
         console.warn('[ExtensionView] Failed to resolve tree item for reveal:', err);
       }
@@ -251,9 +248,10 @@
 
     if (treeContainer) {
       const keyValue = getItemKey(target);
-      const escapedKey = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-        ? CSS.escape(keyValue)
-        : keyValue.replace(/"/g, '\\"');
+      const escapedKey =
+        typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+          ? CSS.escape(keyValue)
+          : keyValue.replace(/"/g, '\\"');
       const selector = `[data-tree-item="${escapedKey}"]`;
       const elementNode = treeContainer.querySelector(selector) as HTMLElement | null;
       elementNode?.scrollIntoView({ block: 'nearest' });
@@ -283,12 +281,7 @@
     {:else}
       <div class="tree-view" bind:this={treeContainer}>
         {#each rootItems as node, idx (getRenderKey(node, idx))}
-          <TreeItemView
-            {node}
-            depth={0}
-            onItemClick={handleItemClick}
-            isItemSelected={isItemSelected}
-          />
+          <TreeItemView {node} depth={0} onItemClick={handleItemClick} {isItemSelected} />
         {/each}
       </div>
     {/if}
@@ -342,40 +335,5 @@
 
   .tree-view {
     padding: 4px 0;
-  }
-
-  .tree-item-wrapper {
-    width: 100%;
-  }
-
-  .tree-item {
-    display: flex;
-    align-items: center;
-    padding: 4px 8px;
-    cursor: pointer;
-    color: var(--color-text);
-    user-select: none;
-  }
-
-  .tree-item:hover {
-    background-color: var(--color-hover);
-  }
-
-  .icon {
-    width: 16px;
-    margin-right: 4px;
-    font-size: 10px;
-    color: var(--color-text-secondary);
-  }
-
-  .label {
-    flex: 1;
-    font-size: 13px;
-  }
-
-  .description {
-    margin-left: 8px;
-    font-size: 11px;
-    color: var(--color-text-secondary);
   }
 </style>
