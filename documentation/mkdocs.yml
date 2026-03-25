@@ -1,0 +1,161 @@
+site_name: DSCode Documentation
+site_description: Documentation for DSCode — a fast, lightweight VS Code alternative built with Tauri, Svelte, and Monaco Editor
+site_url: https://docs.dscode.dev
+repo_url: https://github.com/nicepkg/dscode
+repo_name: nicepkg/dscode
+edit_uri: edit/main/documentation/docs/
+
+copyright: Copyright &copy; 2024-2026 DSCode Contributors
+
+theme:
+  name: material
+  custom_dir: overrides
+  language: en
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/code-braces
+  favicon: assets/favicon.png
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/nicepkg/dscode
+  generator: false
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/extra.js
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - docs/includes/abbreviations.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_mermaid
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - getting-started/installation.md
+    - getting-started/quick-start.md
+    - getting-started/first-project.md
+  - User Guide:
+    - user-guide/editor-features.md
+    - user-guide/navigation.md
+    - user-guide/search.md
+    - user-guide/integrated-terminal.md
+    - user-guide/git-integration.md
+    - user-guide/debugging.md
+    - user-guide/settings-and-configuration.md
+    - user-guide/keyboard-shortcuts.md
+    - user-guide/themes-and-appearance.md
+  - Extensions:
+    - extensions/installing-extensions.md
+    - extensions/managing-extensions.md
+    - extensions/marketplace.md
+    - extensions/recommended-extensions.md
+  - Extension Development:
+    - extension-development/getting-started.md
+    - extension-development/vscode-api-reference.md
+    - extension-development/activation-events.md
+    - extension-development/language-providers.md
+    - extension-development/webview-extensions.md
+    - extension-development/native-rust-plugins.md
+    - extension-development/publishing.md
+  - Architecture:
+    - architecture/overview.md
+    - architecture/ipc-design.md
+    - architecture/rust-backend.md
+    - architecture/extension-system.md
+    - architecture/lsp-integration.md
+    - architecture/ui-system.md
+    - architecture/remote-development.md
+    - architecture/telemetry.md
+    - architecture/vscode-compatibility.md
+  - Contributing:
+    - contributing/building-from-source.md
+    - contributing/development-setup.md
+    - contributing/testing.md
+    - contributing/code-style.md
+    - contributing/pull-request-guidelines.md
+  - Reference:
+    - reference/cli-commands.md
+    - reference/configuration-options.md
+    - reference/keyboard-shortcuts-reference.md
+    - reference/vscode-compatibility-matrix.md
+    - reference/tauri-commands.md
+    - reference/ipc-protocol.md
+  - FAQ: faq.md
+  - Troubleshooting: troubleshooting.md
+  - Roadmap: roadmap.md
+  - Changelog: changelog.md

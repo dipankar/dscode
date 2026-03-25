@@ -64,7 +64,7 @@ impl LSPManager {
 ## Request/Response Flow
 
 ```rust
-#[derive(Archive, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub enum LSPRequest {
     Completion { uri: String, position: Position },
     Hover { uri: String, position: Position },
@@ -107,6 +107,7 @@ impl LSPClient {
 ## Performance Optimizations
 
 ### Request Caching
+
 ```rust
 pub struct LSPCache {
     completions: LruCache<(String, Position), Vec<CompletionItem>>,
@@ -116,6 +117,7 @@ pub struct LSPCache {
 ```
 
 ### Request Debouncing
+
 ```rust
 pub struct DebouncedLSP {
     pending: HashMap<RequestId, tokio::task::JoinHandle<Response>>,
@@ -124,6 +126,7 @@ pub struct DebouncedLSP {
 ```
 
 ### Parallel Requests
+
 ```rust
 // Send multiple requests in parallel
 let (completions, hover, diagnostics) = tokio::join!(

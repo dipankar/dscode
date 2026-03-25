@@ -7,6 +7,7 @@ Welcome to DSCode! This guide will help you set up the development environment a
 Before you begin, ensure you have the following installed:
 
 ### Required
+
 - **Node.js** (v18+) and **npm** or **pnpm**
 - **Rust** (latest stable) - Install from [rustup.rs](https://rustup.rs/)
 - **Tauri CLI**
@@ -14,6 +15,7 @@ Before you begin, ensure you have the following installed:
 ### Platform-Specific Dependencies
 
 #### Linux (Ubuntu/Debian)
+
 ```bash
 sudo apt update
 sudo apt install libwebkit2gtk-4.0-dev \
@@ -28,12 +30,14 @@ sudo apt install libwebkit2gtk-4.0-dev \
 ```
 
 #### macOS
+
 ```bash
 # Install Xcode Command Line Tools
 xcode-select --install
 ```
 
 #### Windows
+
 - Install [Microsoft Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
 - Install [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
 
@@ -74,6 +78,7 @@ npm run tauri:dev
 ```
 
 This will:
+
 1. Start Vite dev server on `http://localhost:1420`
 2. Launch Tauri app with hot-reload enabled
 3. Watch for changes in both frontend and backend
@@ -110,26 +115,28 @@ dscode/
 ├── docs/                       # Documentation
 ├── index.html                  # HTML entry point
 ├── package.json                # Node.js dependencies
-├── vite.config.ts              # Vite configuration
-└── tailwind.config.js          # Tailwind CSS config
+└── vite.config.ts              # Vite configuration + code splitting
 ```
 
 ## Key Technologies
 
 ### Frontend
+
 - **Svelte** - Reactive UI framework
 - **Monaco Editor** - VS Code's editor (same one!)
 - **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
+- **CSS Custom Properties** - VS Code theme-compatible styling
 - **Vite** - Build tool
 
 ### Backend (Rust)
+
 - **Tauri** - Desktop app framework
 - **ropey** - Text buffer (rope data structure)
 - **tree-sitter** - Syntax parsing
 - **tower-lsp** - Language Server Protocol
 - **git2** - Git integration
 - **nng** - IPC for backend services
+- **serde_json** - Serialization for NNG IPC
 
 ## Making Changes
 
@@ -222,10 +229,12 @@ npm run tauri:build
 ## Debugging
 
 ### Frontend Debugging
+
 - Use browser DevTools (F12 in dev mode)
 - Console logs will appear in terminal and DevTools
 
 ### Backend Debugging
+
 - Use `println!()` or `dbg!()` macros
 - Logs appear in terminal
 - Use `RUST_LOG=debug npm run tauri:dev` for detailed logs
@@ -278,16 +287,19 @@ listen('file-changed', (event) => {
 ## Troubleshooting
 
 ### Monaco Editor Not Loading
+
 - Check console for errors
 - Ensure `monaco-editor` is in dependencies
 - Verify Vite config includes Monaco optimization
 
 ### Tauri Commands Not Working
+
 - Check command is registered in `main.rs`
 - Verify function signature matches invocation
 - Check for Rust compilation errors
 
 ### Build Failures
+
 - Clear caches: `rm -rf node_modules dist src-tauri/target`
 - Reinstall: `npm install && cd src-tauri && cargo build`
 - Check platform-specific dependencies are installed

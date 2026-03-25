@@ -1,6 +1,7 @@
 # DSCode Architecture (Tauri-Based)
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Why Tauri](#why-tauri)
 - [Architecture Layers](#architecture-layers)
@@ -14,12 +15,11 @@ DSCode uses a **hybrid architecture**: **Tauri frontend** (web-based UI with Mon
 
 ### Key Decision: Tauri over Pure Rust (egui)
 
-**Problem with egui approach:** Building Monaco-level text editor from scratch = high risk
+The project initially considered egui (pure Rust UI) but chose Tauri because:
 
-**Tauri solution:**
-- Use **Monaco Editor directly** (same as VS Code)
-- Get pixel-perfect UI parity for free
-- Support 95%+ extensions with full Node.js
+- Monaco Editor can be used directly (same as VS Code) instead of building an editor from scratch
+- Web-based UI enables pixel-perfect VS Code parity with Svelte components
+- Full Node.js extension compatibility vs ~70-80% with a custom UI
 
 ## Architecture Layers
 
@@ -31,7 +31,7 @@ DSCode uses a **hybrid architecture**: **Tauri frontend** (web-based UI with Mon
 │  ┌────────────────────────────────────────────────────┐    │
 │  │   FRONTEND (WebView - Chromium)                    │    │
 │  │   ┌──────────────────────────────────────────────┐ │    │
-│  │   │  UI Layer (TypeScript + React/Svelte)        │ │    │
+│  │   │  UI Layer (TypeScript + Svelte)             │ │    │
 │  │   │  - Activity Bar, Sidebar, Panels, StatusBar  │ │    │
 │  │   └──────────────────────────────────────────────┘ │    │
 │  │   ┌──────────────────────────────────────────────┐ │    │
@@ -89,16 +89,16 @@ DSCode uses a **hybrid architecture**: **Tauri frontend** (web-based UI with Mon
 
 ### Tauri vs Electron vs Pure Rust (egui)
 
-| Aspect | Electron (VS Code) | egui (Pure Rust) | **Tauri (Our Choice)** |
-|--------|-------------------|------------------|------------------------|
-| **Editor** | Monaco ✅ | Build from scratch ❌ | Monaco ✅ |
-| **UI Complexity** | Web (easy) ✅ | Custom widgets (hard) ❌ | Web (easy) ✅ |
-| **Extension Compat** | 100% ✅ | 70-80% ⚠️ | 95%+ ✅ |
-| **Bundle Size** | 200MB+ ❌ | 10MB ✅ | 50MB ✅ |
-| **Memory** | 350MB ❌ | 150MB ✅ | 140MB ✅ |
-| **Startup** | 2.5s ⚠️ | 0.8s ✅ | 0.6s ✅ |
-| **Backend** | Node.js ⚠️ | Rust ✅ | Rust ✅ |
-| **Risk Level** | Low ✅ | **HIGH** ❌ | Low ✅ |
+| Aspect               | Electron (VS Code) | egui (Pure Rust)         | **Tauri (Our Choice)** |
+| -------------------- | ------------------ | ------------------------ | ---------------------- |
+| **Editor**           | Monaco ✅          | Build from scratch ❌    | Monaco ✅              |
+| **UI Complexity**    | Web (easy) ✅      | Custom widgets (hard) ❌ | Web (easy) ✅          |
+| **Extension Compat** | 100% ✅            | 70-80% ⚠️                | 95%+ ✅                |
+| **Bundle Size**      | 200MB+ ❌          | 10MB ✅                  | 50MB ✅                |
+| **Memory**           | 350MB ❌           | 150MB ✅                 | 140MB ✅               |
+| **Startup**          | 2.5s ⚠️            | 0.8s ✅                  | 0.6s ✅                |
+| **Backend**          | Node.js ⚠️         | Rust ✅                  | Rust ✅                |
+| **Risk Level**       | Low ✅             | **HIGH** ❌              | Low ✅                 |
 
 **Decision:** Tauri gives us the best of all worlds!
 
@@ -107,6 +107,7 @@ DSCode uses a **hybrid architecture**: **Tauri frontend** (web-based UI with Mon
 ### Two IPC Systems
 
 **1. Tauri IPC (Frontend ↔ Rust Backend)**
+
 ```rust
 // Rust side: Define commands
 #[tauri::command]
@@ -131,6 +132,7 @@ const changes = await invoke('git_status', { repoPath: '/path/to/repo' });
 ```
 
 **2. nng IPC (Rust Backend ↔ Extension Host/LSP/Remote)**
+
 ```rust
 // Extension Host communication (nng)
 let msg = IPCMessage::ExtensionAPICall {
@@ -138,13 +140,13 @@ let msg = IPCMessage::ExtensionAPICall {
     args: vec![uri],
 };
 
-let response = nng_client.send(rkyv::to_bytes(&msg)?).await?;
+let response = nng_client.send(serde_json::to_string(&msg)?).await?;
 ```
 
 ### Why Two IPC Systems?
 
-- **Tauri IPC:** Frontend ↔ Backend (async/await, type-safe, built-in)
-- **nng IPC:** Backend services (zero-copy, high-performance, multiple patterns)
+- **Tauri IPC:** Frontend <-> Backend (async/await, type-safe, built-in)
+- **NNG IPC:** Backend services (high-performance, multiple patterns, serde_json serialization)
 
 ## Extension System
 
@@ -189,30 +191,30 @@ Extension Host Process (separate)
 // Provide compatibility for extensions using Electron APIs
 
 export const remote = {
-    app: {
-        getPath(name: string): string {
-            // Map to Tauri's path API
-            return invoke('get_app_path', { name });
-        },
-        getVersion(): string {
-            return invoke('get_app_version');
-        }
+  app: {
+    getPath(name: string): string {
+      // Map to Tauri's path API
+      return invoke('get_app_path', { name });
     },
-    dialog: {
-        showOpenDialog(options: any): Promise<any> {
-            return invoke('show_open_dialog', { options });
-        }
-    }
+    getVersion(): string {
+      return invoke('get_app_version');
+    },
+  },
+  dialog: {
+    showOpenDialog(options: any): Promise<any> {
+      return invoke('show_open_dialog', { options });
+    },
+  },
 };
 
 export const ipcRenderer = {
-    send(channel: string, ...args: any[]): void {
-        invoke('electron_ipc_send', { channel, args });
-    },
-    on(channel: string, listener: Function): void {
-        // Subscribe to events from Rust
-        listen(`electron:${channel}`, listener);
-    }
+  send(channel: string, ...args: any[]): void {
+    invoke('electron_ipc_send', { channel, args });
+  },
+  on(channel: string, listener: Function): void {
+    // Subscribe to events from Rust
+    listen(`electron:${channel}`, listener);
+  },
 };
 ```
 
@@ -220,36 +222,40 @@ export const ipcRenderer = {
 
 ### Using Monaco Directly
 
-```typescript
-// src/editor/MonacoEditor.tsx
-import * as monaco from 'monaco-editor';
+```svelte
+<!-- src/components/EditorArea.svelte -->
+<script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import * as monaco from 'monaco-editor';
+  import { invoke } from '@tauri-apps/api/core';
 
-export function MonacoEditor() {
-    const editorRef = useRef<monaco.editor.IStandaloneCodeEditor>();
+  let container: HTMLDivElement;
+  let editor: monaco.editor.IStandaloneCodeEditor;
 
-    useEffect(() => {
-        editorRef.current = monaco.editor.create(containerRef.current!, {
-            value: initialContent,
-            language: 'typescript',
-            theme: 'vs-dark',
-            // All Monaco features available!
-            minimap: { enabled: true },
-            lineNumbers: 'on',
-            glyphMargin: true,
-            // ... 100+ options from VS Code
-        });
+  onMount(() => {
+    editor = monaco.editor.create(container, {
+      value: initialContent,
+      language: 'typescript',
+      theme: 'vs-dark',
+      minimap: { enabled: true },
+      lineNumbers: 'on',
+      glyphMargin: true,
+    });
 
-        // Connect to Rust backend for file operations
-        editorRef.current.onDidChangeModelContent(async (e) => {
-            await invoke('text_document_changed', {
-                uri: currentFile,
-                changes: e.changes
-            });
-        });
-    }, []);
+    editor.onDidChangeModelContent(async (e) => {
+      await invoke('text_document_changed', {
+        uri: currentFile,
+        changes: e.changes,
+      });
+    });
+  });
 
-    return <div ref={containerRef} />;
-}
+  onDestroy(() => {
+    editor?.dispose();
+  });
+</script>
+
+<div bind:this={container} class="editor-container" />
 ```
 
 ### Monaco Extensions Work!
@@ -336,15 +342,15 @@ async fn watch_files(path: String) -> Result<(), String> {
 - ✅ **Cross-platform**: Linux, macOS, Windows (Tauri built-in)
 - ✅ **Theme Compat**: 100% (Monaco theming)
 
-### Risk Assessment (Updated)
+### Risk Assessment
 
-| Component | Old (egui) Risk | New (Tauri) Risk |
-|-----------|----------------|------------------|
-| Text Editor | 🔴 HIGH | 🟢 LOW (Monaco) |
-| UI Layout | 🟡 MEDIUM | 🟢 LOW (Web UI) |
-| Extensions | 🟡 MEDIUM | 🟢 LOW (Node.js) |
-| Webviews | 🔴 HIGH | 🟢 LOW (Tauri) |
-| Overall | 🟡 MEDIUM | 🟢 **LOW** |
+| Component   | Risk Level         |
+| ----------- | ------------------ |
+| Text Editor | LOW (Monaco)       |
+| UI Layout   | LOW (Svelte + Web) |
+| Extensions  | LOW (Node.js)      |
+| Webviews    | LOW (Tauri)        |
+| Overall     | **LOW**            |
 
 ## Conclusion
 

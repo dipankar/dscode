@@ -110,7 +110,7 @@ impl ContainerRemote {
 ## File System Forwarding
 
 ```rust
-#[derive(Archive, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub enum VFSMessage {
     ReadFile { path: String },
     WriteFile { path: String, content: Vec<u8> },
@@ -125,8 +125,8 @@ pub struct RemoteVFS {
 impl RemoteVFS {
     pub async fn read_file(&self, path: &Path) -> Result<Vec<u8>> {
         let msg = VFSMessage::ReadFile { path: path.to_string_lossy().to_string() };
-        let response = self.socket.send(rkyv::to_bytes(&msg)?).await?;
-        Ok(rkyv::from_bytes(&response)?)
+        let response = self.socket.send(serde_json::to_string(&msg)?).await?;
+        Ok(serde_json::from_str(&response)?)
     }
 }
 ```

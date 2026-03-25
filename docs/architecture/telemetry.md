@@ -36,7 +36,7 @@ DSCode includes a comprehensive, **privacy-first** telemetry system for performa
 ## Event Types
 
 ```rust
-#[derive(Archive, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub enum TelemetryEvent {
     Startup {
         duration_ms: u64,
@@ -110,6 +110,7 @@ pub struct TelemetryConfig {
 ## Local Analytics Dashboard
 
 Built-in UI showing:
+
 - Startup time trends
 - Extension performance impact
 - LSP latency per language
@@ -117,21 +118,24 @@ Built-in UI showing:
 - Command usage frequency
 - Error rates
 
-```rust
-pub struct AnalyticsDashboard {
-    pub fn render(&self, ui: &mut egui::Ui) {
-        ui.heading("Performance Insights");
+```svelte
+<!-- src/components/ResourceMetrics.svelte -->
+<script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
+  import { Chart, registerables } from 'chart.js';
 
-        // Startup time chart
-        self.render_startup_chart(ui);
+  Chart.register(...registerables);
 
-        // Extension impact
-        self.render_extension_impact(ui);
+  export let visible = false;
+</script>
 
-        // LSP performance
-        self.render_lsp_performance(ui);
-    }
-}
+{#if visible}
+  <div class="analytics-dashboard" role="dialog" aria-label="Performance Insights">
+    <h2>Performance Insights</h2>
+    <!-- Startup time chart, extension impact, LSP performance -->
+  </div>
+{/if}
 ```
 
 ## Crash Reporting
