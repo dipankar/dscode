@@ -146,7 +146,10 @@ Use the Command Palette: ++ctrl+shift+p++ then type `Git: Delete Branch`.
 
 ## Merge Conflicts
 
-When a merge or rebase produces conflicts, DSCode highlights the conflicting files in the SCM view with a `C` (conflicted) status indicator.
+!!! warning "Pull is fast-forward only"
+    The built-in `git_pull` command only supports **fast-forward** merges. If the remote branch has diverged from your local branch, pull will return an error: *"Merge required -- not yet implemented."* In this case, use the integrated terminal to run `git pull --rebase` or `git merge` manually.
+
+When a merge or rebase produces conflicts, DSCode highlights the conflicting files in the SCM view with a `C` (conflicted) status indicator. Note that merge conflict UI applies to conflicts produced by **external tools, rebases, or manual merges** run in the terminal -- the built-in pull command does not produce merge conflicts because it only performs fast-forward merges.
 
 ### Resolving Conflicts
 

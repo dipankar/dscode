@@ -175,6 +175,17 @@
   font-size: 0.85rem;
 }
 
+/* Design document indicator */
+.md-typeset .status-design {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(156, 39, 176, 0.15);
+  color: #9c27b0;
+}
+
 /* Section headers with icons */
 .md-typeset .section-icon {
   margin-right: 0.5rem;

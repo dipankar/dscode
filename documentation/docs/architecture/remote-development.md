@@ -1,6 +1,9 @@
-# Remote Development Architecture
+# Remote Development Architecture (Design Document)
 
-DSCode supports remote development scenarios where the UI runs locally while the workspace, file system, terminal, and language services run on a remote machine. This enables development on remote servers, inside containers, and within WSL (Windows Subsystem for Linux).
+!!! danger "Not Yet Implemented"
+    Remote development is a **planned feature** that has not been implemented yet. The source code contains zero remote development functionality. This page describes the intended architecture and design goals for future development. Do not rely on any features described here being available in the current release.
+
+DSCode plans to support remote development scenarios where the UI runs locally while the workspace, file system, terminal, and language services run on a remote machine. This will enable development on remote servers, inside containers, and within WSL (Windows Subsystem for Linux).
 
 ---
 
@@ -50,6 +53,9 @@ The remote development model follows a **thin client / rich server** pattern:
 ---
 
 ## SSH Remote Development
+
+!!! danger "Not Yet Implemented"
+    SSH remote development is a design-phase feature with no current implementation.
 
 ### Connection Flow
 
@@ -123,6 +129,9 @@ The server communicates with the local client through an encrypted SSH tunnel us
 
 ## WSL Integration
 
+!!! danger "Not Yet Implemented"
+    WSL integration is a design-phase feature with no current implementation.
+
 ### Architecture (Windows only)
 
 ```mermaid
@@ -175,6 +184,9 @@ wsl.exe -d Ubuntu -- /home/user/.dscode-server/bin/dscode-server --socket /tmp/d
 ---
 
 ## Container / Docker Development
+
+!!! danger "Not Yet Implemented"
+    Container development is a design-phase feature with no current implementation.
 
 ### Dev Container Architecture
 

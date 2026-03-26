@@ -176,6 +176,9 @@ Once execution is paused at a breakpoint, use the Debug Toolbar (`DebugToolbar.s
 | Stop | ++shift+f5++ | Terminate the debug session |
 | Pause | ++f6++ | Pause a running program |
 
+!!! warning "Step Over / Step Into / Step Out are currently stubbed"
+    The `step_over`, `step_into`, and `step_out` commands in the Rust backend (`debug_ops.rs`) currently only validate the session and log the action -- they do **not** send the corresponding request to the debug adapter. Breakpoints, continue, pause, and stop work correctly via `DebugManager` state transitions. Full stepping support will be added once the DAP adapter communication layer is complete.
+
 The Rust backend manages session state transitions:
 
 ```rust
@@ -274,7 +277,7 @@ Through extensions, DSCode supports debuggers for many languages:
 
 | Language | Debug Adapter | Extension |
 |---|---|---|
-| JavaScript / TypeScript | Node.js debugger | Built-in |
+| JavaScript / TypeScript | Node.js debugger | Requires extension |
 | Python | debugpy | Python extension |
 | Rust | CodeLLDB (lldb) | CodeLLDB extension |
 | C / C++ | cppdbg (GDB/LLDB) | C/C++ extension |

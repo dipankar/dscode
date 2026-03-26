@@ -133,28 +133,31 @@ impl SessionManager {
         if let Ok(cwd) = std::env::current_dir() {
             candidates.push(cwd.join("extension-host/dist/main.js"));
             candidates.push(cwd.join("extension-host/main.js"));
-            if let Some(parent) = cwd.parent() {
-                candidates.push(parent.join("extension-host/dist/main.js"));
-                candidates.push(parent.join("extension-host/main.js"));
+            let mut dir = cwd.as_path();
+            for _ in 0..5 {
+                if let Some(parent) = dir.parent() {
+                    candidates.push(parent.join("extension-host/dist/main.js"));
+                    candidates.push(parent.join("extension-host/main.js"));
+                    dir = parent;
+                } else {
+                    break;
+                }
             }
         }
 
         if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(parent) = exe_path.parent() {
-                candidates.push(parent.join("extension-host/dist/main.js"));
+            let mut dir = exe_path.as_path();
+            for _ in 0..6 {
+                if let Some(parent) = dir.parent() {
+                    candidates.push(parent.join("extension-host/dist/main.js"));
+                    dir = parent;
+                } else {
+                    break;
+                }
             }
         }
 
-        println!(
-            "[SessionManager] Checking {} candidates for extension host entry",
-            candidates.len()
-        );
         for candidate in &candidates {
-            println!(
-                "[SessionManager] Checking candidate: {:?} (exists: {})",
-                candidate,
-                candidate.exists()
-            );
             if candidate.exists() {
                 println!(
                     "[SessionManager] Resolved extension host entry to {:?}",
@@ -164,18 +167,18 @@ impl SessionManager {
             }
         }
 
-        println!("[SessionManager] None of the candidates exist. Checked:");
-        for candidate in &candidates {
-            println!("  - {:?}", candidate);
-        }
+        eprintln!(
+            "[SessionManager] Extension host entry not found. Checked {} candidates",
+            candidates.len()
+        );
         Err("Unable to locate extension host entry point".to_string())
     }
 
     fn build_ipc_url(kind: &str, session_id: &Uuid) -> Result<String, String> {
         #[cfg(target_family = "unix")]
         {
-            let socket_path =
-                std::env::temp_dir().join(format!("dscode-{}-{}.sock", kind, session_id));
+            let socket_dir = std::path::Path::new("/tmp");
+            let socket_path = socket_dir.join(format!("dscode-{}-{}.sock", kind, session_id));
             if socket_path.exists() {
                 if let Err(err) = fs::remove_file(&socket_path) {
                     eprintln!(
@@ -184,7 +187,6 @@ impl SessionManager {
                     );
                 }
             }
-
             return Ok(format!("ipc://{}", socket_path.to_string_lossy()));
         }
 

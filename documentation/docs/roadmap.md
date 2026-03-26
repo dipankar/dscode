@@ -52,17 +52,17 @@ The foundational editing experience, establishing the application shell and core
 
 :material-check-circle:{ .status-full } **Done**
 
-Intelligent language features powered by LSP and Tree-sitter, enabling rich editing experiences across languages.
+Intelligent language features powered by LSP (and Tree-sitter, partially scaffolded), enabling rich editing experiences across languages.
 
 | Feature | Status | Details |
 |---|:---:|---|
 | LSP client (tower-lsp) | :material-check-circle:{ .status-full } | Multi-server support, auto-discovery |
-| 24 built-in language providers | :material-check-circle:{ .status-full } | TypeScript, Python, Rust, Go, C/C++, Java, and more |
+| 4 built-in language servers + 24 provider registration types | :material-check-circle:{ .status-full } | Python (Pyright), Rust (rust-analyzer), Go (gopls), JSON; 24 language provider types in the extension API |
 | Auto-completion | :material-check-circle:{ .status-full } | LSP-driven completions with documentation |
 | Go-to-definition / references | :material-check-circle:{ .status-full } | Peek and navigate across files |
 | Hover documentation | :material-check-circle:{ .status-full } | Type info, documentation, signatures |
 | Diagnostics (errors, warnings) | :material-check-circle:{ .status-full } | Inline squiggles, problems panel |
-| Tree-sitter integration | :material-check-circle:{ .status-full } | Structural syntax analysis, enhanced highlighting |
+| Tree-sitter integration | :material-circle-half-full:{ .status-partial } | Scaffolded (stub); `parse()` returns empty results pending full integration |
 | Semantic highlighting | :material-check-circle:{ .status-full } | LSP-driven semantic tokens |
 
 ---

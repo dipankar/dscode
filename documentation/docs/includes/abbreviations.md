@@ -23,3 +23,6 @@
 *[Monaco]: The code editor that powers VS Code
 *[Tauri]: A framework for building desktop applications with web frontends and Rust backends
 *[Svelte]: A reactive UI framework that compiles to vanilla JavaScript
+*[JIT]: Just-In-Time — compilation technique that compiles code during execution
+*[LRU]: Least Recently Used — a cache eviction strategy
+*[OAuth]: Open Authorization — an open standard for access delegation

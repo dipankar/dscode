@@ -45,12 +45,12 @@ Initial alpha release of DSCode. This release establishes the core editing exper
 #### Language Intelligence
 
 - **LSP client** (tower-lsp) with multi-server support and automatic server discovery
-- **24 built-in language server configurations** for TypeScript, JavaScript, Python, Rust, Go, C, C++, Java, C#, PHP, Ruby, Swift, Kotlin, Dart, Lua, Zig, HTML, CSS, JSON, YAML, TOML, Markdown, Bash, and SQL
+- **4 built-in language server configurations** for Python (Pyright), Rust (rust-analyzer), Go (gopls), and JSON (vscode-json-language-server). Additional language servers can be added through extensions
 - **Auto-completion** with LSP-driven suggestions, documentation preview, and signature help
 - **Go-to-definition** and **find references** with peek views and cross-file navigation
 - **Hover documentation** showing type information, documentation, and function signatures
 - **Diagnostics** with inline error/warning squiggles and a dedicated Problems panel
-- **Tree-sitter syntax analysis** for structural highlighting and code navigation
+- **Tree-sitter syntax analysis** scaffolded (stub -- not yet functional; the `parse()` function returns empty results pending tree-sitter integration)
 - **Semantic highlighting** via LSP semantic tokens
 
 #### Extension System
@@ -101,7 +101,7 @@ Initial alpha release of DSCode. This release establishes the core editing exper
 
 - **Debug Adapter Protocol (DAP) support** -- launch and attach debug sessions
 - **Breakpoints** -- line breakpoints, conditional breakpoints, and logpoints
-- **Debug toolbar** -- continue, step over, step into, step out, restart, stop
+- **Debug toolbar** -- continue, pause, stop, and restart work via DebugManager state transitions; step over, step into, and step out are scaffolded (stub)
 - **Variables and watch** -- inspect variables and add watch expressions
 - **Debug console** -- evaluate expressions during debug sessions
 
@@ -124,12 +124,42 @@ Initial alpha release of DSCode. This release establishes the core editing exper
 
 - Some VS Code extensions may not activate due to incomplete API coverage (~75%). Extensions relying on unimplemented APIs will fail gracefully with an error in the extension host log.
 - Remote development features (SSH, WSL, containers) are not yet available. These are planned for a future release.
-- Notebook / Jupyter support is not yet implemented.
+- Notebook / Jupyter support: the extension host API (`vscode.notebooks`) is implemented, but frontend rendering is incomplete.
 - Replace in files is partially implemented -- single-file replace works, but bulk replace across files is in progress.
 - The Settings UI is JSON-only; a visual settings editor is in development.
 - The keybinding editor does not yet support visual editing; keybindings must be configured via `keybindings.json`.
 - Some debugger adapters may not auto-discover correctly; manual `launch.json` configuration may be required.
 - Auto-update is not yet available; updates require manual download and installation.
+- Debug stepping commands (`step_over`, `step_into`, `step_out`) are stubbed -- they validate the session but do not communicate with the debug adapter yet.
+- Git pull only supports fast-forward merges; diverged histories require manual resolution via the terminal.
+
+### Platform-Specific Notes
+
+- **macOS** -- Universal binary supports both Intel and Apple Silicon. Requires macOS 12 (Monterey) or later for WebKit compatibility.
+- **Linux** -- Requires WebKitGTK 4.1+. Tested on Ubuntu 22.04+, Fedora 38+, and Arch Linux. Wayland and X11 are both supported.
+- **Windows** -- Requires WebView2 runtime (automatically installed by the `.msi` installer). Tested on Windows 10 21H2+ and Windows 11.
+
+---
+
+## What's Next
+
+See the [Roadmap](roadmap.md) for the full development plan. Key priorities for the next release (v0.2.0-alpha):
+
+- Replace in files (bulk operations across workspace)
+- Search filters (include/exclude patterns, file type filters)
+- Visual keybinding editor with conflict detection
+- Settings UI (searchable, visual settings editor beyond JSON editing)
+- Tree-sitter integration (completing the stub implementation)
+- Full debug stepping via DAP adapter communication
+
+---
+
+## Contributors
+
+DSCode is built by a growing community of contributors. Thank you to everyone who has contributed code, reported bugs, tested pre-release builds, and provided feedback.
+
+- See the full list of contributors on [GitHub](https://github.com/nicepkg/dscode/graphs/contributors)
+- Want to contribute? Check out the [Contributing Guide](contributing/building-from-source.md)
 
 ---
 

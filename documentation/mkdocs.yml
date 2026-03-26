@@ -91,7 +91,7 @@ markdown_extensions:
       custom_fences:
         - name: mermaid
           class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist:
@@ -109,6 +109,7 @@ nav:
     - getting-started/installation.md
     - getting-started/quick-start.md
     - getting-started/first-project.md
+    - getting-started/migrating-from-vscode.md
   - User Guide:
     - user-guide/editor-features.md
     - user-guide/navigation.md
@@ -119,6 +120,7 @@ nav:
     - user-guide/settings-and-configuration.md
     - user-guide/keyboard-shortcuts.md
     - user-guide/themes-and-appearance.md
+    - user-guide/multi-root-workspaces.md
   - Extensions:
     - extensions/installing-extensions.md
     - extensions/managing-extensions.md
@@ -131,6 +133,11 @@ nav:
     - extension-development/language-providers.md
     - extension-development/webview-extensions.md
     - extension-development/native-rust-plugins.md
+    - extension-development/scm-api.md
+    - extension-development/testing-api.md
+    - extension-development/notebook-api.md
+    - extension-development/comments-api.md
+    - extension-development/authentication-api.md
     - extension-development/publishing.md
   - Architecture:
     - architecture/overview.md
@@ -141,6 +148,8 @@ nav:
     - architecture/ui-system.md
     - architecture/remote-development.md
     - architecture/telemetry.md
+    - architecture/security.md
+    - architecture/performance.md
     - architecture/vscode-compatibility.md
   - Contributing:
     - contributing/building-from-source.md

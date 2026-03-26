@@ -10,11 +10,12 @@ the core workflows you will use every day.
 After [installing DSCode](installation.md), launch it from your terminal:
 
 ```bash
-npm run tauri dev
+dscode .
 ```
 
-Or, if you built a release binary, open the application directly from your
-system launcher.
+Or open the application directly from your system launcher (Applications on
+macOS, application menu on Linux, Start Menu on Windows). If you are building
+from source, use `cargo tauri dev` to launch the development build.
 
 When DSCode opens for the first time, you will see the **Welcome** tab with
 links to documentation, recent projects, and configuration options.
@@ -184,6 +185,83 @@ These shortcuts will cover most of your daily editing needs:
     [Keyboard Shortcuts Reference](../reference/keyboard-shortcuts-reference.md)
     or press ++ctrl+k++ then ++ctrl+s++ (++cmd+k++ then ++cmd+s++ on macOS)
     to open the interactive shortcut editor.
+
+---
+
+---
+
+## Source Control Quick Start
+
+DSCode has built-in Git support. Here is how to stage, commit, and diff in
+three steps:
+
+1. **Open the Source Control view** -- Press ++ctrl+shift+g++ (++cmd+shift+g++
+   on macOS) or click the branch icon in the Activity Bar.
+2. **Stage changes** -- Click the `+` icon next to changed files, or click
+   `+` on the section header to stage all changes.
+3. **Commit** -- Type a commit message in the input box at the top of the
+   SCM view and press ++ctrl+enter++ (++cmd+enter++ on macOS).
+
+Click any changed file in the SCM view to open a side-by-side diff showing
+exactly what has changed.
+
+!!! tip
+    DSCode's Git is powered by the `git2` Rust crate -- no external `git`
+    binary is required. See the full
+    [Git Integration](../user-guide/git-integration.md) guide for details.
+
+---
+
+## Language Intelligence Quick Start
+
+When you open a file in a supported language, DSCode automatically starts
+the appropriate language server and provides intelligent features:
+
+- **Hover** -- Hold your cursor over a symbol to see its type, documentation,
+  and function signature.
+- **Auto-completion** -- Start typing to see context-aware suggestions.
+  Press ++ctrl+space++ (++cmd+space++ on macOS) to trigger completions
+  manually.
+- **Go to Definition** -- Press ++f12++ on a symbol to jump to its
+  definition. Press ++alt+f12++ (++option+f12++ on macOS) to peek at the
+  definition inline.
+
+DSCode ships with 4 built-in language servers (Python, Rust, Go, JSON).
+Install additional language extensions from the marketplace for other
+languages.
+
+---
+
+## Customization Quick Start
+
+Make DSCode yours in under a minute:
+
+- **Change theme** -- Open the Command Palette (++ctrl+shift+p++) and type
+  `Color Theme`, then select from the list. Dark and light themes are
+  available out of the box, and you can install more from the marketplace.
+- **Adjust font size** -- Open Settings (++ctrl+comma++) and search for
+  `editor.fontSize`. Set it to your preferred size.
+- **Customize keybindings** -- Open the Command Palette and type
+  `Keyboard Shortcuts` to browse and modify keybindings, or edit
+  `keybindings.json` directly.
+
+!!! note "For VS Code users"
+    DSCode reads the same `settings.json` and `keybindings.json` formats as
+    VS Code. You can copy your existing configuration files to
+    `~/.config/dscode/` (Linux), `~/Library/Application Support/dscode/`
+    (macOS), or `%APPDATA%\dscode\` (Windows) to get started immediately.
+
+    Key differences from VS Code:
+
+    - DSCode uses the **Open VSX** marketplace instead of the Microsoft
+      marketplace. Most popular extensions are available on both.
+    - Remote development (SSH, WSL, containers) is **not yet available**.
+    - Some VS Code-proprietary APIs are not implemented (~75% API coverage).
+    - DSCode uses significantly less memory (~50 MB vs. 300-500 MB) and
+      starts faster (<100ms vs. 1-3 seconds).
+
+    See [Migrating from VS Code](migrating-from-vscode.md) for a complete
+    migration walkthrough.
 
 ---
 

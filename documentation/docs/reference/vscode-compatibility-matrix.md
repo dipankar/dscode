@@ -23,16 +23,16 @@ The following table summarizes compatibility for each top-level `vscode.*` names
 | `vscode.commands` | 6 | 6 | <span class="status-badge full">Full</span> | `registerCommand`, `registerTextEditorCommand`, `executeCommand`, `getCommands` all supported |
 | `vscode.window` | 42 | 34 | <span class="status-badge partial">Partial</span> | Core UI APIs work. Missing: `registerCustomEditorProvider`, `registerTerminalProfileProvider`, `registerUriHandler`, some `createTreeView` options |
 | `vscode.workspace` | 38 | 28 | <span class="status-badge partial">Partial</span> | File system, configuration, and workspace folders work. Missing: `registerFileSystemProvider` (virtual FS), `registerNotebookSerializer`, some workspace edit features |
-| `vscode.languages` | 32 | 32 | <span class="status-badge full">Full</span> | All 24 provider types implemented (completions, hover, diagnostics, formatting, code actions, code lenses, document links, folding, semantic tokens, inlay hints, etc.) |
+| `vscode.languages` | 32 | 32 | <span class="status-badge full">Full</span> | All 24 language provider registration types implemented (completions, hover, diagnostics, formatting, code actions, code lenses, document links, folding, semantic tokens, inlay hints, etc.). Note: 4 built-in language servers are bundled; additional servers come from extensions |
 | `vscode.debug` | 12 | 8 | <span class="status-badge partial">Partial</span> | DAP client works. `registerDebugAdapterDescriptorFactory`, `startDebugging`, breakpoints, and debug console functional. Missing: some advanced breakpoint types, `registerDebugConfigurationProvider` options |
 | `vscode.env` | 10 | 10 | <span class="status-badge full">Full</span> | `appName`, `appRoot`, `language`, `machineId`, `sessionId`, `uriScheme`, `clipboard`, `openExternal`, `shell`, `isNewAppInstall` |
 | `vscode.extensions` | 4 | 4 | <span class="status-badge full">Full</span> | `getExtension`, `all`, `onDidChange` fully supported |
 | `vscode.tasks` | 8 | 5 | <span class="status-badge partial">Partial</span> | `registerTaskProvider`, `executeTask`, `taskExecutions` work. Missing: custom problem matchers, `onDidStartTaskProcess` / `onDidEndTaskProcess` |
 | `vscode.scm` | 6 | 4 | <span class="status-badge partial">Partial</span> | `createSourceControl`, resource groups, and input box work. Missing: `SourceControlResourceDecorations` advanced options, some history APIs |
-| `vscode.notebooks` | 18 | 0 | <span class="status-badge planned">Planned</span> | Notebook support is planned for a future release. No APIs currently implemented |
+| `vscode.notebooks` | 18 | 12 | <span class="status-badge partial">Partial</span> | Extension host API implemented (`NotebookController`, `CellKind`, `CellOutput`, `ExecutionState`); frontend rendering is incomplete |
 | `vscode.tests` | 10 | 6 | <span class="status-badge partial">Partial</span> | `createTestController`, test items, test runs, and result reporting work. Missing: test coverage, continuous run, and some discovery APIs |
-| `vscode.comments` | 6 | 0 | <span class="status-badge planned">Planned</span> | Comment thread API planned for a future release |
-| `vscode.authentication` | 4 | 0 | <span class="status-badge planned">Planned</span> | Authentication provider API planned; extensions needing OAuth should use external browser flows for now |
+| `vscode.comments` | 6 | 4 | <span class="status-badge partial">Partial</span> | `createCommentController`, `CommentThread`, `Comment` interfaces implemented in extension host; frontend comment rendering in progress |
+| `vscode.authentication` | 4 | 3 | <span class="status-badge partial">Partial</span> | `getSession`, `registerAuthenticationProvider`, and `onDidChangeSessions` implemented in extension host; integrated with `SecretStorage` for token persistence |
 | `vscode.l10n` | 4 | 0 | <span class="status-badge planned">Planned</span> | Localization API planned. Extensions can use their own i18n libraries in the meantime |
 
 ---
@@ -129,7 +129,7 @@ Contribution points are static declarations in an extension's `package.json` tha
 | `notebookRenderer` | <span class="status-badge planned">Planned</span> | Notebook renderers planned with notebook support |
 | `walkthroughs` | <span class="status-badge planned">Planned</span> | Getting started walkthroughs not yet supported |
 | `terminal` | <span class="status-badge planned">Planned</span> | Terminal profile contributions planned |
-| `authentication` | <span class="status-badge planned">Planned</span> | Authentication provider contributions planned |
+| `authentication` | <span class="status-badge partial">Partial</span> | `registerAuthenticationProvider` implemented in extension host |
 
 ---
 
@@ -185,11 +185,11 @@ DSCode supports the following activation events in `package.json`:
 
 ## Known Gaps and Workarounds
 
-??? info "Missing: `vscode.notebooks` API"
-    **Workaround:** Use the Jupyter extension's REST API or a separate Jupyter server. Notebook support is the highest-priority planned feature.
+??? info "Partial: `vscode.notebooks` API"
+    The extension host API for notebooks is implemented (`NotebookController`, `CellKind`, `CellOutput`, `ExecutionState`), but the frontend notebook renderer is incomplete. **Workaround:** Use the Jupyter extension's REST API or a separate Jupyter server for notebook execution.
 
-??? info "Missing: `vscode.authentication` API"
-    **Workaround:** Extensions that need OAuth can launch an external browser flow and pass tokens back through a local HTTP callback. DSCode will provide `registerAuthenticationProvider` in a future release.
+??? info "Partial: `vscode.authentication` API"
+    `getSession` and `registerAuthenticationProvider` are implemented in the extension host with `SecretStorage` integration for token persistence. Most OAuth-based extensions should work. Some advanced session management features may still be missing.
 
 ??? info "Missing: `registerCustomEditorProvider`"
     **Workaround:** Use webview panels (`createWebviewPanel`) for custom UI. Custom editors that need to replace the default text editor will be supported in a future release.

@@ -33,9 +33,9 @@ DSCode targets compatibility with the **top 200 most-installed VS Code extension
 | `vscode.tasks` | :material-circle-half-full:{ .yellow } Partial | 75% | `registerTaskProvider`, `executeTask`, `taskExecutions` |
 | `vscode.scm` | :material-circle-half-full:{ .yellow } Partial | 70% | Source control management API |
 | `vscode.tests` | :material-circle-half-full:{ .yellow } Partial | 70% | Test runner API, test suites, coverage |
-| `vscode.authentication` | :material-circle-half-full:{ .yellow } Partial | 60% | `getSession`, `registerAuthenticationProvider` |
-| `vscode.comments` | :material-dots-circle:{ .blue } Planned | 0% | Comment threads and ranges |
-| `vscode.notebooks` | :material-dots-circle:{ .blue } Planned | 0% | Notebook API (Jupyter support) |
+| `vscode.authentication` | :material-circle-half-full:{ .yellow } Partial | 60% | `getSession`, `registerAuthenticationProvider`, `onDidChangeSessions` implemented with `SecretStorage` integration |
+| `vscode.comments` | :material-circle-half-full:{ .yellow } Partial | 60% | `createCommentController`, `CommentThread`, `Comment` interfaces implemented in extension host |
+| `vscode.notebooks` | :material-circle-half-full:{ .yellow } Partial | 40% | Extension host API implemented (`NotebookController`, `CellKind`, `CellOutput`); frontend rendering incomplete |
 | `vscode.chat` | :material-close-circle:{ .red } N/A | 0% | AI chat API (VS Code-specific, not planned) |
 
 ### Window API Details
@@ -379,7 +379,7 @@ DSCode supports VS Code snippet format:
 | **`node_modules` access** | Direct `require()` | Sandboxed | Security: extensions run in sandbox |
 | **Proposed APIs** | Available with flag | Not supported | Unstable APIs are not implemented |
 | **Chat/Copilot API** | Available | Not planned | VS Code-specific AI integration |
-| **Notebook API** | Full support | Planned | Will be implemented in a future release |
+| **Notebook API** | Full support | Partial | Extension host API implemented; frontend rendering incomplete |
 | **Custom Editor API** | Full support | Partial | Basic support, binary editors planned |
 
 ### Extension-Specific Incompatibilities

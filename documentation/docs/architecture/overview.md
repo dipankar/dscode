@@ -115,7 +115,7 @@ graph LR
 | **LSP Client** | tower-lsp + lsp-types | Language Server Protocol integration |
 | **Git** | git2 (libgit2) | Native git operations without shelling out |
 | **Text Buffer** | ropey | Rope data structure for large file editing |
-| **Syntax Parsing** | tree-sitter | Incremental syntax tree parsing |
+| **Syntax Parsing** | tree-sitter | Incremental syntax tree parsing (scaffolded; `parse()` stub returns empty results pending integration) |
 | **File Watching** | notify | Cross-platform filesystem event monitoring |
 | **Search** | grep-searcher + ignore | Ripgrep-based search with .gitignore support |
 | **Memory Allocator** | jemalloc (default) / mimalloc | Configurable high-performance allocators |
@@ -134,7 +134,7 @@ Every architectural decision prioritizes speed and resource efficiency:
 - **IPC latency:** <1ms round-trip between frontend and backend
 - **Memory allocator:** jemalloc by default, with mimalloc and system allocator as options
 - **Zero-copy deserialization** via rkyv for NNG messaging (planned)
-- **Incremental parsing** with tree-sitter for syntax highlighting
+- **Incremental parsing** with tree-sitter planned for syntax highlighting (currently uses LSP semantic tokens)
 
 !!! tip "Allocator Selection"
     DSCode defaults to jemalloc but supports compile-time selection:

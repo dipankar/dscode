@@ -68,7 +68,7 @@ Built-in Git support via the `git2` crate -- no external `git` binary needed. St
 
 <div class="feature-card" markdown>
 ### :material-translate: Language Intelligence
-LSP support via `tower-lsp` and syntax analysis via Tree-sitter. Get completions, diagnostics, go-to-definition, hover info, and semantic highlighting for your language of choice.
+LSP support via `tower-lsp` with syntax analysis via LSP semantic tokens (Tree-sitter integration planned). Get completions, diagnostics, go-to-definition, hover info, and semantic highlighting for your language of choice.
 </div>
 
 <div class="feature-card" markdown>
@@ -199,7 +199,7 @@ DSCode is designed to feel familiar. Here is what carries over and what is diffe
 | **Tasks** | :material-circle-half-full:{ .status-partial } Partial | `tasks.json` support with core task types |
 | **Debugging** | :material-circle-half-full:{ .status-partial } Partial | DAP support; adapter auto-discovery in progress |
 | **Remote Development** | :material-circle-outline:{ .status-planned } Planned | SSH and container targets on the roadmap |
-| **Notebook / Jupyter** | :material-circle-outline:{ .status-planned } Planned | Not yet available |
+| **Notebook / Jupyter** | :material-circle-half-full:{ .status-partial } Partial | Extension host API implemented; frontend rendering incomplete |
 
 !!! tip "Migration checklist"
     1. Copy your `settings.json`, `keybindings.json`, and `snippets/` folder into `~/.config/dscode/`

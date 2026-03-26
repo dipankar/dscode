@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn test_error_sanitization() {
-        let error = PathValidator::sanitize_error("/home/user/secret/file.txt: No such file");
+        let error = PathValidator::sanitize_error(&"/home/user/secret/file.txt: No such file");
         assert!(!error.contains("/home"));
         assert!(!error.contains("/secret"));
     }

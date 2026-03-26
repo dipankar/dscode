@@ -97,10 +97,10 @@ Find answers to the most common questions about DSCode below. Each question expa
     DSCode supports **200+ languages** through multiple layers:
 
     - **Monaco Editor** provides syntax highlighting, bracket matching, and basic IntelliSense for 200+ languages out of the box.
-    - **Tree-sitter** provides structural syntax analysis for enhanced highlighting and code navigation.
+    - **Tree-sitter** is scaffolded for structural syntax analysis but is not yet functional (the parser stub returns empty results). Enhanced highlighting currently relies on LSP semantic tokens.
     - **Language Server Protocol (LSP)** integration enables intelligent features like auto-completion, go-to-definition, find references, hover documentation, and diagnostics for any language with an LSP server.
 
-    DSCode ships with built-in LSP configurations for 24 popular languages. Additional language support can be added through extensions.
+    DSCode ships with **4 built-in language server configurations**: Python (Pyright), Rust (rust-analyzer), Go (gopls), and JSON (vscode-json-language-server). The extension API supports 24 language provider registration types, and additional language servers can be added through extensions.
 
 ??? question "Does DSCode support Vim or Emacs keybindings?"
 
@@ -176,7 +176,7 @@ Find answers to the most common questions about DSCode below. Each question expa
     - **Node.js** -- Extension host process running VS Code-compatible extensions
     - **NNG + rkyv** -- High-performance IPC between Rust backend and Node.js extension host
     - **git2** -- Native git operations without requiring an external git binary
-    - **Tree-sitter** -- Incremental parsing for syntax analysis
+    - **Tree-sitter** -- Incremental parsing for syntax analysis (scaffolded; stub pending full integration)
     - **tower-lsp** -- LSP client implementation
     - **xterm.js + portable-pty** -- Integrated terminal
 
