@@ -1,5 +1,4 @@
 import { writable } from 'svelte/store';
-import * as monaco from 'monaco-editor';
 
 export interface OpenFile {
   path: string;
@@ -20,9 +19,22 @@ interface EditorState {
   openFiles: Map<string, OpenFile>;
   tabs: EditorTab[];
   activeTabId: string | null;
-  monacoInstance: monaco.editor.IStandaloneCodeEditor | null;
+  monacoInstance: any | null;
   autoSaveEnabled: boolean;
-  autoSaveDelay: number; // in milliseconds
+  autoSaveDelay: number;
+}
+
+function disposeModelForPath(path: string): void {
+  try {
+    const monaco = require('monaco-editor');
+    const uri = monaco.Uri.parse(`file://${path}`);
+    const model = monaco.editor.getModel(uri);
+    if (model) {
+      model.dispose();
+    }
+  } catch {
+    // Monaco not loaded yet, nothing to dispose
+  }
 }
 
 function createEditorStore() {
@@ -42,10 +54,8 @@ function createEditorStore() {
         const id = path;
         const label = path.split('/').pop() || path;
 
-        // Add to open files
         state.openFiles.set(path, { path, content, isDirty: false, language });
 
-        // Add tab if not exists
         if (!state.tabs.find((t) => t.id === id)) {
           state.tabs.push({
             id,
@@ -56,10 +66,7 @@ function createEditorStore() {
           });
         }
 
-        // Set as active
         state.activeTabId = id;
-
-        // Note: Monaco editor will be updated reactively by the EditorArea component
 
         return state;
       });
@@ -72,24 +79,21 @@ function createEditorStore() {
 
         const tab = state.tabs[index];
 
-        // Check if file has unsaved changes and not forcing close
         if (!force && tab.isDirty) {
-          // Don't close - will be handled by component with confirmation
           return state;
         }
 
         state.openFiles.delete(tab.path);
         state.tabs.splice(index, 1);
 
-        // If closing active tab, switch to another
+        disposeModelForPath(tab.path);
+
         if (state.activeTabId === tabId) {
           if (state.tabs.length > 0) {
             const newActiveTab = state.tabs[Math.max(0, index - 1)];
             state.activeTabId = newActiveTab.id;
-            // Note: Monaco editor will be updated reactively by the EditorArea component
           } else {
             state.activeTabId = null;
-            // Clear editor when no tabs are open
             if (state.monacoInstance) {
               state.monacoInstance.setValue('');
             }
@@ -117,13 +121,10 @@ function createEditorStore() {
       update((state) => {
         const file = state.openFiles.get(path);
         if (file) {
-          file.isDirty = true;
+          state.openFiles.set(path, { ...file, isDirty: true });
         }
 
-        const tab = state.tabs.find((t) => t.path === path);
-        if (tab) {
-          tab.isDirty = true;
-        }
+        state.tabs = state.tabs.map((t) => (t.path === path ? { ...t, isDirty: true } : t));
 
         return state;
       });
@@ -133,19 +134,16 @@ function createEditorStore() {
       update((state) => {
         const file = state.openFiles.get(path);
         if (file) {
-          file.isDirty = false;
+          state.openFiles.set(path, { ...file, isDirty: false });
         }
 
-        const tab = state.tabs.find((t) => t.path === path);
-        if (tab) {
-          tab.isDirty = false;
-        }
+        state.tabs = state.tabs.map((t) => (t.path === path ? { ...t, isDirty: false } : t));
 
         return state;
       });
     },
 
-    setMonacoInstance: (instance: monaco.editor.IStandaloneCodeEditor) => {
+    setMonacoInstance: (instance: any) => {
       update((state) => {
         state.monacoInstance = instance;
         return state;
@@ -156,7 +154,7 @@ function createEditorStore() {
       update((state) => {
         const file = state.openFiles.get(path);
         if (file) {
-          file.content = content;
+          state.openFiles.set(path, { ...file, content });
         }
         return state;
       });
@@ -178,19 +176,19 @@ function createEditorStore() {
 
     saveAll: async (saveFn: (path: string, content: string) => Promise<void>) => {
       let state: EditorState;
-      const unsubscribe = subscribe((s) => { state = s; });
+      const unsubscribe = subscribe((s) => {
+        state = s;
+      });
 
-      const dirtyFiles = Array.from(state!.openFiles.entries())
-        .filter(([_, file]) => file.isDirty);
+      const dirtyFiles = Array.from(state!.openFiles.entries()).filter(([_, file]) => file.isDirty);
 
       for (const [path, file] of dirtyFiles) {
         try {
           await saveFn(path, file.content);
           update((s) => {
             const f = s.openFiles.get(path);
-            if (f) f.isDirty = false;
-            const tab = s.tabs.find((t) => t.path === path);
-            if (tab) tab.isDirty = false;
+            if (f) s.openFiles.set(path, { ...f, isDirty: false });
+            s.tabs = s.tabs.map((t) => (t.path === path ? { ...t, isDirty: false } : t));
             return s;
           });
         } catch (error) {
@@ -203,7 +201,9 @@ function createEditorStore() {
 
     navigateToLine: (line: number, column: number = 1) => {
       let state: EditorState;
-      const unsubscribe = subscribe((s) => { state = s; });
+      const unsubscribe = subscribe((s) => {
+        state = s;
+      });
 
       if (state!.monacoInstance) {
         // Reveal the line in the center

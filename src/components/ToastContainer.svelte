@@ -7,29 +7,34 @@
 
   function getIcon(type: Toast['type']) {
     switch (type) {
-      case 'error': return AlertCircle;
-      case 'success': return CheckCircle;
-      case 'warning': return AlertTriangle;
-      case 'info': return Info;
+      case 'error':
+        return AlertCircle;
+      case 'success':
+        return CheckCircle;
+      case 'warning':
+        return AlertTriangle;
+      case 'info':
+        return Info;
     }
   }
 
   function getIconColor(type: Toast['type']) {
     switch (type) {
-      case 'error': return '#f44336';
-      case 'success': return '#4caf50';
-      case 'warning': return '#ff9800';
-      case 'info': return '#2196f3';
+      case 'error':
+        return '#f44336';
+      case 'success':
+        return '#4caf50';
+      case 'warning':
+        return '#ff9800';
+      case 'info':
+        return '#2196f3';
     }
   }
 </script>
 
 <div class="toast-container">
   {#each toasts as toast (toast.id)}
-    <div
-      class="toast toast-{toast.type}"
-      transition:fly={{ y: 20, duration: 300 }}
-    >
+    <div class="toast toast-{toast.type}" transition:fly={{ y: 20, duration: 300 }}>
       <div class="toast-icon" style="color: {getIconColor(toast.type)}">
         <svelte:component this={getIcon(toast.type)} size={20} />
       </div>
@@ -42,11 +47,7 @@
           </details>
         {/if}
       </div>
-      <button
-        class="toast-close"
-        on:click={() => toastStore.dismiss(toast.id)}
-        title="Dismiss"
-      >
+      <button class="toast-close" on:click={() => toastStore.dismiss(toast.id)} title="Dismiss">
         <X size={16} />
       </button>
     </div>
@@ -74,25 +75,25 @@
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border);
     border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-md);
     pointer-events: auto;
     min-width: 300px;
   }
 
   .toast-error {
-    border-left: 3px solid #f44336;
+    border-left: 3px solid var(--color-toast-error);
   }
 
   .toast-success {
-    border-left: 3px solid #4caf50;
+    border-left: 3px solid var(--color-toast-success);
   }
 
   .toast-warning {
-    border-left: 3px solid #ff9800;
+    border-left: 3px solid var(--color-toast-warning);
   }
 
   .toast-info {
-    border-left: 3px solid #2196f3;
+    border-left: 3px solid var(--color-toast-info);
   }
 
   .toast-icon {

@@ -1,9 +1,9 @@
-use notify::{RecommendedWatcher, Watcher, RecursiveMode, Event, EventKind};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use serde::Serialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
-use tauri::{AppHandle, Manager, Emitter};
-use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileChangeEvent {
@@ -17,9 +17,7 @@ pub struct FileWatcherState {
 
 impl FileWatcherState {
     pub fn new() -> Self {
-        Self {
-            watchers: Arc::new(Mutex::new(HashMap::new())),
-        }
+        Self { watchers: Arc::new(Mutex::new(HashMap::new())) }
     }
 }
 
@@ -49,12 +47,13 @@ pub fn watch_file(app_handle: AppHandle, file_path: String) -> Result<(), String
     .map_err(|e| format!("Failed to create watcher: {}", e))?;
 
     // Watch the file
-    watcher.watch(&path, RecursiveMode::NonRecursive)
+    watcher
+        .watch(&path, RecursiveMode::NonRecursive)
         .map_err(|e| format!("Failed to watch file: {}", e))?;
 
     // Store watcher in state
     let state: tauri::State<FileWatcherState> = app_handle.state();
-    let mut watchers = state.watchers.lock().unwrap();
+    let mut watchers = state.watchers.lock().expect("watchers lock poisoned");
     watchers.insert(file_path.clone(), watcher);
 
     Ok(())
@@ -62,7 +61,7 @@ pub fn watch_file(app_handle: AppHandle, file_path: String) -> Result<(), String
 
 pub fn unwatch_file(app_handle: AppHandle, file_path: String) -> Result<(), String> {
     let state: tauri::State<FileWatcherState> = app_handle.state();
-    let mut watchers = state.watchers.lock().unwrap();
+    let mut watchers = state.watchers.lock().expect("watchers lock poisoned");
 
     if let Some(_watcher) = watchers.remove(&file_path) {
         // Watcher will be dropped automatically, stopping the watch

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { clearQuickPick, type QuickPickEntry, type QuickPickState } from '../stores/quickPick';
 
@@ -12,6 +12,26 @@
   let selections = new Set<number>();
   let items: QuickPickEntry[] = [];
   let lastRequestId = '';
+  let modalContainer: HTMLDivElement;
+
+  function trapFocus(e: KeyboardEvent) {
+    if (e.key !== 'Tab' || !modalContainer) return;
+    const focusable = Array.from(
+      modalContainer.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => el.offsetParent !== null);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   $: items = request.items;
   $: if (request.id !== lastRequestId) {
@@ -30,11 +50,16 @@
   $: ensureSelectionWithinBounds();
 
   onMount(() => {
+    window.addEventListener('keydown', trapFocus);
     const handle = window.setTimeout(() => {
       searchInput?.focus();
     }, 0);
 
     return () => window.clearTimeout(handle);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('keydown', trapFocus);
   });
 
   function ensureSelectionWithinBounds() {
@@ -195,6 +220,7 @@
 
 <div class="quickpick-overlay" role="presentation" tabindex="-1" on:click={handleOverlayClick}>
   <div
+    bind:this={modalContainer}
     class="quickpick-modal"
     role="dialog"
     aria-modal="true"
@@ -268,7 +294,7 @@
   .quickpick-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: var(--color-modal-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -347,7 +373,7 @@
   }
 
   .quickpick-list li > button:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--color-surface-focus);
   }
 
   .quickpick-list li > button.selected,
@@ -407,7 +433,7 @@
 
   button:not(.secondary) {
     background: var(--color-accent);
-    color: #fff;
+    color: var(--color-text-on-accent);
   }
 
   button.secondary {
@@ -416,6 +442,6 @@
   }
 
   button.secondary:hover:not([disabled]) {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--color-surface-hover);
   }
 </style>

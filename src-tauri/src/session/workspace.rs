@@ -90,36 +90,24 @@ impl SessionManager {
     }
 
     pub async fn get_workspace_configuration(
-        &self,
-        section: &str,
-        scope: Option<&str>,
+        &self, section: &str, scope: Option<&str>,
     ) -> Option<WorkspaceConfiguration> {
         let key = Self::workspace_config_key(section, scope);
-        self.workspace_configurations
-            .read()
-            .await
-            .get(&key)
-            .cloned()
+        self.workspace_configurations.read().await.get(&key).cloned()
     }
 
     pub async fn update_workspace_configuration(
-        &self,
-        section: String,
-        scope: Option<String>,
-        key: String,
-        value: Value,
+        &self, section: String, scope: Option<String>, key: String, value: Value,
     ) -> Result<(), String> {
         {
             let mut configs = self.workspace_configurations.write().await;
             let config_key = Self::workspace_config_key(&section, scope.as_deref());
 
-            let config = configs
-                .entry(config_key)
-                .or_insert_with(|| WorkspaceConfiguration {
-                    section: section.clone(),
-                    scope: scope.clone(),
-                    values: HashMap::new(),
-                });
+            let config = configs.entry(config_key).or_insert_with(|| WorkspaceConfiguration {
+                section: section.clone(),
+                scope: scope.clone(),
+                values: HashMap::new(),
+            });
 
             config.values.insert(key.clone(), value);
         }
@@ -129,22 +117,17 @@ impl SessionManager {
             key: Some(key.clone()),
         });
 
-        if let Err(err) = self
-            .app_handle
-            .emit("configuration-changed", &(section.clone(), scope.clone()))
+        if let Err(err) =
+            self.app_handle.emit("configuration-changed", &(section.clone(), scope.clone()))
         {
-            eprintln!(
-                "[SessionManager] Failed to emit workspace configuration change: {}",
-                err
-            );
+            eprintln!("[SessionManager] Failed to emit workspace configuration change: {}", err);
         }
 
         Ok(())
     }
 
     pub async fn register_file_decoration_provider(
-        &self,
-        provider: FileDecorationProvider,
+        &self, provider: FileDecorationProvider,
     ) -> Result<String, String> {
         let id = provider.id.clone();
         let mut providers = self.file_decoration_providers.write().await;
@@ -153,23 +136,15 @@ impl SessionManager {
     }
 
     pub async fn update_file_decorations(
-        &self,
-        provider_id: String,
-        decorations: Vec<FileDecoration>,
+        &self, provider_id: String, decorations: Vec<FileDecoration>,
     ) -> Result<(), String> {
         {
             let mut all_decorations = self.file_decorations.write().await;
             all_decorations.insert(provider_id.clone(), decorations);
         }
 
-        if let Err(err) = self
-            .app_handle
-            .emit("file-decorations-changed", &provider_id)
-        {
-            eprintln!(
-                "[SessionManager] Failed to emit file decorations change: {}",
-                err
-            );
+        if let Err(err) = self.app_handle.emit("file-decorations-changed", &provider_id) {
+            eprintln!("[SessionManager] Failed to emit file decorations change: {}", err);
         }
 
         Ok(())
@@ -213,27 +188,25 @@ impl SessionManager {
     }
 
     pub async fn find_workspace_files_with_options(
-        &self,
-        options: &FindFilesOptions,
+        &self, options: &FindFilesOptions,
     ) -> Result<Vec<String>, String> {
         let include = options.include.as_deref().unwrap_or("**/*");
         let include_patterns = Self::split_patterns(include, "**/*");
         let exclude_patterns = Self::split_patterns_opt(options.exclude.as_deref());
         let max_results = options.max_results.unwrap_or(10000);
 
-        self.find_workspace_files(&include_patterns, &exclude_patterns, max_results)
-            .await
-            .map(|paths| {
+        self.find_workspace_files(&include_patterns, &exclude_patterns, max_results).await.map(
+            |paths| {
                 paths
                     .into_iter()
                     .map(|path| Self::workspace_uri_from_path(Path::new(&path)))
                     .collect()
-            })
+            },
+        )
     }
 
     pub async fn find_workspace_text(
-        &self,
-        options: &TextSearchOptions,
+        &self, options: &TextSearchOptions,
     ) -> Result<Vec<TextSearchResult>, String> {
         let mut results = Vec::new();
         let max_results = options.max_results.unwrap_or(10000);
@@ -243,11 +216,8 @@ impl SessionManager {
             Regex::new(&options.pattern).map_err(|e| format!("Invalid regex pattern: {}", e))?
         } else {
             let escaped = regex::escape(&options.pattern);
-            let pattern_str = if options.is_word_match {
-                format!(r"\b{}\b", escaped)
-            } else {
-                escaped
-            };
+            let pattern_str =
+                if options.is_word_match { format!(r"\b{}\b", escaped) } else { escaped };
 
             let regex_str = if options.is_case_sensitive {
                 pattern_str
@@ -261,9 +231,8 @@ impl SessionManager {
         let include = options.include.as_deref().unwrap_or("**/*");
         let include_patterns = Self::split_patterns(include, "**/*");
         let exclude_patterns = Self::split_patterns_opt(options.exclude.as_deref());
-        let files = self
-            .find_workspace_files(&include_patterns, &exclude_patterns, max_results)
-            .await?;
+        let files =
+            self.find_workspace_files(&include_patterns, &exclude_patterns, max_results).await?;
 
         for file in files {
             if match_count >= max_results {

@@ -2,8 +2,8 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use tauri::{AppHandle, Emitter};
 
@@ -46,9 +46,7 @@ struct ShutdownSignal {
 
 impl ShutdownSignal {
     fn new() -> Self {
-        Self {
-            flag: Arc::new(AtomicBool::new(false)),
-        }
+        Self { flag: Arc::new(AtomicBool::new(false)) }
     }
 
     fn signal(&self) {
@@ -91,7 +89,7 @@ impl TerminalManager {
     // ===== Profile Management =====
 
     pub fn register_profile(&self, profile: TerminalProfile) -> Result<String, String> {
-        let mut profiles = self.profiles.lock().unwrap();
+        let mut profiles = self.profiles.lock().expect("profiles lock poisoned");
         let profile_id = profile.id.clone();
 
         if profiles.contains_key(&profile_id) {
@@ -103,15 +101,13 @@ impl TerminalManager {
     }
 
     pub fn unregister_profile(&self, profile_id: &str) -> Result<(), String> {
-        let mut profiles = self.profiles.lock().unwrap();
-        profiles
-            .remove(profile_id)
-            .ok_or_else(|| format!("Profile '{}' not found", profile_id))?;
+        let mut profiles = self.profiles.lock().expect("profiles lock poisoned");
+        profiles.remove(profile_id).ok_or_else(|| format!("Profile '{}' not found", profile_id))?;
         Ok(())
     }
 
     pub fn get_profile(&self, profile_id: &str) -> Result<TerminalProfile, String> {
-        let profiles = self.profiles.lock().unwrap();
+        let profiles = self.profiles.lock().expect("profiles lock poisoned");
         profiles
             .get(profile_id)
             .cloned()
@@ -119,33 +115,32 @@ impl TerminalManager {
     }
 
     pub fn list_profiles(&self) -> Vec<TerminalProfile> {
-        let profiles = self.profiles.lock().unwrap();
+        let profiles = self.profiles.lock().expect("profiles lock poisoned");
         profiles.values().cloned().collect()
     }
 
     // ===== Terminal Creation =====
 
     pub fn create_terminal_with_options(
-        &self,
-        options: TerminalOptions,
-        app_handle: AppHandle,
+        &self, options: TerminalOptions, app_handle: AppHandle,
     ) -> Result<String, String> {
         // Resolve profile if specified
-        let (shell_cmd, shell_args, mut env_vars, profile_cwd) = if let Some(profile_id) = &options.profile_id {
-            let profile = self.get_profile(profile_id)?;
-            (profile.shell, profile.args, profile.env, profile.cwd)
-        } else {
-            let shell = options.shell_path.clone().unwrap_or_else(|| {
-                std::env::var("SHELL").unwrap_or_else(|_| {
-                    if cfg!(target_os = "windows") {
-                        "powershell.exe".to_string()
-                    } else {
-                        "/bin/bash".to_string()
-                    }
-                })
-            });
-            (shell, options.shell_args.clone(), HashMap::new(), None)
-        };
+        let (shell_cmd, shell_args, mut env_vars, profile_cwd) =
+            if let Some(profile_id) = &options.profile_id {
+                let profile = self.get_profile(profile_id)?;
+                (profile.shell, profile.args, profile.env, profile.cwd)
+            } else {
+                let shell = options.shell_path.clone().unwrap_or_else(|| {
+                    std::env::var("SHELL").unwrap_or_else(|_| {
+                        if cfg!(target_os = "windows") {
+                            "powershell.exe".to_string()
+                        } else {
+                            "/bin/bash".to_string()
+                        }
+                    })
+                });
+                (shell, options.shell_args.clone(), HashMap::new(), None)
+            };
 
         // Merge environment variables (options override profile)
         for (key, value) in options.env {
@@ -153,17 +148,15 @@ impl TerminalManager {
         }
 
         // Determine working directory (options > profile > current)
-        let working_dir = options.cwd
-            .or(profile_cwd)
-            .unwrap_or_else(|| {
-                std::env::current_dir()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| "/".to_string())
-            });
+        let working_dir = options.cwd.or(profile_cwd).unwrap_or_else(|| {
+            std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "/".to_string())
+        });
 
         // Get next terminal ID
         let id = {
-            let mut next = self.next_id.lock().unwrap();
+            let mut next = self.next_id.lock().expect("next_id lock poisoned");
             let current = *next;
             *next += 1;
             format!("terminal-{}", current)
@@ -171,12 +164,7 @@ impl TerminalManager {
 
         // Create PTY system and open pair with initial size
         let pair = native_pty_system()
-            .openpty(PtySize {
-                rows: 24,
-                cols: 80,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
+            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
             .map_err(|e| format!("Failed to create PTY: {}", e))?;
 
         let portable_pty::PtyPair { master, slave } = pair;
@@ -196,17 +184,13 @@ impl TerminalManager {
         }
 
         // Spawn the shell
-        let _child = slave
-            .spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn shell: {}", e))?;
+        let _child =
+            slave.spawn_command(cmd).map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
         // Prepare IO handles
-        let mut reader = master
-            .try_clone_reader()
-            .map_err(|e| format!("Failed to clone reader: {}", e))?;
-        let writer = master
-            .take_writer()
-            .map_err(|e| format!("Failed to get writer: {}", e))?;
+        let mut reader =
+            master.try_clone_reader().map_err(|e| format!("Failed to clone reader: {}", e))?;
+        let writer = master.take_writer().map_err(|e| format!("Failed to get writer: {}", e))?;
         let master = Arc::new(Mutex::new(master));
 
         // Create terminal info
@@ -282,7 +266,7 @@ impl TerminalManager {
         };
 
         {
-            let mut terminals = self.terminals.lock().unwrap();
+            let mut terminals = self.terminals.lock().expect("terminals lock poisoned");
             terminals.insert(id.clone(), terminal_instance);
         }
 
@@ -290,15 +274,12 @@ impl TerminalManager {
     }
 
     pub fn create_terminal(
-        &self,
-        name: Option<String>,
-        shell: Option<String>,
-        cwd: Option<String>,
+        &self, name: Option<String>, shell: Option<String>, cwd: Option<String>,
         app_handle: AppHandle,
     ) -> Result<String, String> {
         // Get next terminal ID
         let id = {
-            let mut next = self.next_id.lock().unwrap();
+            let mut next = self.next_id.lock().expect("next_id lock poisoned");
             let current = *next;
             *next += 1;
             format!("terminal-{}", current)
@@ -324,12 +305,7 @@ impl TerminalManager {
 
         // Create PTY system and open pair with initial size
         let pair = native_pty_system()
-            .openpty(PtySize {
-                rows: 24,
-                cols: 80,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
+            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
             .map_err(|e| format!("Failed to create PTY: {}", e))?;
 
         let portable_pty::PtyPair { master, slave } = pair;
@@ -339,17 +315,13 @@ impl TerminalManager {
         cmd.cwd(&working_dir);
 
         // Spawn the shell
-        let _child = slave
-            .spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn shell: {}", e))?;
+        let _child =
+            slave.spawn_command(cmd).map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
         // Prepare IO handles
-        let mut reader = master
-            .try_clone_reader()
-            .map_err(|e| format!("Failed to clone reader: {}", e))?;
-        let writer = master
-            .take_writer()
-            .map_err(|e| format!("Failed to get writer: {}", e))?;
+        let mut reader =
+            master.try_clone_reader().map_err(|e| format!("Failed to clone reader: {}", e))?;
+        let writer = master.take_writer().map_err(|e| format!("Failed to get writer: {}", e))?;
         let master = Arc::new(Mutex::new(master));
 
         // Create terminal info
@@ -425,7 +397,7 @@ impl TerminalManager {
         };
 
         {
-            let mut terminals = self.terminals.lock().unwrap();
+            let mut terminals = self.terminals.lock().expect("terminals lock poisoned");
             terminals.insert(id.clone(), terminal_instance);
         }
 
@@ -433,43 +405,31 @@ impl TerminalManager {
     }
 
     pub fn write_to_terminal(&self, id: &str, data: &str) -> Result<(), String> {
-        let mut terminals = self.terminals.lock().unwrap();
-        let terminal = terminals
-            .get_mut(id)
-            .ok_or_else(|| format!("Terminal {} not found", id))?;
+        let mut terminals = self.terminals.lock().expect("terminals lock poisoned");
+        let terminal = terminals.get_mut(id).ok_or_else(|| format!("Terminal {} not found", id))?;
 
         terminal
             .writer
             .write_all(data.as_bytes())
             .map_err(|e| format!("Failed to write to terminal: {}", e))?;
 
-        terminal
-            .writer
-            .flush()
-            .map_err(|e| format!("Failed to flush terminal: {}", e))?;
+        terminal.writer.flush().map_err(|e| format!("Failed to flush terminal: {}", e))?;
 
         Ok(())
     }
 
     pub fn resize_terminal(&self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
-        let mut terminals = self.terminals.lock().unwrap();
-        let terminal = terminals
-            .get_mut(id)
-            .ok_or_else(|| format!("Terminal {} not found", id))?;
+        let mut terminals = self.terminals.lock().expect("terminals lock poisoned");
+        let terminal = terminals.get_mut(id).ok_or_else(|| format!("Terminal {} not found", id))?;
 
-        let master = terminal.master.lock().unwrap();
+        let master = terminal.master.lock().expect("pty master lock poisoned");
         master
-            .resize(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
+            .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
             .map_err(|e| format!("Failed to resize terminal: {}", e))
     }
 
     pub fn close_terminal(&self, id: &str) -> Result<(), String> {
-        let mut terminals = self.terminals.lock().unwrap();
+        let mut terminals = self.terminals.lock().expect("terminals lock poisoned");
         if let Some(mut terminal) = terminals.remove(id) {
             // Signal the reader thread to stop
             terminal.shutdown_signal.signal();
@@ -491,15 +451,13 @@ impl TerminalManager {
     }
 
     pub fn list_terminals(&self) -> Vec<TerminalInfo> {
-        let terminals = self.terminals.lock().unwrap();
+        let terminals = self.terminals.lock().expect("terminals lock poisoned");
         terminals.values().map(|t| t.info.clone()).collect()
     }
 
     pub fn start_reading(&self, id: &str) -> Result<(), String> {
-        let mut terminals = self.terminals.lock().unwrap();
-        let terminal = terminals
-            .get_mut(id)
-            .ok_or_else(|| format!("Terminal {} not found", id))?;
+        let mut terminals = self.terminals.lock().expect("terminals lock poisoned");
+        let terminal = terminals.get_mut(id).ok_or_else(|| format!("Terminal {} not found", id))?;
 
         if let Some(sender) = terminal.start_sender.take() {
             sender.send(()).map_err(|e| format!("Failed to send start signal: {}", e))?;
@@ -510,7 +468,7 @@ impl TerminalManager {
 
     /// Close all terminals (for shutdown)
     pub fn close_all(&self) {
-        let mut terminals = self.terminals.lock().unwrap();
+        let mut terminals = self.terminals.lock().expect("terminals lock poisoned");
         let ids: Vec<String> = terminals.keys().cloned().collect();
 
         for id in ids {

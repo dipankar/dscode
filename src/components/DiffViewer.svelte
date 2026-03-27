@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, beforeUpdate } from 'svelte';
   import * as monaco from 'monaco-editor';
+  import { settingsStore } from '../lib/settings-store';
 
   export let originalContent: string = '';
   export let modifiedContent: string = '';
@@ -11,6 +12,18 @@
   let diffEditor: monaco.editor.IStandaloneDiffEditor | null = null;
   let currentOriginalModel: monaco.editor.ITextModel | null = null;
   let currentModifiedModel: monaco.editor.ITextModel | null = null;
+  let settingsUnsubscribe: (() => void) | null = null;
+
+  function getMonacoTheme(theme: string): string {
+    switch (theme) {
+      case 'light':
+        return 'vs-light';
+      case 'high-contrast':
+        return 'hc-black';
+      default:
+        return 'vs-dark';
+    }
+  }
 
   onMount(() => {
     if (!container) return;
@@ -20,16 +33,21 @@
       renderSideBySide: true,
       readOnly: true,
       automaticLayout: true,
-      theme: 'vs-dark',
+      theme: getMonacoTheme($settingsStore.theme.colorTheme),
       minimap: { enabled: true },
       scrollBeyondLastLine: false,
+    });
+
+    settingsUnsubscribe = settingsStore.subscribe((settings) => {
+      if (diffEditor) {
+        monaco.editor.setTheme(getMonacoTheme(settings.theme.colorTheme));
+      }
     });
 
     updateDiff();
   });
 
   onDestroy(() => {
-    // Dispose models first to prevent memory leaks
     if (currentOriginalModel) {
       currentOriginalModel.dispose();
       currentOriginalModel = null;
@@ -41,6 +59,9 @@
     if (diffEditor) {
       diffEditor.dispose();
       diffEditor = null;
+    }
+    if (settingsUnsubscribe) {
+      settingsUnsubscribe();
     }
   });
 

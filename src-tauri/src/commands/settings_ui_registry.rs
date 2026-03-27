@@ -66,7 +66,9 @@ impl SettingsUIRegistry {
     // ===== UI Schema Management =====
 
     /// Register UI schema for a setting
-    pub async fn register_ui_schema(&self, key: String, schema: SettingUISchema) -> Result<(), String> {
+    pub async fn register_ui_schema(
+        &self, key: String, schema: SettingUISchema,
+    ) -> Result<(), String> {
         let mut ui_schemas = self.ui_schemas.write().await;
 
         ui_schemas.insert(key.clone(), schema);
@@ -149,12 +151,14 @@ impl SettingsUIRegistry {
         for (key, schema) in ui_schemas.iter() {
             if schema.category == category_id {
                 // Get current value
-                let user_value = self.configuration_registry
+                let user_value = self
+                    .configuration_registry
                     .get_configuration(key, ConfigurationScope::User)
                     .ok()
                     .flatten();
 
-                let workspace_value = self.configuration_registry
+                let workspace_value = self
+                    .configuration_registry
                     .get_configuration(key, ConfigurationScope::Workspace)
                     .ok()
                     .flatten();
@@ -178,30 +182,28 @@ impl SettingsUIRegistry {
 
     /// Get setting with all scope values
     pub async fn get_setting_with_values(&self, key: &str) -> Result<SettingWithValue, String> {
-        let schema = self.get_ui_schema(key)
-            .await
-            .ok_or_else(|| format!("Setting '{}' not found", key))?;
+        let schema =
+            self.get_ui_schema(key).await.ok_or_else(|| format!("Setting '{}' not found", key))?;
 
-        let user_value = self.configuration_registry
+        let user_value = self
+            .configuration_registry
             .get_configuration(key, ConfigurationScope::User)
             .ok()
             .flatten();
 
-        let workspace_value = self.configuration_registry
+        let workspace_value = self
+            .configuration_registry
             .get_configuration(key, ConfigurationScope::Workspace)
             .ok()
             .flatten();
 
-        Ok(SettingWithValue {
-            key: key.to_string(),
-            schema,
-            user_value,
-            workspace_value,
-        })
+        Ok(SettingWithValue { key: key.to_string(), schema, user_value, workspace_value })
     }
 
     /// Get effective setting value (with scope resolution)
-    pub async fn get_effective_value(&self, key: &str, scope: ConfigurationScope) -> Result<Value, String> {
+    pub async fn get_effective_value(
+        &self, key: &str, scope: ConfigurationScope,
+    ) -> Result<Value, String> {
         self.configuration_registry
             .get_configuration_with_fallback(key, scope)
             .map(|v| v.unwrap_or(Value::Null))
@@ -209,37 +211,32 @@ impl SettingsUIRegistry {
 
     /// Update setting value
     pub async fn update_setting_value(
-        &self,
-        key: &str,
-        value: Value,
-        scope: ConfigurationScope,
+        &self, key: &str, value: Value, scope: ConfigurationScope,
     ) -> Result<(), String> {
-        self.configuration_registry
-            .update_configuration(key.to_string(), value, scope)
+        self.configuration_registry.update_configuration(key.to_string(), value, scope)
     }
 
     /// Reset setting to default
     pub async fn reset_setting_to_default(
-        &self,
-        key: &str,
-        scope: ConfigurationScope,
+        &self, key: &str, scope: ConfigurationScope,
     ) -> Result<(), String> {
         // Get schema to find default value
-        let schema = self.get_ui_schema(key)
-            .await
-            .ok_or_else(|| format!("Setting '{}' not found", key))?;
+        let schema =
+            self.get_ui_schema(key).await.ok_or_else(|| format!("Setting '{}' not found", key))?;
 
-        self.configuration_registry
-            .update_configuration(key.to_string(), schema.default.clone(), scope)
+        self.configuration_registry.update_configuration(
+            key.to_string(),
+            schema.default.clone(),
+            scope,
+        )
     }
 
     // ===== Validation =====
 
     /// Validate setting value
     pub async fn validate_setting(&self, key: &str, value: &Value) -> Result<(), String> {
-        let schema = self.get_ui_schema(key)
-            .await
-            .ok_or_else(|| format!("Setting '{}' not found", key))?;
+        let schema =
+            self.get_ui_schema(key).await.ok_or_else(|| format!("Setting '{}' not found", key))?;
 
         // Type validation
         match &schema.ui_type {
@@ -248,7 +245,7 @@ impl SettingsUIRegistry {
                     return Err("Value must be a string".to_string());
                 }
                 if let Some(pattern_str) = pattern {
-                    let value_str = value.as_str().unwrap();
+                    let value_str = value.as_str().ok_or("Value is not a string")?;
                     let regex = regex::Regex::new(pattern_str)
                         .map_err(|e| format!("Invalid pattern: {}", e))?;
                     if !regex.is_match(value_str) {
@@ -260,7 +257,7 @@ impl SettingsUIRegistry {
                 if !value.is_number() {
                     return Err("Value must be a number".to_string());
                 }
-                let num = value.as_f64().unwrap();
+                let num = value.as_f64().ok_or("Value is not a valid number")?;
                 if let Some(min_val) = min {
                     if num < *min_val {
                         return Err(format!("Value must be >= {}", min_val));
@@ -281,7 +278,7 @@ impl SettingsUIRegistry {
                 if !value.is_string() {
                     return Err("Value must be a string".to_string());
                 }
-                let value_str = value.as_str().unwrap();
+                let value_str = value.as_str().ok_or("Value is not a string")?;
                 if !values.iter().any(|v| v.value == value_str) {
                     return Err("Value must be one of the allowed values".to_string());
                 }

@@ -1,6 +1,6 @@
+use git2::{BranchType, DiffOptions, IndexAddOption, Repository, Signature, Status, StatusOptions};
 use serde::{Deserialize, Serialize};
-use git2::{Repository, StatusOptions, Status, Signature, IndexAddOption, BranchType, DiffOptions};
-use std::path::{Path, Component};
+use std::path::{Component, Path};
 use thiserror::Error;
 
 /// Git operation errors with proper context
@@ -34,9 +34,7 @@ fn validate_file_path(file_path: &str) -> Result<(), GitError> {
 
     // Reject absolute paths
     if path.is_absolute() {
-        return Err(GitError::InvalidPath {
-            reason: "Absolute paths are not allowed".to_string(),
-        });
+        return Err(GitError::InvalidPath { reason: "Absolute paths are not allowed".to_string() });
     }
 
     // Reject paths with parent directory components (..)
@@ -58,9 +56,7 @@ fn validate_file_path(file_path: &str) -> Result<(), GitError> {
 
     // Reject empty paths
     if file_path.is_empty() {
-        return Err(GitError::InvalidPath {
-            reason: "Empty path is not allowed".to_string(),
-        });
+        return Err(GitError::InvalidPath { reason: "Empty path is not allowed".to_string() });
     }
 
     Ok(())
@@ -73,9 +69,7 @@ fn validate_branch_name(name: &str) -> Result<(), GitError> {
     let invalid_chars = [' ', '~', '^', ':', '?', '*', '[', '\\', '\x7f'];
 
     if name.is_empty() {
-        return Err(GitError::InvalidPath {
-            reason: "Branch name cannot be empty".to_string(),
-        });
+        return Err(GitError::InvalidPath { reason: "Branch name cannot be empty".to_string() });
     }
 
     if name.starts_with('-') {
@@ -142,18 +136,14 @@ pub async fn git_status(repo_path: String) -> Result<GitStatus, String> {
 
         // Get current branch
         let head = repo.head().map_err(GitError::from)?;
-        let branch = head
-            .shorthand()
-            .unwrap_or("HEAD")
-            .to_string();
+        let branch = head.shorthand().unwrap_or("HEAD").to_string();
 
         // Get status of files
         let mut opts = StatusOptions::new();
         opts.include_untracked(true);
         opts.recurse_untracked_dirs(true);
 
-        let statuses = repo.statuses(Some(&mut opts))
-            .map_err(GitError::from)?;
+        let statuses = repo.statuses(Some(&mut opts)).map_err(GitError::from)?;
 
         let mut changes = Vec::new();
         for entry in statuses.iter() {
@@ -164,23 +154,14 @@ pub async fn git_status(repo_path: String) -> Result<GitStatus, String> {
             let staged = is_staged(status);
 
             if !status_str.is_empty() {
-                changes.push(GitChange {
-                    path,
-                    status: status_str,
-                    staged,
-                });
+                changes.push(GitChange { path, status: status_str, staged });
             }
         }
 
         // Get ahead/behind count
         let (ahead, behind) = get_ahead_behind(&repo, &branch);
 
-        Ok(GitStatus {
-            branch,
-            changes,
-            ahead,
-            behind,
-        })
+        Ok(GitStatus { branch, changes, ahead, behind })
     })
     .await
     .map_err(|e| GitError::TaskFailed(e.to_string()))?
@@ -255,7 +236,9 @@ pub async fn git_commit(repo_path: String, message: String) -> Result<String, St
         // Get the parent commit
         let parent_commit = match repo.head() {
             Ok(head) => {
-                let oid = head.target().ok_or_else(|| GitError::OperationFailed("HEAD has no target".to_string()))?;
+                let oid = head
+                    .target()
+                    .ok_or_else(|| GitError::OperationFailed("HEAD has no target".to_string()))?;
                 Some(repo.find_commit(oid).map_err(GitError::from)?)
             }
             Err(_) => None,
@@ -263,14 +246,7 @@ pub async fn git_commit(repo_path: String, message: String) -> Result<String, St
 
         // Create the commit
         let commit_oid = if let Some(parent) = parent_commit {
-            repo.commit(
-                Some("HEAD"),
-                &sig,
-                &sig,
-                &message,
-                &tree,
-                &[&parent],
-            )
+            repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&parent])
         } else {
             // Initial commit
             repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[])
@@ -294,8 +270,7 @@ pub async fn git_stage_file(repo_path: String, file_path: String) -> Result<(), 
         let repo = Repository::discover(path).map_err(GitError::from)?;
 
         let mut index = repo.index().map_err(GitError::from)?;
-        index.add_path(Path::new(&file_path))
-            .map_err(GitError::from)?;
+        index.add_path(Path::new(&file_path)).map_err(GitError::from)?;
         index.write().map_err(GitError::from)?;
 
         Ok(())
@@ -332,8 +307,7 @@ pub async fn git_stage_all(repo_path: String) -> Result<(), String> {
         let repo = Repository::discover(path).map_err(GitError::from)?;
 
         let mut index = repo.index().map_err(GitError::from)?;
-        index.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
-            .map_err(GitError::from)?;
+        index.add_all(["*"].iter(), IndexAddOption::DEFAULT, None).map_err(GitError::from)?;
         index.write().map_err(GitError::from)?;
 
         Ok(())
@@ -353,7 +327,9 @@ pub struct FileDiff {
 }
 
 #[tauri::command]
-pub async fn git_get_diff(repo_path: String, file_path: String, staged: bool) -> Result<FileDiff, String> {
+pub async fn git_get_diff(
+    repo_path: String, file_path: String, staged: bool,
+) -> Result<FileDiff, String> {
     // Validate file path before any git operations
     validate_file_path(&file_path)?;
 
@@ -381,7 +357,8 @@ pub async fn git_get_diff(repo_path: String, file_path: String, staged: bool) ->
         diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
             diff_text.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
             true
-        }).map_err(GitError::from)?;
+        })
+        .map_err(GitError::from)?;
 
         Ok(FileDiff {
             old_path: file_path.clone(),
@@ -403,16 +380,15 @@ pub async fn git_push(repo_path: String) -> Result<String, String> {
         let repo = Repository::discover(path).map_err(GitError::from)?;
 
         let head = repo.head().map_err(GitError::from)?;
-        let branch_name = head.shorthand()
+        let branch_name = head
+            .shorthand()
             .ok_or_else(|| GitError::OperationFailed("Failed to get branch name".to_string()))?
             .to_string();
 
-        let mut remote = repo.find_remote("origin")
-            .map_err(GitError::from)?;
+        let mut remote = repo.find_remote("origin").map_err(GitError::from)?;
 
         let refspec = format!("refs/heads/{}", branch_name);
-        remote.push(&[&refspec], None)
-            .map_err(GitError::from)?;
+        remote.push(&[&refspec], None).map_err(GitError::from)?;
 
         Ok(format!("Pushed to origin/{}", branch_name))
     })
@@ -427,37 +403,36 @@ pub async fn git_pull(repo_path: String) -> Result<String, String> {
         let repo = Repository::discover(path).map_err(GitError::from)?;
 
         // Fetch first
-        let mut remote = repo.find_remote("origin")
-            .map_err(GitError::from)?;
+        let mut remote = repo.find_remote("origin").map_err(GitError::from)?;
 
-        remote.fetch(&[] as &[&str], None, None)
-            .map_err(GitError::from)?;
+        remote.fetch(&[] as &[&str], None, None).map_err(GitError::from)?;
 
         // Then merge
-        let fetch_head = repo.find_reference("FETCH_HEAD")
-            .map_err(GitError::from)?;
-        let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)
-            .map_err(GitError::from)?;
+        let fetch_head = repo.find_reference("FETCH_HEAD").map_err(GitError::from)?;
+        let fetch_commit =
+            repo.reference_to_annotated_commit(&fetch_head).map_err(GitError::from)?;
 
-        let analysis = repo.merge_analysis(&[&fetch_commit])
-            .map_err(GitError::from)?;
+        let analysis = repo.merge_analysis(&[&fetch_commit]).map_err(GitError::from)?;
 
         if analysis.0.is_up_to_date() {
             Ok("Already up to date".to_string())
         } else if analysis.0.is_fast_forward() {
             // Fast-forward merge
-            let refname = format!("refs/heads/{}", repo.head().map_err(GitError::from)?.shorthand().unwrap_or("master"));
-            let mut reference = repo.find_reference(&refname)
+            let refname = format!(
+                "refs/heads/{}",
+                repo.head().map_err(GitError::from)?.shorthand().unwrap_or("master")
+            );
+            let mut reference = repo.find_reference(&refname).map_err(GitError::from)?;
+            reference
+                .set_target(fetch_commit.id(), "Fast-forward merge")
                 .map_err(GitError::from)?;
-            reference.set_target(fetch_commit.id(), "Fast-forward merge")
-                .map_err(GitError::from)?;
-            repo.set_head(&refname)
-                .map_err(GitError::from)?;
+            repo.set_head(&refname).map_err(GitError::from)?;
             repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
                 .map_err(GitError::from)?;
             Ok("Fast-forwarded".to_string())
         } else {
-            Err(GitError::OperationFailed("Merge required - not yet implemented".to_string()).into())
+            Err(GitError::OperationFailed("Merge required - not yet implemented".to_string())
+                .into())
         }
     })
     .await
@@ -470,11 +445,9 @@ pub async fn git_fetch(repo_path: String) -> Result<String, String> {
         let path = Path::new(&repo_path);
         let repo = Repository::discover(path).map_err(GitError::from)?;
 
-        let mut remote = repo.find_remote("origin")
-            .map_err(GitError::from)?;
+        let mut remote = repo.find_remote("origin").map_err(GitError::from)?;
 
-        remote.fetch(&[] as &[&str], None, None)
-            .map_err(GitError::from)?;
+        remote.fetch(&[] as &[&str], None, None).map_err(GitError::from)?;
 
         Ok("Fetched from origin".to_string())
     })
@@ -501,7 +474,9 @@ pub async fn git_list_branches(repo_path: String) -> Result<Vec<GitBranch>, Stri
 
         for branch in repo.branches(None).map_err(GitError::from)? {
             let (branch, branch_type) = branch.map_err(GitError::from)?;
-            let name = branch.name().map_err(GitError::from)?
+            let name = branch
+                .name()
+                .map_err(GitError::from)?
                 .ok_or_else(|| GitError::OperationFailed("Branch name is not UTF-8".to_string()))?;
 
             branches.push(GitBranch {
@@ -529,8 +504,7 @@ pub async fn git_create_branch(repo_path: String, branch_name: String) -> Result
         let head = repo.head().map_err(GitError::from)?;
         let head_commit = head.peel_to_commit().map_err(GitError::from)?;
 
-        repo.branch(&branch_name, &head_commit, false)
-            .map_err(GitError::from)?;
+        repo.branch(&branch_name, &head_commit, false).map_err(GitError::from)?;
 
         Ok(())
     })
@@ -547,14 +521,16 @@ pub async fn git_checkout_branch(repo_path: String, branch_name: String) -> Resu
         let path = Path::new(&repo_path);
         let repo = Repository::discover(path).map_err(GitError::from)?;
 
-        let (object, reference) = repo.revparse_ext(&branch_name)
-            .map_err(GitError::from)?;
+        let (object, reference) = repo.revparse_ext(&branch_name).map_err(GitError::from)?;
 
-        repo.checkout_tree(&object, None)
-            .map_err(GitError::from)?;
+        repo.checkout_tree(&object, None).map_err(GitError::from)?;
 
         match reference {
-            Some(gref) => repo.set_head(gref.name().ok_or_else(|| GitError::OperationFailed("Invalid reference name".to_string()))?),
+            Some(gref) => {
+                repo.set_head(gref.name().ok_or_else(|| {
+                    GitError::OperationFailed("Invalid reference name".to_string())
+                })?)
+            }
             None => repo.set_head_detached(object.id()),
         }
         .map_err(GitError::from)?;
@@ -574,11 +550,10 @@ pub async fn git_delete_branch(repo_path: String, branch_name: String) -> Result
         let path = Path::new(&repo_path);
         let repo = Repository::discover(path).map_err(GitError::from)?;
 
-        let mut branch = repo.find_branch(&branch_name, BranchType::Local)
-            .map_err(GitError::from)?;
+        let mut branch =
+            repo.find_branch(&branch_name, BranchType::Local).map_err(GitError::from)?;
 
-        branch.delete()
-            .map_err(GitError::from)?;
+        branch.delete().map_err(GitError::from)?;
 
         Ok(())
     })
@@ -596,11 +571,13 @@ pub async fn git_stash_save(repo_path: String, message: Option<String>) -> Resul
         // Get signature - fail if not configured (no silent fallback)
         let sig = get_signature(&repo)?;
 
-        let stash_id = repo.stash_save(
-            &sig,
-            message.as_deref().unwrap_or("WIP on stash"),
-            Some(git2::StashFlags::DEFAULT)
-        ).map_err(GitError::from)?;
+        let stash_id = repo
+            .stash_save(
+                &sig,
+                message.as_deref().unwrap_or("WIP on stash"),
+                Some(git2::StashFlags::DEFAULT),
+            )
+            .map_err(GitError::from)?;
 
         Ok(stash_id.to_string())
     })
@@ -623,13 +600,10 @@ pub async fn git_stash_list(repo_path: String) -> Result<Vec<GitStash>, String> 
 
         let mut stashes = Vec::new();
         repo.stash_foreach(|index, message, oid| {
-            stashes.push(GitStash {
-                index,
-                message: message.to_string(),
-                oid: oid.to_string(),
-            });
+            stashes.push(GitStash { index, message: message.to_string(), oid: oid.to_string() });
             true
-        }).map_err(GitError::from)?;
+        })
+        .map_err(GitError::from)?;
 
         Ok(stashes)
     })
@@ -643,8 +617,7 @@ pub async fn git_stash_pop(repo_path: String, index: usize) -> Result<(), String
         let path = Path::new(&repo_path);
         let mut repo = Repository::discover(path).map_err(GitError::from)?;
 
-        repo.stash_pop(index, None)
-            .map_err(GitError::from)?;
+        repo.stash_pop(index, None).map_err(GitError::from)?;
 
         Ok(())
     })
@@ -658,8 +631,7 @@ pub async fn git_stash_drop(repo_path: String, index: usize) -> Result<(), Strin
         let path = Path::new(&repo_path);
         let mut repo = Repository::discover(path).map_err(GitError::from)?;
 
-        repo.stash_drop(index)
-            .map_err(GitError::from)?;
+        repo.stash_drop(index).map_err(GitError::from)?;
 
         Ok(())
     })
@@ -684,12 +656,9 @@ pub async fn git_log(repo_path: String, limit: Option<usize>) -> Result<Vec<GitC
         let path = Path::new(&repo_path);
         let repo = Repository::discover(path).map_err(GitError::from)?;
 
-        let mut revwalk = repo.revwalk()
-            .map_err(GitError::from)?;
-        revwalk.push_head()
-            .map_err(GitError::from)?;
-        revwalk.set_sorting(git2::Sort::TIME)
-            .map_err(GitError::from)?;
+        let mut revwalk = repo.revwalk().map_err(GitError::from)?;
+        revwalk.push_head().map_err(GitError::from)?;
+        revwalk.set_sorting(git2::Sort::TIME).map_err(GitError::from)?;
 
         let mut commits = Vec::new();
         let limit = limit.unwrap_or(100);
@@ -700,8 +669,7 @@ pub async fn git_log(repo_path: String, limit: Option<usize>) -> Result<Vec<GitC
             }
 
             let oid = oid.map_err(GitError::from)?;
-            let commit = repo.find_commit(oid)
-                .map_err(GitError::from)?;
+            let commit = repo.find_commit(oid).map_err(GitError::from)?;
 
             let author = commit.author();
             let parent_ids: Vec<String> = commit.parent_ids().map(|id| id.to_string()).collect();
@@ -759,8 +727,7 @@ pub async fn git_discard_all(repo_path: String) -> Result<(), String> {
         checkout_builder.force();
         checkout_builder.remove_untracked(true);
 
-        repo.checkout_head(Some(&mut checkout_builder))
-            .map_err(GitError::from)?;
+        repo.checkout_head(Some(&mut checkout_builder)).map_err(GitError::from)?;
 
         Ok(())
     })

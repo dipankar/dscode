@@ -39,14 +39,9 @@ pub enum DebugAdapterDescriptor {
         options: Option<DebugAdapterExecutableOptions>,
     },
     #[serde(rename = "server")]
-    Server {
-        port: u16,
-        host: Option<String>,
-    },
+    Server { port: u16, host: Option<String> },
     #[serde(rename = "namedpipe")]
-    NamedPipe {
-        path: String,
-    },
+    NamedPipe { path: String },
 }
 
 /// Debug adapter executable options
@@ -92,8 +87,7 @@ impl DebugConfigurationRegistry {
 
     /// Register debug configuration provider
     pub fn register_debug_configuration_provider(
-        &self,
-        provider: DebugConfigurationProvider,
+        &self, provider: DebugConfigurationProvider,
     ) -> Result<String, String> {
         let mut providers = self.configuration_providers.write().map_err(|e| e.to_string())?;
 
@@ -126,21 +120,18 @@ impl DebugConfigurationRegistry {
 
     /// Get debug configuration providers for type
     pub fn get_debug_configuration_providers(
-        &self,
-        debug_type: &str,
+        &self, debug_type: &str,
     ) -> Vec<DebugConfigurationProvider> {
-        let providers = self.configuration_providers.read().unwrap();
-        providers
-            .iter()
-            .filter(|p| p.debug_type == debug_type)
-            .cloned()
-            .collect()
+        let providers = self
+            .configuration_providers
+            .read()
+            .expect("debug_configuration_providers read lock poisoned");
+        providers.iter().filter(|p| p.debug_type == debug_type).cloned().collect()
     }
 
     /// Register debug adapter descriptor factory
     pub fn register_debug_adapter_descriptor_factory(
-        &self,
-        factory: DebugAdapterDescriptorFactory,
+        &self, factory: DebugAdapterDescriptorFactory,
     ) -> Result<String, String> {
         let mut factories = self.descriptor_factories.write().map_err(|e| e.to_string())?;
 
@@ -156,7 +147,9 @@ impl DebugConfigurationRegistry {
     }
 
     /// Unregister debug adapter descriptor factory
-    pub fn unregister_debug_adapter_descriptor_factory(&self, factory_id: &str) -> Result<(), String> {
+    pub fn unregister_debug_adapter_descriptor_factory(
+        &self, factory_id: &str,
+    ) -> Result<(), String> {
         let mut factories = self.descriptor_factories.write().map_err(|e| e.to_string())?;
 
         let initial_len = factories.len();
@@ -173,39 +166,32 @@ impl DebugConfigurationRegistry {
 
     /// Get debug adapter descriptor factories for type
     pub fn get_debug_adapter_descriptor_factories(
-        &self,
-        debug_type: &str,
+        &self, debug_type: &str,
     ) -> Vec<DebugAdapterDescriptorFactory> {
-        let factories = self.descriptor_factories.read().unwrap();
-        factories
-            .iter()
-            .filter(|f| f.debug_type == debug_type)
-            .cloned()
-            .collect()
+        let factories = self
+            .descriptor_factories
+            .read()
+            .expect("debug_descriptor_factories read lock poisoned");
+        factories.iter().filter(|f| f.debug_type == debug_type).cloned().collect()
     }
 
     /// Set launch configuration for workspace
     pub fn set_launch_configuration(
-        &self,
-        workspace_uri: String,
-        configuration: LaunchConfiguration,
+        &self, workspace_uri: String, configuration: LaunchConfiguration,
     ) -> Result<(), String> {
-        let mut launch_configurations = self.launch_configurations.write().map_err(|e| e.to_string())?;
+        let mut launch_configurations =
+            self.launch_configurations.write().map_err(|e| e.to_string())?;
 
         launch_configurations.insert(workspace_uri.clone(), configuration);
 
-        println!(
-            "[DebugConfig] Set launch configuration for workspace: {}",
-            workspace_uri
-        );
+        println!("[DebugConfig] Set launch configuration for workspace: {}", workspace_uri);
 
         Ok(())
     }
 
     /// Get launch configuration for workspace
     pub fn get_launch_configuration(
-        &self,
-        workspace_uri: &str,
+        &self, workspace_uri: &str,
     ) -> Result<LaunchConfiguration, String> {
         let launch_configurations = self.launch_configurations.read().map_err(|e| e.to_string())?;
 
@@ -217,14 +203,20 @@ impl DebugConfigurationRegistry {
 
     /// Get all launch configurations
     pub fn get_all_launch_configurations(&self) -> HashMap<String, LaunchConfiguration> {
-        self.launch_configurations.read().unwrap().clone()
+        self.launch_configurations
+            .read()
+            .expect("debug_launch_configurations read lock poisoned")
+            .clone()
     }
 
     /// Clear all debug configuration data for an owner
     pub fn clear_debug_configuration_data(&self, owner: &str) {
         // Clear configuration providers
         {
-            let mut providers = self.configuration_providers.write().unwrap();
+            let mut providers = self
+                .configuration_providers
+                .write()
+                .expect("debug_configuration_providers write lock poisoned");
             let before = providers.len();
             providers.retain(|p| p.owner != owner);
             let removed = before - providers.len();
@@ -238,7 +230,10 @@ impl DebugConfigurationRegistry {
 
         // Clear descriptor factories
         {
-            let mut factories = self.descriptor_factories.write().unwrap();
+            let mut factories = self
+                .descriptor_factories
+                .write()
+                .expect("debug_descriptor_factories write lock poisoned");
             let before = factories.len();
             factories.retain(|f| f.owner != owner);
             let removed = before - factories.len();

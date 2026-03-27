@@ -1,10 +1,5 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-// Allow dead code and unused imports for work-in-progress modules
-// These are scaffolded features that will be integrated in future iterations
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
 
 // Configure memory allocator
 #[cfg(feature = "jemalloc")]
@@ -35,7 +30,9 @@ use commands::*;
 use lsp::LspManager;
 
 fn main() {
-    // Initialize LSP manager (default servers registered lazily on first use)
+    crate::logging::init();
+    tracing::info!("DSCode starting up");
+
     let lsp_manager = LspManager::new();
 
     bootstrap::configure_builder(tauri::Builder::default(), lsp_manager)
@@ -44,6 +41,7 @@ fn main() {
             write_file,
             list_directory,
             read_directory_tree,
+            read_directory,
             get_file_language,
             start_watching_file,
             stop_watching_file,
@@ -52,6 +50,7 @@ fn main() {
             delete_file,
             delete_folder,
             rename_path,
+            search_files,
             git_status,
             get_app_version,
             start_extension_host,
@@ -76,6 +75,7 @@ fn main() {
             window_message_action,
             window_quick_pick_select,
             window_input_box_submit,
+            window_execute_command_result,
             create_debug_session,
             get_debug_session,
             list_debug_sessions,
@@ -126,6 +126,7 @@ fn main() {
             remove_workspace_folder,
             editor_selection_changed,
             editor_visible_ranges_changed,
+            reconnect_extension_host,
             get_all_commands,
             search_commands,
             get_command,

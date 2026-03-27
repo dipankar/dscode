@@ -83,10 +83,10 @@ function createSettingsStore() {
       });
     },
     reset: () => {
-      set(defaultSettings);
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem('dscode-settings');
       }
+      set(defaultSettings);
     },
   };
 }

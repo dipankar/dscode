@@ -4,12 +4,17 @@
  * MarkdownString, ThemeColor, ThemeIcon, and other shared utilities
  */
 
+import { Range, Position } from './textDocument';
+import { Uri } from './uri';
+import { TextEdit, WorkspaceEdit } from './textEditor';
+import { Event, Disposable } from './events';
+
 export class MarkdownString {
   value: string;
   isTrusted?: boolean | { enabledCommands: string[] };
   supportThemeIcons?: boolean;
   supportHtml?: boolean;
-  baseUri?: any;
+  baseUri?: Uri;
 
   constructor(value?: string, supportThemeIcons?: boolean) {
     this.value = value || '';
@@ -40,7 +45,7 @@ export class MarkdownString {
     return this;
   }
 
-  appendLink(target: string | any, label: string): MarkdownString {
+  appendLink(target: string | Uri, label: string): MarkdownString {
     const href = typeof target === 'string' ? target : target.toString();
     this.value += `[${label}](${href})`;
     return this;
@@ -64,18 +69,18 @@ export class ThemeIcon {
 export enum ConfigurationTarget {
   Global = 1,
   Workspace = 2,
-  WorkspaceFolder = 3
+  WorkspaceFolder = 3,
 }
 
 export enum ExtensionMode {
   Production = 1,
   Development = 2,
-  Test = 3
+  Test = 3,
 }
 
 export interface CancellationToken {
   isCancellationRequested: boolean;
-  onCancellationRequested: any; // Event<any>
+  onCancellationRequested: Event<boolean>;
 }
 
 export class CancellationTokenSource {
@@ -85,13 +90,13 @@ export class CancellationTokenSource {
   constructor() {
     this.token = {
       isCancellationRequested: false,
-      onCancellationRequested: () => ({ dispose: () => {} })
+      onCancellationRequested: () => ({ dispose: () => {} }),
     };
   }
 
   cancel(): void {
     this._isCancelled = true;
-    (this.token as any).isCancellationRequested = true;
+    this.token.isCancellationRequested = true;
   }
 
   dispose(): void {
@@ -110,13 +115,13 @@ export class QuickPickItem {
 }
 
 export interface QuickInputButton {
-  iconPath: any;
+  iconPath: Uri | { light: Uri; dark: Uri } | ThemeIcon;
   tooltip?: string;
 }
 
 export enum QuickPickItemKind {
   Separator = -1,
-  Default = 0
+  Default = 0,
 }
 
 export interface InputBoxOptions {
@@ -148,7 +153,7 @@ export interface ProgressOptions {
 export enum ProgressLocation {
   SourceControl = 1,
   Window = 10,
-  Notification = 15
+  Notification = 15,
 }
 
 export interface Progress<T> {
@@ -158,18 +163,18 @@ export interface Progress<T> {
 export interface Memento {
   get<T>(key: string): T | undefined;
   get<T>(key: string, defaultValue: T): T;
-  update(key: string, value: any): Promise<void>;
+  update(key: string, value: unknown): Promise<void>;
   keys(): readonly string[];
 }
 
 export class MementoImpl implements Memento {
-  private storage = new Map<string, any>();
+  private storage = new Map<string, unknown>();
 
   get<T>(key: string, defaultValue?: T): T | undefined {
-    return this.storage.has(key) ? this.storage.get(key) : defaultValue;
+    return this.storage.has(key) ? (this.storage.get(key) as T) : defaultValue;
   }
 
-  async update(key: string, value: any): Promise<void> {
+  async update(key: string, value: unknown): Promise<void> {
     if (value === undefined) {
       this.storage.delete(key);
     } else {
@@ -186,7 +191,7 @@ export enum FileType {
   Unknown = 0,
   File = 1,
   Directory = 2,
-  SymbolicLink = 64
+  SymbolicLink = 64,
 }
 
 export interface FileStat {
@@ -197,37 +202,37 @@ export interface FileStat {
 }
 
 export enum FilePermission {
-  Readonly = 1
+  Readonly = 1,
 }
 
 export class FileSystemError extends Error {
-  static FileExists(messageOrUri?: string | any): FileSystemError {
+  static FileExists(messageOrUri?: string | Uri): FileSystemError {
     return new FileSystemError('EntryExists', messageOrUri);
   }
 
-  static FileNotFound(messageOrUri?: string | any): FileSystemError {
+  static FileNotFound(messageOrUri?: string | Uri): FileSystemError {
     return new FileSystemError('EntryNotFound', messageOrUri);
   }
 
-  static FileNotADirectory(messageOrUri?: string | any): FileSystemError {
+  static FileNotADirectory(messageOrUri?: string | Uri): FileSystemError {
     return new FileSystemError('EntryNotADirectory', messageOrUri);
   }
 
-  static FileIsADirectory(messageOrUri?: string | any): FileSystemError {
+  static FileIsADirectory(messageOrUri?: string | Uri): FileSystemError {
     return new FileSystemError('EntryIsADirectory', messageOrUri);
   }
 
-  static NoPermissions(messageOrUri?: string | any): FileSystemError {
+  static NoPermissions(messageOrUri?: string | Uri): FileSystemError {
     return new FileSystemError('NoPermissions', messageOrUri);
   }
 
-  static Unavailable(messageOrUri?: string | any): FileSystemError {
+  static Unavailable(messageOrUri?: string | Uri): FileSystemError {
     return new FileSystemError('Unavailable', messageOrUri);
   }
 
   constructor(
     public code: string,
-    messageOrUri?: string | any
+    messageOrUri?: string | Uri
   ) {
     super(typeof messageOrUri === 'string' ? messageOrUri : code);
     this.name = code;
@@ -238,7 +243,7 @@ export class FileSystemError extends Error {
 export enum EnvironmentVariableMutatorType {
   Replace = 1,
   Append = 2,
-  Prepend = 3
+  Prepend = 3,
 }
 
 export class EnvironmentVariableCollection {
@@ -248,8 +253,17 @@ export class EnvironmentVariableCollection {
   replace(variable: string, value: string): void {}
   append(variable: string, value: string): void {}
   prepend(variable: string, value: string): void {}
-  get(variable: string): any { return undefined; }
-  forEach(callback: (variable: string, mutator: any, collection: EnvironmentVariableCollection) => any, thisArg?: any): void {}
+  get(variable: string): { type: EnvironmentVariableMutatorType; value: string } | undefined {
+    return undefined;
+  }
+  forEach(
+    callback: (
+      variable: string,
+      mutator: { type: EnvironmentVariableMutatorType; value: string },
+      collection: EnvironmentVariableCollection
+    ) => void,
+    thisArg?: unknown
+  ): void {}
   delete(variable: string): void {}
   clear(): void {}
 }
@@ -264,16 +278,19 @@ export class CancellationError extends Error {
 
 // CodeLens class
 export class CodeLens {
-  range: any; // Range
+  range: Range;
   command?: {
     title: string;
     command: string;
     tooltip?: string;
-    arguments?: any[];
+    arguments?: unknown[];
   };
   isResolved: boolean = false;
 
-  constructor(range: any, command?: { title: string; command: string; tooltip?: string; arguments?: any[] }) {
+  constructor(
+    range: Range,
+    command?: { title: string; command: string; tooltip?: string; arguments?: unknown[] }
+  ) {
     this.range = range;
     this.command = command;
     this.isResolved = !!command;
@@ -282,26 +299,26 @@ export class CodeLens {
 
 // l10n API for localization
 export const l10n = {
-  t(message: string, ...args: any[]): string {
-    // Simple implementation - just return the message with basic substitution
+  t(message: string, ...args: unknown[]): string {
     if (args.length === 0) return message;
-    if (args.length === 1 && typeof args[0] === 'object') {
-      // Named arguments
-      return message.replace(/\{(\w+)\}/g, (_, key) => String(args[0][key] ?? `{${key}}`));
+    if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
+      const obj = args[0] as Record<string, unknown>;
+      return message.replace(/\{(\w+)\}/g, (_, key) => String(obj[key] ?? `{${key}}`));
     }
-    // Positional arguments
-    return message.replace(/\{(\d+)\}/g, (_, index) => String(args[parseInt(index)] ?? `{${index}}`));
+    return message.replace(/\{(\d+)\}/g, (_, index) =>
+      String(args[parseInt(index)] ?? `{${index}}`)
+    );
   },
-  bundle: undefined as any,
-  uri: undefined as any
+  bundle: undefined as string | undefined,
+  uri: undefined as Uri | undefined,
 };
 
 // DocumentLink class
 export class DocumentLink {
-  range: any; // Range
-  target?: any; // Uri
+  range: Range;
+  target?: Uri;
 
-  constructor(range: any, target?: any) {
+  constructor(range: Range, target?: Uri) {
     this.range = range;
     this.target = target;
   }
@@ -338,17 +355,29 @@ export class ParameterInformation {
   }
 }
 
+// InlayHintLabelPart class
+export class InlayHintLabelPart {
+  value: string;
+  tooltip?: string | MarkdownString | { value: string };
+  location?: { uri: Uri; range: Range };
+  command?: { title: string; command: string; arguments?: unknown[] };
+
+  constructor(value: string) {
+    this.value = value;
+  }
+}
+
 // InlayHint class
 export class InlayHint {
-  position: any; // Position
-  label: string | any[]; // string | InlayHintLabelPart[]
+  position: Position;
+  label: string | InlayHintLabelPart[];
   kind?: InlayHintKind;
-  textEdits?: any[]; // TextEdit[]
-  tooltip?: string | { value: string };
+  textEdits?: TextEdit[];
+  tooltip?: string | MarkdownString | { value: string };
   paddingLeft?: boolean;
   paddingRight?: boolean;
 
-  constructor(position: any, label: string | any[], kind?: InlayHintKind) {
+  constructor(position: Position, label: string | InlayHintLabelPart[], kind?: InlayHintKind) {
     this.position = position;
     this.label = label;
     this.kind = kind;
@@ -357,7 +386,7 @@ export class InlayHint {
 
 export enum InlayHintKind {
   Type = 1,
-  Parameter = 2
+  Parameter = 2,
 }
 
 // FoldingRange class
@@ -376,15 +405,15 @@ export class FoldingRange {
 export enum FoldingRangeKind {
   Comment = 1,
   Imports = 2,
-  Region = 3
+  Region = 3,
 }
 
 // SelectionRange class
 export class SelectionRange {
-  range: any; // Range
+  range: Range;
   parent?: SelectionRange;
 
-  constructor(range: any, parent?: SelectionRange) {
+  constructor(range: Range, parent?: SelectionRange) {
     this.range = range;
     this.parent = parent;
   }
@@ -393,14 +422,21 @@ export class SelectionRange {
 // CallHierarchyItem class
 export class CallHierarchyItem {
   name: string;
-  kind: any; // SymbolKind
-  tags?: any[]; // SymbolTag[]
+  kind: SymbolKind;
+  tags?: SymbolTag[];
   detail?: string;
-  uri: any; // Uri
-  range: any; // Range
-  selectionRange: any; // Range
+  uri: Uri;
+  range: Range;
+  selectionRange: Range;
 
-  constructor(kind: any, name: string, detail: string, uri: any, range: any, selectionRange: any) {
+  constructor(
+    kind: SymbolKind,
+    name: string,
+    detail: string,
+    uri: Uri,
+    range: Range,
+    selectionRange: Range
+  ) {
     this.kind = kind;
     this.name = name;
     this.detail = detail;
@@ -413,14 +449,21 @@ export class CallHierarchyItem {
 // TypeHierarchyItem class
 export class TypeHierarchyItem {
   name: string;
-  kind: any; // SymbolKind
-  tags?: any[]; // SymbolTag[]
+  kind: SymbolKind;
+  tags?: SymbolTag[];
   detail?: string;
-  uri: any; // Uri
-  range: any; // Range
-  selectionRange: any; // Range
+  uri: Uri;
+  range: Range;
+  selectionRange: Range;
 
-  constructor(kind: any, name: string, detail: string, uri: any, range: any, selectionRange: any) {
+  constructor(
+    kind: SymbolKind,
+    name: string,
+    detail: string,
+    uri: Uri,
+    range: Range,
+    selectionRange: Range
+  ) {
     this.kind = kind;
     this.name = name;
     this.detail = detail;
@@ -447,10 +490,10 @@ export class Color {
 
 // ColorInformation class
 export class ColorInformation {
-  range: any; // Range
+  range: Range;
   color: Color;
 
-  constructor(range: any, color: Color) {
+  constructor(range: Range, color: Color) {
     this.range = range;
     this.color = color;
   }
@@ -459,8 +502,8 @@ export class ColorInformation {
 // ColorPresentation class
 export class ColorPresentation {
   label: string;
-  textEdit?: any; // TextEdit
-  additionalTextEdits?: any[]; // TextEdit[]
+  textEdit?: TextEdit;
+  additionalTextEdits?: TextEdit[];
 
   constructor(label: string) {
     this.label = label;
@@ -482,7 +525,13 @@ export class SemanticTokens {
 export class SemanticTokensBuilder {
   private _data: number[] = [];
 
-  push(line: number, char: number, length: number, tokenType: number, tokenModifiers?: number): void {
+  push(
+    line: number,
+    char: number,
+    length: number,
+    tokenType: number,
+    tokenModifiers?: number
+  ): void {
     this._data.push(line, char, length, tokenType, tokenModifiers || 0);
   }
 
@@ -514,7 +563,7 @@ export enum ViewColumn {
   Six = 6,
   Seven = 7,
   Eight = 8,
-  Nine = 9
+  Nine = 9,
 }
 
 // CodeActionKind class
@@ -552,10 +601,14 @@ export class CodeActionKind {
 export class InlineCompletionItem {
   insertText: string | { value: string };
   filterText?: string;
-  range?: any; // Range
-  command?: any; // Command
+  range?: Range;
+  command?: { title: string; command: string; arguments?: unknown[] };
 
-  constructor(insertText: string | { value: string }, range?: any, command?: any) {
+  constructor(
+    insertText: string | { value: string },
+    range?: Range,
+    command?: { title: string; command: string; arguments?: unknown[] }
+  ) {
     this.insertText = insertText;
     this.range = range;
     this.command = command;
@@ -573,46 +626,78 @@ export class InlineCompletionList {
 
 // LinkedEditingRanges class
 export class LinkedEditingRanges {
-  readonly ranges: any[]; // Range[]
+  readonly ranges: Range[];
   readonly wordPattern?: RegExp;
 
-  constructor(ranges: any[], wordPattern?: RegExp) {
+  constructor(ranges: Range[], wordPattern?: RegExp) {
     this.ranges = ranges;
     this.wordPattern = wordPattern;
   }
 }
 
+// SymbolKind enum
+export enum SymbolKind {
+  File = 0,
+  Module = 1,
+  Namespace = 2,
+  Package = 3,
+  Class = 4,
+  Method = 5,
+  Property = 6,
+  Field = 7,
+  Constructor = 8,
+  Enum = 9,
+  Interface = 10,
+  Function = 11,
+  Variable = 12,
+  Constant = 13,
+  String = 14,
+  Number = 15,
+  Boolean = 16,
+  Array = 17,
+  Object = 18,
+  Key = 19,
+  Null = 20,
+  EnumMember = 21,
+  Struct = 22,
+  Event = 23,
+  Operator = 24,
+  TypeParameter = 25,
+}
+
 // SymbolInformation class (deprecated but still used)
 export class SymbolInformation {
   name: string;
-  kind: any; // SymbolKind
+  kind: SymbolKind;
   containerName?: string;
-  location: any; // Location
-  tags?: any[]; // SymbolTag[]
+  location: { uri: Uri; range: Range };
+  tags?: SymbolTag[];
 
-  constructor(name: string, kind: any, containerName: string, location: any);
-  constructor(name: string, kind: any, range: any, uri?: any, containerName?: string);
   constructor(
     name: string,
-    kind: any,
-    containerNameOrRange: string | any,
-    locationOrUri?: any,
+    kind: SymbolKind,
+    containerName: string,
+    location: { uri: Uri; range: Range }
+  );
+  constructor(name: string, kind: SymbolKind, range: Range, uri?: Uri, containerName?: string);
+  constructor(
+    name: string,
+    kind: SymbolKind,
+    containerNameOrRange: string | Range,
+    locationOrUri?: { uri: Uri; range: Range } | Uri,
     containerName?: string
   ) {
     this.name = name;
     this.kind = kind;
 
     if (typeof containerNameOrRange === 'string') {
-      // Old signature: (name, kind, containerName, location)
       this.containerName = containerNameOrRange;
-      this.location = locationOrUri;
+      this.location = locationOrUri as { uri: Uri; range: Range };
     } else {
-      // New signature: (name, kind, range, uri, containerName)
       this.containerName = containerName;
-      // Create a Location-like object
       this.location = {
-        uri: locationOrUri,
-        range: containerNameOrRange
+        uri: locationOrUri as Uri,
+        range: containerNameOrRange as Range,
       };
     }
   }
@@ -621,12 +706,17 @@ export class SymbolInformation {
 // WorkspaceSymbol class
 export class WorkspaceSymbol {
   name: string;
-  kind: any; // SymbolKind
+  kind: SymbolKind;
   containerName?: string;
-  location: any; // Location | { uri: Uri }
-  tags?: any[]; // SymbolTag[]
+  location: { uri: Uri; range: Range };
+  tags?: SymbolTag[];
 
-  constructor(name: string, kind: any, containerName: string, location: any) {
+  constructor(
+    name: string,
+    kind: SymbolKind,
+    containerName: string,
+    location: { uri: Uri; range: Range }
+  ) {
     this.name = name;
     this.kind = kind;
     this.containerName = containerName;
@@ -636,15 +726,15 @@ export class WorkspaceSymbol {
 
 // SymbolTag enum
 export enum SymbolTag {
-  Deprecated = 1
+  Deprecated = 1,
 }
 
 // DocumentHighlight class
 export class DocumentHighlight {
-  range: any; // Range
+  range: Range;
   kind?: DocumentHighlightKind;
 
-  constructor(range: any, kind?: DocumentHighlightKind) {
+  constructor(range: Range, kind?: DocumentHighlightKind) {
     this.range = range;
     this.kind = kind;
   }
@@ -653,13 +743,13 @@ export class DocumentHighlight {
 export enum DocumentHighlightKind {
   Text = 0,
   Read = 1,
-  Write = 2
+  Write = 2,
 }
 
 // Rename types
 export class RenameEdit {
-  entries(): IterableIterator<[any, any[]]> {
-    return (new Map()).entries();
+  entries(): IterableIterator<[Uri, TextEdit[]]> {
+    return new Map<Uri, TextEdit[]>().entries();
   }
 }
 
@@ -668,13 +758,11 @@ export class RelativePattern {
   base: string;
   pattern: string;
 
-  constructor(base: string | any, pattern: string) {
+  constructor(base: string | Uri, pattern: string) {
     if (typeof base === 'string') {
       this.base = base;
-    } else if (base.uri) {
-      this.base = base.uri.fsPath || base.uri.path;
     } else {
-      this.base = base.fsPath || base.path || String(base);
+      this.base = base.fsPath || base.path;
     }
     this.pattern = pattern;
   }

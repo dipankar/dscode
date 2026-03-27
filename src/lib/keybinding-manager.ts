@@ -21,23 +21,22 @@ interface KeySequence {
 export class KeybindingManager {
   private keybindings: Map<string, Keybinding[]> = new Map();
   private currentSequence: KeySequence | null = null;
-  private sequenceTimeout = 1000; // 1 second to complete a sequence
+  private sequenceTimeout = 1000;
   private platform: string = 'unknown';
+  private boundHandleKeyDown: (event: KeyboardEvent) => void;
 
   constructor() {
+    this.boundHandleKeyDown = this.handleKeyDown.bind(this);
     this.init();
   }
 
   private async init() {
     initializeCommandContextTracking();
 
-    // Get current platform
     this.platform = await systemCommands.getPlatform();
 
-    // Load all keybindings
     await this.loadKeybindings();
 
-    // Listen for keybinding updates
     await listen('keybinding-registered', () => {
       this.loadKeybindings();
     });
@@ -46,8 +45,11 @@ export class KeybindingManager {
       this.loadKeybindings();
     });
 
-    // Set up global keydown listener
-    window.addEventListener('keydown', this.handleKeyDown.bind(this), true);
+    window.addEventListener('keydown', this.boundHandleKeyDown, true);
+  }
+
+  destroy() {
+    window.removeEventListener('keydown', this.boundHandleKeyDown, true);
   }
 
   private async loadKeybindings() {
@@ -178,20 +180,20 @@ export class KeybindingManager {
     // Map event.key values to keybinding format
     const keyMap: Record<string, string> = {
       ' ': 'Space',
-      'ArrowUp': 'Up',
-      'ArrowDown': 'Down',
-      'ArrowLeft': 'Left',
-      'ArrowRight': 'Right',
-      'Escape': 'Escape',
-      'Enter': 'Enter',
-      'Tab': 'Tab',
-      'Backspace': 'Backspace',
-      'Delete': 'Delete',
-      'Insert': 'Insert',
-      'Home': 'Home',
-      'End': 'End',
-      'PageUp': 'PageUp',
-      'PageDown': 'PageDown',
+      ArrowUp: 'Up',
+      ArrowDown: 'Down',
+      ArrowLeft: 'Left',
+      ArrowRight: 'Right',
+      Escape: 'Escape',
+      Enter: 'Enter',
+      Tab: 'Tab',
+      Backspace: 'Backspace',
+      Delete: 'Delete',
+      Insert: 'Insert',
+      Home: 'Home',
+      End: 'End',
+      PageUp: 'PageUp',
+      PageDown: 'PageDown',
     };
 
     if (keyMap[key]) {
@@ -240,7 +242,7 @@ export class KeybindingManager {
     const context = getCommandContext();
 
     const matchingBindings = bindings.filter((binding) =>
-      evaluateWhenClause(binding.when, context),
+      evaluateWhenClause(binding.when, context)
     );
 
     if (matchingBindings.length === 0) {

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use tauri::{AppHandle, Manager, Window, State};
+use tauri::{AppHandle, Manager, State, Window};
 
 use crate::session::SessionManager;
 
@@ -33,9 +33,7 @@ pub fn is_window_visible(window: Window) -> Result<bool, String> {
 /// Respond to a pending window message prompt
 #[tauri::command]
 pub async fn window_message_action(
-    session: State<'_, Arc<RwLock<SessionManager>>>,
-    request_id: String,
-    action: Option<String>,
+    session: State<'_, Arc<RwLock<SessionManager>>>, request_id: String, action: Option<String>,
 ) -> Result<(), String> {
     let session = session.read().await;
     session.resolve_window_message(&request_id, action).await
@@ -44,8 +42,7 @@ pub async fn window_message_action(
 /// Resolve a pending quick pick request
 #[tauri::command]
 pub async fn window_quick_pick_select(
-    session: State<'_, Arc<RwLock<SessionManager>>>,
-    request_id: String,
+    session: State<'_, Arc<RwLock<SessionManager>>>, request_id: String,
     selection: Option<serde_json::Value>,
 ) -> Result<(), String> {
     let session = session.read().await;
@@ -55,10 +52,18 @@ pub async fn window_quick_pick_select(
 /// Resolve a pending input box request
 #[tauri::command]
 pub async fn window_input_box_submit(
-    session: State<'_, Arc<RwLock<SessionManager>>>,
-    request_id: String,
-    value: Option<String>,
+    session: State<'_, Arc<RwLock<SessionManager>>>, request_id: String, value: Option<String>,
 ) -> Result<(), String> {
     let session = session.read().await;
     session.resolve_input_box(&request_id, value).await
+}
+
+/// Resolve a pending execute command request
+#[tauri::command]
+pub async fn window_execute_command_result(
+    session: State<'_, Arc<RwLock<SessionManager>>>, request_id: String,
+    result: Option<serde_json::Value>,
+) -> Result<(), String> {
+    let session = session.read().await;
+    session.resolve_execute_command(&request_id, result).await
 }

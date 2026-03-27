@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { workspaceStore } from '../stores/workspace';
   import { editorStore } from '../stores/editor';
@@ -181,6 +182,12 @@
     }
     selectedFiles = selectedFiles;
   }
+
+  onDestroy(() => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+  });
 </script>
 
 <div class="search-view">
@@ -382,7 +389,7 @@
 
   .toggle-replace-btn.active {
     background: var(--accent-color);
-    color: white;
+    color: var(--color-text-on-accent);
     border-color: var(--accent-color);
   }
 
@@ -458,7 +465,7 @@
 
   .option-btn.active {
     background: var(--accent-color);
-    color: white;
+    color: var(--color-text-on-accent);
     border-color: var(--accent-color);
   }
 
@@ -491,7 +498,7 @@
   .replace-btn {
     flex: 1;
     background: var(--accent-color);
-    color: white;
+    color: var(--color-text-on-accent);
     border: none;
     border-radius: 3px;
     padding: 6px 12px;
@@ -502,7 +509,7 @@
   }
 
   .replace-btn {
-    background: #f9c74f;
+    background: var(--color-warning);
   }
 
   .search-btn:hover:not(:disabled),

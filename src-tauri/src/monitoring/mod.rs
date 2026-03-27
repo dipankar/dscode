@@ -1,3 +1,3 @@
 pub mod resource_monitor;
 
-pub use resource_monitor::{ResourceMonitor, ResourceMetrics};
+pub use resource_monitor::{ResourceMetrics, ResourceMonitor};

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import * as monaco from 'monaco-editor';
   import { editorStore } from '../stores/editor';
   import { workspaceStore } from '../stores/workspace';
   import {
@@ -21,7 +20,7 @@
   let language = 'Plain Text';
   let errorCount = 0;
   let warningCount = 0;
-  let markersListener: monaco.IDisposable | null = null;
+  let markersListener: { dispose: () => void } | null = null;
   let cachedMonaco: typeof import('monaco-editor') | null = null;
   let cursorUpdateUnsubscribe: { dispose: () => void } | null = null;
   let dynamicLeft: StatusBarItemState[] = [];
@@ -29,6 +28,13 @@
   let transientMessage: StatusBarTransientMessage | null = null;
   const itemKey = (item: StatusBarItemState) => `${item.owner}:${item.id}`;
   $: transientMessage = $statusBarMessageStore;
+
+  async function ensureMonaco() {
+    if (!cachedMonaco) {
+      cachedMonaco = await import('monaco-editor');
+    }
+    return cachedMonaco;
+  }
 
   async function updateProblemCounts() {
     const editor = $editorStore.monacoInstance;
@@ -46,14 +52,10 @@
     }
 
     try {
-      if (!cachedMonaco) {
-        cachedMonaco = await import('monaco-editor');
-      }
-      const markers = cachedMonaco.editor.getModelMarkers({ resource: model.uri });
-      errorCount = markers.filter((m) => m.severity === cachedMonaco!.MarkerSeverity.Error).length;
-      warningCount = markers.filter(
-        (m) => m.severity === cachedMonaco!.MarkerSeverity.Warning
-      ).length;
+      const monaco = await ensureMonaco();
+      const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+      errorCount = markers.filter((m) => m.severity === monaco.MarkerSeverity.Error).length;
+      warningCount = markers.filter((m) => m.severity === monaco.MarkerSeverity.Warning).length;
     } catch (error) {
       console.error('Failed to load monaco for status bar:', error);
     }
@@ -73,7 +75,6 @@
         branch = status.branch;
       }
     } catch (error) {
-      // Git not available or not a git repo
       branch = '';
     }
   }
@@ -100,23 +101,21 @@
       column = position.column;
     }
 
-    // Update language
     const model = editor.getModel();
     if (model) {
       const languageId = model.getLanguageId();
-      // Capitalize first letter
       language = languageId.charAt(0).toUpperCase() + languageId.slice(1);
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
+    const monaco = await ensureMonaco();
     updateProblemCounts();
     markersListener = monaco.editor.onDidChangeMarkers(() => {
       updateProblemCounts();
     });
     loadGitBranch();
 
-    // Listen for cursor position changes
     const editor = $editorStore.monacoInstance;
     if (editor) {
       cursorUpdateUnsubscribe = editor.onDidChangeCursorPosition(() => {
@@ -257,7 +256,7 @@
   .status-bar {
     height: 22px;
     background-color: var(--color-accent);
-    color: white;
+    color: var(--color-text-on-accent);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -282,7 +281,7 @@
   .status-item {
     background: none;
     border: none;
-    color: white;
+    color: var(--color-text-on-accent);
     cursor: pointer;
     padding: 0 6px;
     height: 100%;

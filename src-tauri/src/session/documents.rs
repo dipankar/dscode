@@ -1,4 +1,5 @@
 use super::{PositionPayload, RangePayload, SessionEvent, SessionManager, TextEditPayload};
+use crate::commands::TextDocumentContentChange;
 use regex::Regex;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -24,10 +25,7 @@ impl SessionManager {
     pub(super) async fn persist_document(&self, path: &str, content: &str) -> Result<i32, String> {
         if let Some(parent) = Path::new(path).parent() {
             if let Err(err) = fs::create_dir_all(parent) {
-                return Err(format!(
-                    "Failed to prepare document directory {:?}: {}",
-                    parent, err
-                ));
+                return Err(format!("Failed to prepare document directory {:?}: {}", parent, err));
             }
         }
 
@@ -86,8 +84,9 @@ impl SessionManager {
     }
 
     pub(super) fn snippet_to_plain(snippet: &str) -> String {
-        let placeholder = Regex::new(r"\$\{(\d+):([^}]*)\}").unwrap();
-        let tabstop = Regex::new(r"\$(\d+)").unwrap();
+        let placeholder =
+            Regex::new(r"\$\{(\d+):([^}]*)\}").expect("snippet placeholder regex is valid");
+        let tabstop = Regex::new(r"\$(\d+)").expect("snippet tabstop regex is valid");
         let mut result = placeholder.replace_all(snippet, "$2").into_owned();
         result = tabstop.replace_all(&result, "").into_owned();
         result.replace("\\$", "$")
@@ -117,19 +116,14 @@ impl SessionManager {
         }
 
         if ranges.is_empty() {
-            ranges.push(RangePayload::from_position(PositionPayload {
-                line: 0,
-                character: 0,
-            }));
+            ranges.push(RangePayload::from_position(PositionPayload { line: 0, character: 0 }));
         }
 
         ranges
     }
 
     pub(super) fn apply_text_edits(
-        original: &str,
-        edits: &mut [TextEditPayload],
-        end_of_line: Option<i32>,
+        original: &str, edits: &mut [TextEditPayload], end_of_line: Option<i32>,
     ) -> Result<String, String> {
         let mut normalized = original.replace("\r\n", "\n");
         let original_crlf = original.contains("\r\n");
@@ -162,11 +156,7 @@ impl SessionManager {
             }
         };
 
-        let result = if newline == "\n" {
-            normalized
-        } else {
-            normalized.replace("\n", newline)
-        };
+        let result = if newline == "\n" { normalized } else { normalized.replace("\n", newline) };
 
         Ok(result)
     }
@@ -182,9 +172,7 @@ impl SessionManager {
     }
 
     fn offset_for_position(
-        text: &str,
-        offsets: &[usize],
-        position: &PositionPayload,
+        text: &str, offsets: &[usize], position: &PositionPayload,
     ) -> Result<usize, String> {
         if offsets.is_empty() {
             return Ok(0);
@@ -219,10 +207,7 @@ impl SessionManager {
     }
 
     pub(super) async fn update_decorations(
-        &self,
-        uri: &str,
-        key: &str,
-        decorations: Value,
+        &self, uri: &str, key: &str, decorations: Value,
     ) -> Result<(), String> {
         let normalized = self.normalize_decorations(key, decorations).await?;
 
@@ -276,9 +261,7 @@ impl SessionManager {
     }
 
     async fn normalize_decorations(
-        &self,
-        key: &str,
-        decorations: Value,
+        &self, key: &str, decorations: Value,
     ) -> Result<Vec<Value>, String> {
         let base_options = {
             let map = self.decoration_types.read().await;
@@ -293,29 +276,24 @@ impl SessionManager {
         };
 
         for entry in entries {
-            let (range, hover, specific_options) =
-                if let Ok(range) = serde_json::from_value::<RangePayload>(entry.clone()) {
-                    (range, None, None)
-                } else if let Some(range_value) = entry.get("range") {
-                    let range = serde_json::from_value::<RangePayload>(range_value.clone())
-                        .map_err(|e| format!("Invalid decoration range payload: {}", e))?;
-                    let hover = entry.get("hoverMessage").cloned();
-                    let specific = entry
-                        .get("renderOptions")
-                        .or_else(|| entry.get("options"))
-                        .cloned();
-                    (range, hover, specific)
-                } else {
-                    continue;
-                };
+            let (range, hover, specific_options) = if let Ok(range) =
+                serde_json::from_value::<RangePayload>(entry.clone())
+            {
+                (range, None, None)
+            } else if let Some(range_value) = entry.get("range") {
+                let range = serde_json::from_value::<RangePayload>(range_value.clone())
+                    .map_err(|e| format!("Invalid decoration range payload: {}", e))?;
+                let hover = entry.get("hoverMessage").cloned();
+                let specific = entry.get("renderOptions").or_else(|| entry.get("options")).cloned();
+                (range, hover, specific)
+            } else {
+                continue;
+            };
 
             let merged_options =
                 Self::merge_decoration_options(&base_options, specific_options.as_ref());
             let mut map = Map::new();
-            map.insert(
-                "range".into(),
-                serde_json::to_value(&range).unwrap_or(Value::Null),
-            );
+            map.insert("range".into(), serde_json::to_value(&range).unwrap_or(Value::Null));
             map.insert("options".into(), merged_options);
             if let Some(hover_msg) = hover {
                 map.insert("hoverMessage".into(), hover_msg);
@@ -342,34 +320,59 @@ impl SessionManager {
     }
 
     pub async fn notify_editor_selection(
-        &self,
-        uri: &str,
-        selection: Value,
-        selections: Value,
+        &self, uri: &str, selection: Value, selections: Value,
     ) -> Result<(), String> {
         let payload = json!({
             "uri": uri,
             "selection": selection,
             "selections": selections,
         });
-        self.nng_manager
-            .request("main", "selectionChanged", payload)
-            .await?;
+        self.ipc_manager.request("main", "selectionChanged", payload).await?;
         Ok(())
     }
 
     pub async fn notify_editor_visible_ranges(
-        &self,
-        uri: &str,
-        ranges: Value,
+        &self, uri: &str, ranges: Value,
     ) -> Result<(), String> {
         let payload = json!({
             "uri": uri,
             "ranges": ranges,
         });
-        self.nng_manager
-            .request("main", "visibleRangesChanged", payload)
-            .await?;
+        self.ipc_manager.request("main", "visibleRangesChanged", payload).await?;
+        Ok(())
+    }
+
+    pub async fn forward_document_change(
+        &self, uri: &str, version: u64, changes: &[TextDocumentContentChange],
+    ) -> Result<(), String> {
+        let content_changes: Vec<Value> = changes
+            .iter()
+            .map(|change| {
+                let range = change.range.as_ref().map(|r| {
+                    json!({
+                        "startLineNumber": r.start.line + 1,
+                        "startColumn": r.start.character + 1,
+                        "endLineNumber": r.end.line + 1,
+                        "endColumn": r.end.character + 1,
+                    })
+                });
+                json!({
+                    "range": range,
+                    "rangeOffset": change.range_offset,
+                    "rangeLength": change.range_length,
+                    "text": change.text,
+                })
+            })
+            .collect();
+
+        let payload = json!({
+            "uri": uri,
+            "version": version,
+            "contentChanges": content_changes,
+        });
+
+        let _ = self.ipc_manager.request("main", "textDocumentChanged", payload).await;
+
         Ok(())
     }
 }

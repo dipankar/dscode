@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,7 +88,7 @@ impl WorkspaceRegistry {
 
     /// Get all workspace folders
     pub fn get_workspace_folders(&self) -> Vec<WorkspaceFolder> {
-        let folders = self.folders.read().unwrap();
+        let folders = self.folders.read().expect("workspace_folders read lock poisoned");
         folders.clone()
     }
 
@@ -107,7 +107,9 @@ impl WorkspaceRegistry {
         }
 
         // Emit event to frontend
-        if let Err(e) = self.app_handle.emit("workspace-folders-changed", &self.get_workspace_folders()) {
+        if let Err(e) =
+            self.app_handle.emit("workspace-folders-changed", &self.get_workspace_folders())
+        {
             eprintln!("[Workspace] Failed to emit workspace folders changed event: {}", e);
         }
 
@@ -133,7 +135,9 @@ impl WorkspaceRegistry {
         }
 
         // Emit event to frontend
-        if let Err(e) = self.app_handle.emit("workspace-folders-changed", &self.get_workspace_folders()) {
+        if let Err(e) =
+            self.app_handle.emit("workspace-folders-changed", &self.get_workspace_folders())
+        {
             eprintln!("[Workspace] Failed to emit workspace folders changed event: {}", e);
         }
 
@@ -142,19 +146,18 @@ impl WorkspaceRegistry {
     }
 
     /// Get workspace configuration
-    pub fn get_configuration(&self, section: &str, scope: Option<&str>) -> Option<WorkspaceConfiguration> {
-        let configs = self.configurations.read().unwrap();
+    pub fn get_configuration(
+        &self, section: &str, scope: Option<&str>,
+    ) -> Option<WorkspaceConfiguration> {
+        let configs =
+            self.configurations.read().expect("workspace_configurations read lock poisoned");
         let key = self.config_key(section, scope);
         configs.get(&key).cloned()
     }
 
     /// Update workspace configuration
     pub fn update_configuration(
-        &self,
-        section: String,
-        scope: Option<String>,
-        key: String,
-        value: serde_json::Value,
+        &self, section: String, scope: Option<String>, key: String, value: serde_json::Value,
     ) -> Result<(), String> {
         {
             let mut configs = self.configurations.write().map_err(|e| e.to_string())?;
@@ -170,7 +173,9 @@ impl WorkspaceRegistry {
         }
 
         // Emit event to frontend
-        if let Err(e) = self.app_handle.emit("configuration-changed", &(section.clone(), scope.clone())) {
+        if let Err(e) =
+            self.app_handle.emit("configuration-changed", &(section.clone(), scope.clone()))
+        {
             eprintln!("[Workspace] Failed to emit configuration changed event: {}", e);
         }
 
@@ -179,7 +184,9 @@ impl WorkspaceRegistry {
     }
 
     /// Register a file decoration provider
-    pub fn register_file_decoration_provider(&self, provider: FileDecorationProvider) -> Result<String, String> {
+    pub fn register_file_decoration_provider(
+        &self, provider: FileDecorationProvider,
+    ) -> Result<String, String> {
         let mut providers = self.file_decoration_providers.write().map_err(|e| e.to_string())?;
         let id = provider.id.clone();
         providers.push(provider);
@@ -190,9 +197,7 @@ impl WorkspaceRegistry {
 
     /// Update file decorations for a provider
     pub fn update_file_decorations(
-        &self,
-        provider_id: String,
-        decorations: Vec<FileDecoration>,
+        &self, provider_id: String, decorations: Vec<FileDecoration>,
     ) -> Result<(), String> {
         {
             let mut all_decorations = self.file_decorations.write().map_err(|e| e.to_string())?;
@@ -209,7 +214,8 @@ impl WorkspaceRegistry {
 
     /// Get file decorations for a URI
     pub fn get_file_decorations(&self, uri: &str) -> Vec<FileDecoration> {
-        let all_decorations = self.file_decorations.read().unwrap();
+        let all_decorations =
+            self.file_decorations.read().expect("workspace_file_decorations read lock poisoned");
         let mut result = Vec::new();
 
         for decorations in all_decorations.values() {
@@ -226,14 +232,18 @@ impl WorkspaceRegistry {
     /// Clear all providers and configurations for an owner
     pub fn clear_owner_data(&self, owner: &str) -> Result<(), String> {
         {
-            let mut providers = self.file_decoration_providers.write().map_err(|e| e.to_string())?;
+            let mut providers =
+                self.file_decoration_providers.write().map_err(|e| e.to_string())?;
             providers.retain(|p| p.owner != owner);
         }
 
         {
             let mut decorations = self.file_decorations.write().map_err(|e| e.to_string())?;
             decorations.retain(|provider_id, _| {
-                let providers = self.file_decoration_providers.read().unwrap();
+                let providers = self
+                    .file_decoration_providers
+                    .read()
+                    .expect("workspace_file_decoration_providers read lock poisoned");
                 providers.iter().any(|p| &p.id == provider_id)
             });
         }

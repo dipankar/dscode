@@ -104,23 +104,18 @@ impl MarketplaceUIRegistry {
 
     /// Get category by ID
     pub async fn get_category(&self, category_id: &str) -> Option<ExtensionCategory> {
-        self.categories
-            .read()
-            .await
-            .iter()
-            .find(|c| c.id == category_id)
-            .cloned()
+        self.categories.read().await.iter().find(|c| c.id == category_id).cloned()
     }
 
     // ===== Reviews =====
 
     /// Add review
-    pub async fn add_review(&self, extension_id: String, review: ExtensionReview) -> Result<(), String> {
+    pub async fn add_review(
+        &self, extension_id: String, review: ExtensionReview,
+    ) -> Result<(), String> {
         let mut reviews = self.reviews.write().await;
 
-        reviews.entry(extension_id.clone())
-            .or_insert_with(Vec::new)
-            .push(review);
+        reviews.entry(extension_id.clone()).or_insert_with(Vec::new).push(review);
 
         // Update rating
         self.update_rating(&extension_id).await;
@@ -137,20 +132,12 @@ impl MarketplaceUIRegistry {
 
     /// Get reviews for extension
     pub async fn get_reviews(&self, extension_id: &str) -> Vec<ExtensionReview> {
-        self.reviews
-            .read()
-            .await
-            .get(extension_id)
-            .cloned()
-            .unwrap_or_default()
+        self.reviews.read().await.get(extension_id).cloned().unwrap_or_default()
     }
 
     /// Get reviews with pagination
     pub async fn get_reviews_paginated(
-        &self,
-        extension_id: &str,
-        page: usize,
-        page_size: usize,
+        &self, extension_id: &str, page: usize, page_size: usize,
     ) -> ReviewsPage {
         let all_reviews = self.get_reviews(extension_id).await;
         let total = all_reviews.len();
@@ -158,11 +145,7 @@ impl MarketplaceUIRegistry {
         let start = page * page_size;
         let end = std::cmp::min(start + page_size, total);
 
-        let reviews = if start < total {
-            all_reviews[start..end].to_vec()
-        } else {
-            Vec::new()
-        };
+        let reviews = if start < total { all_reviews[start..end].to_vec() } else { Vec::new() };
 
         ReviewsPage {
             reviews,
@@ -226,12 +209,7 @@ impl MarketplaceUIRegistry {
 
     /// Get recommendations
     pub async fn get_recommendations(&self, extension_id: &str) -> Vec<String> {
-        self.recommendations
-            .read()
-            .await
-            .get(extension_id)
-            .cloned()
-            .unwrap_or_default()
+        self.recommendations.read().await.get(extension_id).cloned().unwrap_or_default()
     }
 
     /// Generate recommendations based on installed extensions
@@ -298,10 +276,7 @@ impl MarketplaceUIRegistry {
 
     /// Search extensions with filters
     pub async fn search_extensions(
-        &self,
-        query: &str,
-        category: Option<String>,
-        sort_by: SortBy,
+        &self, query: &str, category: Option<String>, sort_by: SortBy,
     ) -> Vec<ExtensionSearchResult> {
         // This would integrate with the marketplace search
         // For now, return empty vec - actual implementation would call marketplace API

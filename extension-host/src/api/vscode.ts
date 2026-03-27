@@ -9,23 +9,181 @@ import { WindowAPI, OutputChannel } from './window';
 import { CommandsAPI } from './commands';
 import { WorkspaceAPI } from './workspace';
 import { TextDocumentAPI, TextDocument, Position, Range } from './textDocument';
-import { TextEditorAPI, TextEditor, Selection, TextEdit, WorkspaceEdit, SnippetString, TextEditorRevealType, TextEditorCursorStyle, TextEditorLineNumbersStyle } from './textEditor';
-import { LanguagesAPI, CompletionItem, Hover, Definition, Location, CodeAction, Diagnostic, DocumentSymbol } from './languages';
-import { UIAPI, StatusBarItem, StatusBarAlignment, TreeView, TreeDataProvider, TreeItem, TreeItemCollapsibleState, WebviewPanel, Webview, WebviewOptions, WebviewPanelOptions } from './ui';
-import { TerminalAPI, Terminal, TerminalOptions, Pseudoterminal, TerminalDimensions, TerminalExitReason, TerminalExitStatus } from './terminal';
-import { EnvironmentAPIImpl, ExtensionsAPI, EnvironmentAPI, Extension, ExtensionKind, UIKind, LogLevel, TelemetrySender, TelemetryLoggerOptions, TelemetryLogger } from './env';
-import { DebugAPI, TasksAPI, DebugSession, DebugConfiguration, Task, TaskProvider, TaskDefinition, TaskGroup, ProcessExecution, ShellExecution, CustomExecution, TaskRevealKind, TaskPanelKind, Breakpoint, SourceBreakpoint, FunctionBreakpoint } from './debug';
+import {
+  TextEditorAPI,
+  TextEditor,
+  Selection,
+  TextEdit,
+  WorkspaceEdit,
+  SnippetString,
+  TextEditorRevealType,
+  TextEditorCursorStyle,
+  TextEditorLineNumbersStyle,
+} from './textEditor';
+import {
+  LanguagesAPI,
+  CompletionItem,
+  Hover,
+  Definition,
+  Location,
+  CodeAction,
+  Diagnostic,
+  DocumentSymbol,
+} from './languages';
+import {
+  UIAPI,
+  StatusBarItem,
+  StatusBarAlignment,
+  TreeView,
+  TreeDataProvider,
+  TreeItem,
+  TreeItemCollapsibleState,
+  WebviewPanel,
+  Webview,
+  WebviewOptions,
+  WebviewPanelOptions,
+} from './ui';
+import {
+  TerminalAPI,
+  Terminal,
+  TerminalOptions,
+  Pseudoterminal,
+  TerminalDimensions,
+  TerminalExitReason,
+  TerminalExitStatus,
+} from './terminal';
+import {
+  EnvironmentAPIImpl,
+  ExtensionsAPI,
+  EnvironmentAPI,
+  Extension,
+  ExtensionKind,
+  UIKind,
+  LogLevel,
+  TelemetrySender,
+  TelemetryLoggerOptions,
+  TelemetryLogger,
+} from './env';
+import {
+  DebugAPI,
+  TasksAPI,
+  DebugSession,
+  DebugConfiguration,
+  Task,
+  TaskProvider,
+  TaskDefinition,
+  TaskGroup,
+  ProcessExecution,
+  ShellExecution,
+  CustomExecution,
+  TaskRevealKind,
+  TaskPanelKind,
+  Breakpoint,
+  SourceBreakpoint,
+  FunctionBreakpoint,
+} from './debug';
 import { FileSystemAPI, FileSystemWatcher } from './fs';
 import { EventEmitter, Event, Disposable } from './events';
 import { Uri } from './uri';
-import { SCMAPI, SourceControl, SourceControlResourceGroup, SourceControlResourceState, SourceControlInputBox } from './scm';
-import { MarkdownString, ThemeColor, ThemeIcon, ConfigurationTarget, ExtensionMode, CancellationToken, CancellationTokenSource, ProgressLocation, Memento, FileType, FileStat, FilePermission, FileSystemError, EnvironmentVariableCollection, EnvironmentVariableMutatorType, CancellationError, CodeLens, l10n, DocumentLink, SignatureHelp, SignatureInformation, ParameterInformation, InlayHint, InlayHintKind, FoldingRange, FoldingRangeKind, SelectionRange, CallHierarchyItem, TypeHierarchyItem, Color, ColorInformation, ColorPresentation, SemanticTokens, SemanticTokensBuilder, SemanticTokensLegend, ViewColumn, CodeActionKind, InlineCompletionItem, InlineCompletionList, LinkedEditingRanges, SymbolInformation, WorkspaceSymbol, SymbolTag, DocumentHighlight, DocumentHighlightKind, RelativePattern } from './common';
+import {
+  SCMAPI,
+  SourceControl,
+  SourceControlResourceGroup,
+  SourceControlResourceState,
+  SourceControlInputBox,
+} from './scm';
+import {
+  MarkdownString,
+  ThemeColor,
+  ThemeIcon,
+  ConfigurationTarget,
+  ExtensionMode,
+  CancellationToken,
+  CancellationTokenSource,
+  ProgressLocation,
+  Memento,
+  FileType,
+  FileStat,
+  FilePermission,
+  FileSystemError,
+  EnvironmentVariableCollection,
+  EnvironmentVariableMutatorType,
+  CancellationError,
+  CodeLens,
+  l10n,
+  DocumentLink,
+  SignatureHelp,
+  SignatureInformation,
+  ParameterInformation,
+  InlayHint,
+  InlayHintLabelPart,
+  InlayHintKind,
+  FoldingRange,
+  FoldingRangeKind,
+  SelectionRange,
+  CallHierarchyItem,
+  TypeHierarchyItem,
+  Color,
+  ColorInformation,
+  ColorPresentation,
+  SemanticTokens,
+  SemanticTokensBuilder,
+  SemanticTokensLegend,
+  ViewColumn,
+  CodeActionKind,
+  InlineCompletionItem,
+  InlineCompletionList,
+  LinkedEditingRanges,
+  SymbolKind,
+  SymbolInformation,
+  WorkspaceSymbol,
+  SymbolTag,
+  DocumentHighlight,
+  DocumentHighlightKind,
+  RelativePattern,
+} from './common';
 import { ProgressAPI, QuickPickItem, QuickPick, InputBox } from './progress';
-import { AuthenticationAPI, SecretStorageImpl, AuthenticationSession, AuthenticationProvider, AuthenticationProviderAuthenticationSessionsChangeEvent } from './authentication';
-import { NotebooksAPI, NotebookCell, NotebookCellKind, NotebookDocument, NotebookController, NotebookCellExecution, NotebookCellExecutionState, NotebookCellData, NotebookCellOutput, NotebookCellOutputItem } from './notebooks';
-import { CommentsAPI, CommentController, CommentThread, Comment, CommentMode, CommentThreadCollapsibleState } from './comments';
-import { TestingAPI, TestController, TestItem, TestRun, TestRunProfile, TestRunProfileKind, TestRunRequest } from './testing';
-import { FileSystemAPI as WorkspaceFSAPI, TextDocumentContentAPI, TextDocumentContentProvider } from './fileSystem';
+import {
+  AuthenticationAPI,
+  SecretStorageImpl,
+  AuthenticationSession,
+  AuthenticationProvider,
+  AuthenticationProviderAuthenticationSessionsChangeEvent,
+} from './authentication';
+import {
+  NotebooksAPI,
+  NotebookCell,
+  NotebookCellKind,
+  NotebookDocument,
+  NotebookController,
+  NotebookCellExecution,
+  NotebookCellExecutionState,
+  NotebookCellData,
+  NotebookCellOutput,
+  NotebookCellOutputItem,
+} from './notebooks';
+import {
+  CommentsAPI,
+  CommentController,
+  CommentThread,
+  Comment,
+  CommentMode,
+  CommentThreadCollapsibleState,
+} from './comments';
+import {
+  TestingAPI,
+  TestController,
+  TestItem,
+  TestRun,
+  TestRunProfile,
+  TestRunProfileKind,
+  TestRunRequest,
+} from './testing';
+import {
+  FileSystemAPI as WorkspaceFSAPI,
+  TextDocumentContentAPI,
+  TextDocumentContentProvider,
+} from './fileSystem';
 import { registerBuiltinCommands } from './builtin-commands';
 
 // Global API instances
@@ -78,13 +236,10 @@ export function initializeAPI(bridge: ExtensionHostBridge) {
   textDocumentContentAPI = new TextDocumentContentAPI(bridge);
 
   // Register built-in VS Code commands
-  registerBuiltinCommands(
-    (command, handler) => commandsAPI.registerCommand(command, handler),
-    {
-      bridge,
-      languagesAPI
-    }
-  );
+  registerBuiltinCommands((command, handler) => commandsAPI.registerCommand(command, handler), {
+    bridge,
+    languagesAPI,
+  });
 }
 
 /**
@@ -98,21 +253,13 @@ export function registerLoadedExtension<T = any>(
   isActive: boolean = false,
   exports?: T
 ): Extension<T> {
-  return extensionsAPI.registerExtension(
-    extensionId,
-    extensionPath,
-    packageJSON,
-    exports as T
-  );
+  return extensionsAPI.registerExtension(extensionId, extensionPath, packageJSON, exports as T);
 }
 
 /**
  * Update an extension's active state and exports after activation
  */
-export function updateExtensionActivation<T = any>(
-  extensionId: string,
-  exports: T
-): void {
+export function updateExtensionActivation<T = any>(extensionId: string, exports: T): void {
   const ext = extensionsAPI.getExtension<T>(extensionId);
   if (ext) {
     // ExtensionImpl uses (this as any) for properties, so we do the same
@@ -248,7 +395,10 @@ export const commands = {
   },
 };
 
-export function __withExtensionActivation<T>(extensionId: string, callback: () => Promise<T>): Promise<T> {
+export function __withExtensionActivation<T>(
+  extensionId: string,
+  callback: () => Promise<T>
+): Promise<T> {
   return commandsAPI.runWithExtension(extensionId, () =>
     uiAPI.runWithExtension(extensionId, callback)
   );
@@ -476,7 +626,10 @@ export const env: EnvironmentAPI = {
   openExternal(target: any) {
     return environmentAPI.openExternal(target);
   },
-  createTelemetryLogger(sender: TelemetrySender, options?: TelemetryLoggerOptions): TelemetryLogger {
+  createTelemetryLogger(
+    sender: TelemetrySender,
+    options?: TelemetryLoggerOptions
+  ): TelemetryLogger {
     return environmentAPI.createTelemetryLogger(sender, options);
   },
 };
@@ -743,6 +896,7 @@ export {
   SignatureInformation,
   ParameterInformation,
   InlayHint,
+  InlayHintLabelPart,
   InlayHintKind,
   FoldingRange,
   FoldingRangeKind,
@@ -760,6 +914,7 @@ export {
   InlineCompletionItem,
   InlineCompletionList,
   LinkedEditingRanges,
+  SymbolKind,
   SymbolInformation,
   WorkspaceSymbol,
   SymbolTag,
@@ -824,7 +979,7 @@ export enum DiagnosticSeverity {
   Error = 0,
   Warning = 1,
   Information = 2,
-  Hint = 3
+  Hint = 3,
 }
 
 export enum CompletionItemKind {
@@ -852,34 +1007,5 @@ export enum CompletionItemKind {
   Struct = 21,
   Event = 22,
   Operator = 23,
-  TypeParameter = 24
-}
-
-export enum SymbolKind {
-  File = 0,
-  Module = 1,
-  Namespace = 2,
-  Package = 3,
-  Class = 4,
-  Method = 5,
-  Property = 6,
-  Field = 7,
-  Constructor = 8,
-  Enum = 9,
-  Interface = 10,
-  Function = 11,
-  Variable = 12,
-  Constant = 13,
-  String = 14,
-  Number = 15,
-  Boolean = 16,
-  Array = 17,
-  Object = 18,
-  Key = 19,
-  Null = 20,
-  EnumMember = 21,
-  Struct = 22,
-  Event = 23,
-  Operator = 24,
-  TypeParameter = 25
+  TypeParameter = 24,
 }

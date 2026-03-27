@@ -6,6 +6,91 @@
 
 import { ExtensionHostBridge } from '../bridge';
 import { TextDocument, Position, Range } from './textDocument';
+import { WorkspaceEdit } from './textEditor';
+import {
+  CancellationToken,
+  CodeLens,
+  DocumentLink,
+  DocumentHighlight,
+  InlayHint,
+  InlayHintLabelPart,
+  SelectionRange,
+  ColorInformation,
+  ColorPresentation,
+  FoldingRange,
+  SemanticTokens,
+  CallHierarchyItem,
+  TypeHierarchyItem,
+  InlineCompletionItem,
+  InlineCompletionList,
+  WorkspaceSymbol,
+  SymbolKind,
+  SymbolTag,
+  SignatureHelp,
+  Color,
+} from './common';
+
+export interface DocumentFilter {
+  language?: string;
+  scheme?: string;
+  pattern?: string;
+}
+
+export type DocumentSelector = DocumentFilter[];
+
+function normalizeSelector(selector: DocumentSelector | string | string[]): DocumentFilter[] {
+  if (Array.isArray(selector)) {
+    if (selector.length === 0) return [];
+    if (typeof selector[0] === 'string') {
+      return (selector as string[]).map((lang) => ({ language: lang }));
+    }
+    return selector as DocumentFilter[];
+  }
+  if (typeof selector === 'string') {
+    return [{ language: selector }];
+  }
+  return [];
+}
+
+function selectorMatchesLanguage(
+  selector: DocumentFilter[],
+  languageId: string,
+  uri?: string
+): boolean {
+  return selector.some((filter) => {
+    if (filter.language && filter.language !== languageId && filter.language !== '*') {
+      return false;
+    }
+    if (filter.scheme && uri && !uri.startsWith(filter.scheme + ':')) {
+      return false;
+    }
+    if (filter.pattern && uri && !globMatch(filter.pattern, uri)) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function globMatch(pattern: string, text: string): boolean {
+  if (pattern === '*') return true;
+  if (pattern.includes('*')) {
+    const parts = pattern.split('*');
+    if (parts.length === 2) {
+      return text.startsWith(parts[0]) && text.endsWith(parts[1]);
+    }
+  }
+  return pattern === text;
+}
+
+function selectorToLanguagesArray(selector: DocumentSelector | string | string[]): string[] {
+  const filters = normalizeSelector(selector);
+  return [...new Set(filters.map((f) => f.language).filter((l): l is string => !!l))];
+}
+
+interface ProviderEntry<T> {
+  provider: T;
+  selector: DocumentFilter[];
+}
 
 export class CompletionItem {
   constructor(
@@ -19,7 +104,7 @@ export class CompletionItem {
   filterText?: string;
   insertText?: string;
   range?: Range;
-  command?: { title: string; command: string; arguments?: any[] };
+  command?: { title: string; command: string; arguments?: unknown[] };
 }
 
 export interface CompletionList {
@@ -52,8 +137,8 @@ export class CodeAction {
     public kind?: string
   ) {}
 
-  edit?: any; // WorkspaceEdit
-  command?: { title: string; command: string; arguments?: any[] };
+  edit?: WorkspaceEdit;
+  command?: { title: string; command: string; arguments?: unknown[] };
   diagnostics?: Diagnostic[];
   isPreferred?: boolean;
 }
@@ -87,8 +172,8 @@ export interface CompletionItemProvider {
   provideCompletionItems(
     document: TextDocument,
     position: Position,
-    token?: any,
-    context?: any
+    token?: CancellationToken,
+    context?: { triggerKind: number; triggerCharacter?: string }
   ): CompletionItem[] | CompletionList | Promise<CompletionItem[] | CompletionList>;
 }
 
@@ -96,7 +181,7 @@ export interface HoverProvider {
   provideHover(
     document: TextDocument,
     position: Position,
-    token?: any
+    token?: CancellationToken
   ): Hover | null | undefined | Promise<Hover | null | undefined>;
 }
 
@@ -104,7 +189,7 @@ export interface DefinitionProvider {
   provideDefinition(
     document: TextDocument,
     position: Position,
-    token?: any
+    token?: CancellationToken
   ):
     | Definition
     | Definition[]
@@ -118,7 +203,7 @@ export interface ReferenceProvider {
     document: TextDocument,
     position: Position,
     context: { includeDeclaration: boolean },
-    token?: any
+    token?: CancellationToken
   ): Location[] | null | undefined | Promise<Location[] | null | undefined>;
 }
 
@@ -127,14 +212,14 @@ export interface CodeActionProvider {
     document: TextDocument,
     range: Range,
     context: { diagnostics: Diagnostic[] },
-    token?: any
+    token?: CancellationToken
   ): CodeAction[] | null | undefined | Promise<CodeAction[] | null | undefined>;
 }
 
 export interface DocumentSymbolProvider {
   provideDocumentSymbols(
     document: TextDocument,
-    token?: any
+    token?: CancellationToken
   ): DocumentSymbol[] | null | undefined | Promise<DocumentSymbol[] | null | undefined>;
 }
 
@@ -142,7 +227,7 @@ export interface DocumentFormattingEditProvider {
   provideDocumentFormattingEdits(
     document: TextDocument,
     options: { tabSize: number; insertSpaces: boolean },
-    token?: any
+    token?: CancellationToken
   ):
     | { range: Range; newText: string }[]
     | null
@@ -152,11 +237,16 @@ export interface DocumentFormattingEditProvider {
 
 // Additional provider interfaces
 export interface RenameProvider {
-  provideRenameEdits(document: TextDocument, position: Position, newName: string, token?: any): any;
+  provideRenameEdits(
+    document: TextDocument,
+    position: Position,
+    newName: string,
+    token?: CancellationToken
+  ): WorkspaceEdit | null | undefined | Promise<WorkspaceEdit | null | undefined>;
   prepareRename?(
     document: TextDocument,
     position: Position,
-    token?: any
+    token?: CancellationToken
   ):
     | Range
     | { range: Range; placeholder: string }
@@ -166,42 +256,89 @@ export interface RenameProvider {
 }
 
 export interface SignatureHelpProvider {
-  provideSignatureHelp(document: TextDocument, position: Position, token?: any, context?: any): any;
+  provideSignatureHelp(
+    document: TextDocument,
+    position: Position,
+    token?: CancellationToken,
+    context?: { triggerKind: number; triggerCharacter?: string }
+  ): SignatureHelp | null | undefined | Promise<SignatureHelp | null | undefined>;
 }
 
 export interface CodeLensProvider {
-  provideCodeLenses(document: TextDocument, token?: any): any[];
-  resolveCodeLens?(codeLens: any, token?: any): any;
+  provideCodeLenses(document: TextDocument, token?: CancellationToken): CodeLens[];
+  resolveCodeLens?(codeLens: CodeLens, token?: CancellationToken): CodeLens;
 }
 
 export interface DocumentLinkProvider {
-  provideDocumentLinks(document: TextDocument, token?: any): any[];
-  resolveDocumentLink?(link: any, token?: any): any;
+  provideDocumentLinks(document: TextDocument, token?: CancellationToken): DocumentLink[];
+  resolveDocumentLink?(link: DocumentLink, token?: CancellationToken): DocumentLink;
 }
 
 export interface DocumentColorProvider {
-  provideDocumentColors(document: TextDocument, token?: any): any[];
-  provideColorPresentations(color: any, context: any, token?: any): any[];
+  provideDocumentColors(document: TextDocument, token?: CancellationToken): ColorInformation[];
+  provideColorPresentations(
+    color: Color,
+    context: { document: TextDocument; range: Range },
+    token?: CancellationToken
+  ): ColorPresentation[];
 }
 
 export interface FoldingRangeProvider {
-  provideFoldingRanges(document: TextDocument, context: any, token?: any): any[];
+  provideFoldingRanges(
+    document: TextDocument,
+    context: { maxRanges?: number },
+    token?: CancellationToken
+  ): FoldingRange[];
 }
 
 export interface SelectionRangeProvider {
-  provideSelectionRanges(document: TextDocument, positions: Position[], token?: any): any[];
+  provideSelectionRanges(
+    document: TextDocument,
+    positions: Position[],
+    token?: CancellationToken
+  ): SelectionRange[];
 }
 
 export interface CallHierarchyProvider {
-  prepareCallHierarchy(document: TextDocument, position: Position, token?: any): any;
-  provideCallHierarchyIncomingCalls(item: any, token?: any): any[];
-  provideCallHierarchyOutgoingCalls(item: any, token?: any): any[];
+  prepareCallHierarchy(
+    document: TextDocument,
+    position: Position,
+    token?: CancellationToken
+  ):
+    | CallHierarchyItem
+    | CallHierarchyItem[]
+    | null
+    | undefined
+    | Promise<CallHierarchyItem | CallHierarchyItem[] | null | undefined>;
+  provideCallHierarchyIncomingCalls(
+    item: CallHierarchyItem,
+    token?: CancellationToken
+  ): { from: CallHierarchyItem; fromRanges: Range[] }[];
+  provideCallHierarchyOutgoingCalls(
+    item: CallHierarchyItem,
+    token?: CancellationToken
+  ): { to: CallHierarchyItem; fromRanges: Range[] }[];
 }
 
 export interface TypeHierarchyProvider {
-  prepareTypeHierarchy(document: TextDocument, position: Position, token?: any): any;
-  provideTypeHierarchySupertypes(item: any, token?: any): any[];
-  provideTypeHierarchySubtypes(item: any, token?: any): any[];
+  prepareTypeHierarchy(
+    document: TextDocument,
+    position: Position,
+    token?: CancellationToken
+  ):
+    | TypeHierarchyItem
+    | TypeHierarchyItem[]
+    | null
+    | undefined
+    | Promise<TypeHierarchyItem | TypeHierarchyItem[] | null | undefined>;
+  provideTypeHierarchySupertypes(
+    item: TypeHierarchyItem,
+    token?: CancellationToken
+  ): TypeHierarchyItem[];
+  provideTypeHierarchySubtypes(
+    item: TypeHierarchyItem,
+    token?: CancellationToken
+  ): TypeHierarchyItem[];
 }
 
 export interface SemanticTokensLegend {
@@ -210,30 +347,42 @@ export interface SemanticTokensLegend {
 }
 
 export interface DocumentSemanticTokensProvider {
-  provideDocumentSemanticTokens(document: TextDocument, token?: any): any;
+  provideDocumentSemanticTokens(
+    document: TextDocument,
+    token?: CancellationToken
+  ): SemanticTokens | null | undefined | Promise<SemanticTokens | null | undefined>;
   provideDocumentSemanticTokensEdits?(
     document: TextDocument,
     previousResultId: string,
-    token?: any
-  ): any;
+    token?: CancellationToken
+  ):
+    | SemanticTokens
+    | { edits: { start: number; deleteCount: number; data?: number[] }[] }
+    | null
+    | undefined;
 }
 
 export interface InlineCompletionItemProvider {
   provideInlineCompletionItems(
     document: TextDocument,
     position: Position,
-    context: any,
-    token?: any
-  ): any;
+    context: { triggerKind: number; selectedCompletionInfo?: { range: Range; text: string } },
+    token?: CancellationToken
+  ):
+    | InlineCompletionItem[]
+    | InlineCompletionList
+    | null
+    | undefined
+    | Promise<InlineCompletionItem[] | InlineCompletionList | null | undefined>;
 }
 
 export interface DocumentRangeFormattingEditProvider {
   provideDocumentRangeFormattingEdits(
     document: TextDocument,
     range: Range,
-    options: any,
-    token?: any
-  ): any[];
+    options: { tabSize: number; insertSpaces: boolean },
+    token?: CancellationToken
+  ): { range: Range; newText: string }[];
 }
 
 export interface OnTypeFormattingEditProvider {
@@ -241,18 +390,22 @@ export interface OnTypeFormattingEditProvider {
     document: TextDocument,
     position: Position,
     ch: string,
-    options: any,
-    token?: any
-  ): any[];
+    options: { tabSize: number; insertSpaces: boolean },
+    token?: CancellationToken
+  ): { range: Range; newText: string }[];
 }
 
 export interface WorkspaceSymbolProvider {
-  provideWorkspaceSymbols(query: string, token?: any): any[];
-  resolveWorkspaceSymbol?(symbol: any, token?: any): any;
+  provideWorkspaceSymbols(query: string, token?: CancellationToken): WorkspaceSymbol[];
+  resolveWorkspaceSymbol?(symbol: WorkspaceSymbol, token?: CancellationToken): WorkspaceSymbol;
 }
 
 export interface DocumentHighlightProvider {
-  provideDocumentHighlights(document: TextDocument, position: Position, token?: any): any[];
+  provideDocumentHighlights(
+    document: TextDocument,
+    position: Position,
+    token?: CancellationToken
+  ): DocumentHighlight[];
 }
 
 export interface ImplementationProvider {
@@ -311,69 +464,93 @@ export interface LanguageConfiguration {
  * LanguagesAPI manages language providers
  */
 export class LanguagesAPI {
-  private completionProviders = new Map<string, CompletionItemProvider[]>();
-  private hoverProviders = new Map<string, HoverProvider[]>();
-  private definitionProviders = new Map<string, DefinitionProvider[]>();
-  private referenceProviders = new Map<string, ReferenceProvider[]>();
-  private codeActionProviders = new Map<string, CodeActionProvider[]>();
-  private symbolProviders = new Map<string, DocumentSymbolProvider[]>();
-  private formattingProviders = new Map<string, DocumentFormattingEditProvider[]>();
-  private renameProviders = new Map<string, RenameProvider[]>();
-  private signatureHelpProviders = new Map<string, SignatureHelpProvider[]>();
-  private codeLensProviders = new Map<string, CodeLensProvider[]>();
-  private documentColorProviders = new Map<string, DocumentColorProvider[]>();
-  private foldingRangeProviders = new Map<string, FoldingRangeProvider[]>();
-  private selectionRangeProviders = new Map<string, SelectionRangeProvider[]>();
+  private completionProviders = new Map<string, ProviderEntry<CompletionItemProvider>[]>();
+  private hoverProviders = new Map<string, ProviderEntry<HoverProvider>[]>();
+  private definitionProviders = new Map<string, ProviderEntry<DefinitionProvider>[]>();
+  private referenceProviders = new Map<string, ProviderEntry<ReferenceProvider>[]>();
+  private codeActionProviders = new Map<string, ProviderEntry<CodeActionProvider>[]>();
+  private symbolProviders = new Map<string, ProviderEntry<DocumentSymbolProvider>[]>();
+  private formattingProviders = new Map<string, ProviderEntry<DocumentFormattingEditProvider>[]>();
+  private renameProviders = new Map<string, ProviderEntry<RenameProvider>[]>();
+  private signatureHelpProviders = new Map<string, ProviderEntry<SignatureHelpProvider>[]>();
+  private codeLensProviders = new Map<string, ProviderEntry<CodeLensProvider>[]>();
+  private documentColorProviders = new Map<string, ProviderEntry<DocumentColorProvider>[]>();
+  private foldingRangeProviders = new Map<string, ProviderEntry<FoldingRangeProvider>[]>();
+  private selectionRangeProviders = new Map<string, ProviderEntry<SelectionRangeProvider>[]>();
   private workspaceSymbolProviders: WorkspaceSymbolProvider[] = [];
-  private documentHighlightProviders = new Map<string, DocumentHighlightProvider[]>();
-  private rangeFormattingProviders = new Map<string, DocumentRangeFormattingEditProvider[]>();
-  private onTypeFormattingProviders = new Map<string, OnTypeFormattingEditProvider[]>();
-  private semanticTokensProviders = new Map<string, DocumentSemanticTokensProvider[]>();
-  private implementationProviders = new Map<string, ImplementationProvider[]>();
-  private typeDefinitionProviders = new Map<string, TypeDefinitionProvider[]>();
-  private declarationProviders = new Map<string, DeclarationProvider[]>();
-  private documentLinkProviders = new Map<string, DocumentLinkProvider[]>();
-  private inlineCompletionProviders = new Map<string, InlineCompletionItemProvider[]>();
+  private documentHighlightProviders = new Map<
+    string,
+    ProviderEntry<DocumentHighlightProvider>[]
+  >();
+  private rangeFormattingProviders = new Map<
+    string,
+    ProviderEntry<DocumentRangeFormattingEditProvider>[]
+  >();
+  private onTypeFormattingProviders = new Map<
+    string,
+    ProviderEntry<OnTypeFormattingEditProvider>[]
+  >();
+  private semanticTokensProviders = new Map<
+    string,
+    ProviderEntry<DocumentSemanticTokensProvider>[]
+  >();
+  private implementationProviders = new Map<string, ProviderEntry<ImplementationProvider>[]>();
+  private typeDefinitionProviders = new Map<string, ProviderEntry<TypeDefinitionProvider>[]>();
+  private declarationProviders = new Map<string, ProviderEntry<DeclarationProvider>[]>();
+  private documentLinkProviders = new Map<string, ProviderEntry<DocumentLinkProvider>[]>();
+  private inlineCompletionProviders = new Map<
+    string,
+    ProviderEntry<InlineCompletionItemProvider>[]
+  >();
 
   constructor(private bridge: ExtensionHostBridge) {
     this.setupMessageHandlers();
   }
 
-  private getLanguages(selector: string | string[]): string[] {
-    return Array.isArray(selector) ? selector : [selector];
-  }
-
   private addProviders<T>(
-    store: Map<string, T[]>,
-    selector: string | string[],
+    store: Map<string, ProviderEntry<T>[]>,
+    selector: DocumentSelector | string | string[],
     provider: T
   ): string[] {
-    const languages = this.getLanguages(selector);
+    const filters = normalizeSelector(selector);
+    const languages = selectorToLanguagesArray(selector);
     for (const language of languages) {
       if (!store.has(language)) {
         store.set(language, []);
       }
-      store.get(language)!.push(provider);
+      store.get(language)!.push({ provider, selector: filters });
     }
     return languages;
   }
 
-  private removeProviders<T>(store: Map<string, T[]>, languages: string[], provider: T): void {
+  private removeProviders<T>(
+    store: Map<string, ProviderEntry<T>[]>,
+    languages: string[],
+    provider: T
+  ): void {
     for (const language of languages) {
-      const providers = store.get(language);
-      if (!providers) {
+      const entries = store.get(language);
+      if (!entries) {
         continue;
       }
 
-      const index = providers.indexOf(provider);
+      const index = entries.findIndex((entry) => entry.provider === provider);
       if (index !== -1) {
-        providers.splice(index, 1);
+        entries.splice(index, 1);
       }
 
-      if (providers.length === 0) {
+      if (entries.length === 0) {
         store.delete(language);
       }
     }
+  }
+
+  private getProvidersForLanguage<T>(
+    store: Map<string, ProviderEntry<T>[]>,
+    languageId: string
+  ): T[] {
+    const entries = store.get(languageId) || [];
+    return entries.map((entry) => entry.provider);
   }
 
   private createTextDocument(rawDocument: any, languageId: string): TextDocument {
@@ -442,7 +619,7 @@ export class LanguagesAPI {
 
     // Completion provider
     this.bridge.on('provideCompletion', async (data: any) => {
-      const providers = this.completionProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.completionProviders, data.languageId);
       const results: CompletionItem[] = [];
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
@@ -471,7 +648,7 @@ export class LanguagesAPI {
 
     // Hover provider
     this.bridge.on('provideHover', async (data: any, respond: Function) => {
-      const providers = this.hoverProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.hoverProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -496,7 +673,7 @@ export class LanguagesAPI {
 
     // Definition provider
     this.bridge.on('provideDefinition', async (data: any, respond: Function) => {
-      const providers = this.definitionProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.definitionProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -524,7 +701,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideImplementation', async (data: any, respond: Function) => {
-      const providers = this.implementationProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.implementationProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -545,7 +722,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideTypeDefinition', async (data: any, respond: Function) => {
-      const providers = this.typeDefinitionProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.typeDefinitionProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -566,7 +743,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideDeclaration', async (data: any, respond: Function) => {
-      const providers = this.declarationProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.declarationProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -588,7 +765,7 @@ export class LanguagesAPI {
 
     // Reference provider
     this.bridge.on('provideReferences', async (data: any, respond: Function) => {
-      const providers = this.referenceProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.referenceProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -620,7 +797,7 @@ export class LanguagesAPI {
 
     // Code action provider
     this.bridge.on('provideCodeActions', async (data: any, respond: Function) => {
-      const providers = this.codeActionProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.codeActionProviders, data.languageId);
       const allActions: CodeAction[] = [];
       const document = await this.getDocumentFromRequest(data);
       const range = this.createRange(data.range);
@@ -655,7 +832,7 @@ export class LanguagesAPI {
 
     // Document symbol provider
     this.bridge.on('provideDocumentSymbols', async (data: any, respond: Function) => {
-      const providers = this.symbolProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.symbolProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
 
       for (const provider of providers) {
@@ -678,7 +855,7 @@ export class LanguagesAPI {
 
     // Document formatting provider
     this.bridge.on('provideDocumentFormatting', async (data: any, respond: Function) => {
-      const providers = this.formattingProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.formattingProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
 
       for (const provider of providers) {
@@ -710,7 +887,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideSignatureHelp', async (data: any, respond: Function) => {
-      const providers = this.signatureHelpProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.signatureHelpProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -735,7 +912,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideRename', async (data: any, respond: Function) => {
-      const providers = this.renameProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.renameProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -760,7 +937,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('prepareRename', async (data: any, respond: Function) => {
-      const providers = this.renameProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.renameProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -784,7 +961,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideCodeLenses', async (data: any, respond: Function) => {
-      const providers = this.codeLensProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.codeLensProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const lenses: any[] = [];
 
@@ -803,7 +980,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideDocumentLinks', async (data: any, respond: Function) => {
-      const providers = this.documentLinkProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.documentLinkProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const links: any[] = [];
 
@@ -822,7 +999,10 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideDocumentHighlights', async (data: any, respond: Function) => {
-      const providers = this.documentHighlightProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(
+        this.documentHighlightProviders,
+        data.languageId
+      );
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -842,7 +1022,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideFoldingRanges', async (data: any, respond: Function) => {
-      const providers = this.foldingRangeProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.foldingRangeProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
 
       for (const provider of providers) {
@@ -865,7 +1045,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideSelectionRanges', async (data: any, respond: Function) => {
-      const providers = this.selectionRangeProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.selectionRangeProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
       const positions = (data.positions || []).map((position: any) =>
         this.createPosition(position)
@@ -903,7 +1083,10 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideRangeFormatting', async (data: any, respond: Function) => {
-      const providers = this.rangeFormattingProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(
+        this.rangeFormattingProviders,
+        data.languageId
+      );
       const document = await this.getDocumentFromRequest(data);
       const range = this.createRange(data.range);
 
@@ -928,7 +1111,10 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideOnTypeFormatting', async (data: any, respond: Function) => {
-      const providers = this.onTypeFormattingProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(
+        this.onTypeFormattingProviders,
+        data.languageId
+      );
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -954,7 +1140,10 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideInlineCompletionItems', async (data: any, respond: Function) => {
-      const providers = this.inlineCompletionProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(
+        this.inlineCompletionProviders,
+        data.languageId
+      );
       const document = await this.getDocumentFromRequest(data);
       const position = this.createPosition(data.position);
 
@@ -979,7 +1168,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideSemanticTokens', async (data: any, respond: Function) => {
-      const providers = this.semanticTokensProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.semanticTokensProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
 
       for (const provider of providers) {
@@ -998,7 +1187,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideDocumentColors', async (data: any, respond: Function) => {
-      const providers = this.documentColorProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.documentColorProviders, data.languageId);
       const document = await this.getDocumentFromRequest(data);
 
       for (const provider of providers) {
@@ -1017,7 +1206,7 @@ export class LanguagesAPI {
     });
 
     this.bridge.on('provideColorPresentations', async (data: any, respond: Function) => {
-      const providers = this.documentColorProviders.get(data.languageId) || [];
+      const providers = this.getProvidersForLanguage(this.documentColorProviders, data.languageId);
 
       for (const provider of providers) {
         try {
@@ -1054,213 +1243,127 @@ export class LanguagesAPI {
   }
 
   registerCompletionItemProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: CompletionItemProvider,
     ...triggerCharacters: string[]
   ): { dispose(): void } {
-    const languages = Array.isArray(selector) ? selector : [selector];
-
-    for (const lang of languages) {
-      if (!this.completionProviders.has(lang)) {
-        this.completionProviders.set(lang, []);
-      }
-      this.completionProviders.get(lang)!.push(provider);
-    }
+    const languages = this.addProviders(this.completionProviders, selector, provider);
+    const normalizedSelector = normalizeSelector(selector);
 
     this.bridge.send('registerCompletionProvider', {
-      languages,
+      languages: selectorToLanguagesArray(selector),
       triggerCharacters,
+      selector: normalizedSelector,
     });
 
     return {
       dispose: () => {
-        for (const lang of languages) {
-          const providers = this.completionProviders.get(lang);
-          if (providers) {
-            const index = providers.indexOf(provider);
-            if (index !== -1) {
-              providers.splice(index, 1);
-            }
-          }
-        }
+        this.removeProviders(this.completionProviders, languages, provider);
       },
     };
   }
 
-  registerHoverProvider(selector: string | string[], provider: HoverProvider): { dispose(): void } {
-    const languages = Array.isArray(selector) ? selector : [selector];
+  registerHoverProvider(
+    selector: DocumentSelector | string | string[],
+    provider: HoverProvider
+  ): { dispose(): void } {
+    const languages = this.addProviders(this.hoverProviders, selector, provider);
+    const normalizedSelector = normalizeSelector(selector);
 
-    for (const lang of languages) {
-      if (!this.hoverProviders.has(lang)) {
-        this.hoverProviders.set(lang, []);
-      }
-      this.hoverProviders.get(lang)!.push(provider);
-    }
-
-    this.bridge.send('registerHoverProvider', { languages });
+    this.bridge.send('registerHoverProvider', {
+      languages: selectorToLanguagesArray(selector),
+      selector: normalizedSelector,
+    });
 
     return {
       dispose: () => {
-        for (const lang of languages) {
-          const providers = this.hoverProviders.get(lang);
-          if (providers) {
-            const index = providers.indexOf(provider);
-            if (index !== -1) {
-              providers.splice(index, 1);
-            }
-          }
-        }
+        this.removeProviders(this.hoverProviders, languages, provider);
       },
     };
   }
 
   registerDefinitionProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: DefinitionProvider
   ): { dispose(): void } {
-    const languages = Array.isArray(selector) ? selector : [selector];
+    const languages = this.addProviders(this.definitionProviders, selector, provider);
+    const normalizedSelector = normalizeSelector(selector);
 
-    for (const lang of languages) {
-      if (!this.definitionProviders.has(lang)) {
-        this.definitionProviders.set(lang, []);
-      }
-      this.definitionProviders.get(lang)!.push(provider);
-    }
-
-    this.bridge.send('registerDefinitionProvider', { languages });
+    this.bridge.send('registerDefinitionProvider', {
+      languages: selectorToLanguagesArray(selector),
+      selector: normalizedSelector,
+    });
 
     return {
       dispose: () => {
-        for (const lang of languages) {
-          const providers = this.definitionProviders.get(lang);
-          if (providers) {
-            const index = providers.indexOf(provider);
-            if (index !== -1) {
-              providers.splice(index, 1);
-            }
-          }
-        }
+        this.removeProviders(this.definitionProviders, languages, provider);
       },
     };
   }
 
   registerReferenceProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: ReferenceProvider
   ): { dispose(): void } {
-    const languages = Array.isArray(selector) ? selector : [selector];
-
-    for (const lang of languages) {
-      if (!this.referenceProviders.has(lang)) {
-        this.referenceProviders.set(lang, []);
-      }
-      this.referenceProviders.get(lang)!.push(provider);
-    }
-
-    this.bridge.send('registerReferenceProvider', { languages });
-
+    const languages = this.addProviders(this.referenceProviders, selector, provider);
+    this.bridge.send('registerReferenceProvider', {
+      languages: selectorToLanguagesArray(selector),
+      selector: normalizeSelector(selector),
+    });
     return {
       dispose: () => {
-        for (const lang of languages) {
-          const providers = this.referenceProviders.get(lang);
-          if (providers) {
-            const index = providers.indexOf(provider);
-            if (index !== -1) {
-              providers.splice(index, 1);
-            }
-          }
-        }
+        this.removeProviders(this.referenceProviders, languages, provider);
       },
     };
   }
 
   registerCodeActionsProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: CodeActionProvider,
     metadata?: any
   ): { dispose(): void } {
-    const languages = Array.isArray(selector) ? selector : [selector];
-
-    for (const lang of languages) {
-      if (!this.codeActionProviders.has(lang)) {
-        this.codeActionProviders.set(lang, []);
-      }
-      this.codeActionProviders.get(lang)!.push(provider);
-    }
-
-    this.bridge.send('registerCodeActionsProvider', { languages, metadata });
-
+    const languages = this.addProviders(this.codeActionProviders, selector, provider);
+    this.bridge.send('registerCodeActionsProvider', {
+      languages: selectorToLanguagesArray(selector),
+      selector: normalizeSelector(selector),
+      metadata,
+    });
     return {
       dispose: () => {
-        for (const lang of languages) {
-          const providers = this.codeActionProviders.get(lang);
-          if (providers) {
-            const index = providers.indexOf(provider);
-            if (index !== -1) {
-              providers.splice(index, 1);
-            }
-          }
-        }
+        this.removeProviders(this.codeActionProviders, languages, provider);
       },
     };
   }
 
   registerDocumentSymbolProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: DocumentSymbolProvider
   ): { dispose(): void } {
-    const languages = Array.isArray(selector) ? selector : [selector];
-
-    for (const lang of languages) {
-      if (!this.symbolProviders.has(lang)) {
-        this.symbolProviders.set(lang, []);
-      }
-      this.symbolProviders.get(lang)!.push(provider);
-    }
-
-    this.bridge.send('registerDocumentSymbolProvider', { languages });
-
+    const languages = this.addProviders(this.symbolProviders, selector, provider);
+    this.bridge.send('registerDocumentSymbolProvider', {
+      languages: selectorToLanguagesArray(selector),
+      selector: normalizeSelector(selector),
+    });
     return {
       dispose: () => {
-        for (const lang of languages) {
-          const providers = this.symbolProviders.get(lang);
-          if (providers) {
-            const index = providers.indexOf(provider);
-            if (index !== -1) {
-              providers.splice(index, 1);
-            }
-          }
-        }
+        this.removeProviders(this.symbolProviders, languages, provider);
       },
     };
   }
 
   registerDocumentFormattingEditProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: DocumentFormattingEditProvider
   ): { dispose(): void } {
-    const languages = Array.isArray(selector) ? selector : [selector];
-
-    for (const lang of languages) {
-      if (!this.formattingProviders.has(lang)) {
-        this.formattingProviders.set(lang, []);
-      }
-      this.formattingProviders.get(lang)!.push(provider);
-    }
-
-    this.bridge.send('registerFormattingProvider', { languages });
+    const languages = this.addProviders(this.formattingProviders, selector, provider);
+    this.bridge.send('registerFormattingProvider', {
+      languages: selectorToLanguagesArray(selector),
+      selector: normalizeSelector(selector),
+    });
 
     return {
       dispose: () => {
-        for (const lang of languages) {
-          const providers = this.formattingProviders.get(lang);
-          if (providers) {
-            const index = providers.indexOf(provider);
-            if (index !== -1) {
-              providers.splice(index, 1);
-            }
-          }
-        }
+        this.removeProviders(this.formattingProviders, languages, provider);
       },
     };
   }
@@ -1272,7 +1375,7 @@ export class LanguagesAPI {
 
   // Additional Language Providers
   registerRenameProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: RenameProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.renameProviders, selector, provider);
@@ -1288,7 +1391,7 @@ export class LanguagesAPI {
   }
 
   registerSignatureHelpProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: SignatureHelpProvider,
     ...triggerCharacters: string[]
   ): { dispose(): void } {
@@ -1302,7 +1405,7 @@ export class LanguagesAPI {
   }
 
   registerCodeLensProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: CodeLensProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.codeLensProviders, selector, provider);
@@ -1315,7 +1418,7 @@ export class LanguagesAPI {
   }
 
   registerDocumentLinkProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: DocumentLinkProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.documentLinkProviders, selector, provider);
@@ -1328,7 +1431,7 @@ export class LanguagesAPI {
   }
 
   registerColorProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: DocumentColorProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.documentColorProviders, selector, provider);
@@ -1341,7 +1444,7 @@ export class LanguagesAPI {
   }
 
   registerFoldingRangeProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: FoldingRangeProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.foldingRangeProviders, selector, provider);
@@ -1354,7 +1457,7 @@ export class LanguagesAPI {
   }
 
   registerSelectionRangeProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: SelectionRangeProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.selectionRangeProviders, selector, provider);
@@ -1367,7 +1470,7 @@ export class LanguagesAPI {
   }
 
   registerCallHierarchyProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: CallHierarchyProvider
   ): { dispose(): void } {
     this.bridge.send('registerCallHierarchyProvider', { selector });
@@ -1375,7 +1478,7 @@ export class LanguagesAPI {
   }
 
   registerTypeHierarchyProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: TypeHierarchyProvider
   ): { dispose(): void } {
     this.bridge.send('registerTypeHierarchyProvider', { selector });
@@ -1383,7 +1486,7 @@ export class LanguagesAPI {
   }
 
   registerDocumentSemanticTokensProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: DocumentSemanticTokensProvider,
     legend: SemanticTokensLegend
   ): { dispose(): void } {
@@ -1397,7 +1500,7 @@ export class LanguagesAPI {
   }
 
   registerInlineCompletionItemProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: InlineCompletionItemProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.inlineCompletionProviders, selector, provider);
@@ -1410,7 +1513,7 @@ export class LanguagesAPI {
   }
 
   registerDocumentRangeFormattingEditProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: DocumentRangeFormattingEditProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.rangeFormattingProviders, selector, provider);
@@ -1423,7 +1526,7 @@ export class LanguagesAPI {
   }
 
   registerOnTypeFormattingEditProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: OnTypeFormattingEditProvider,
     firstTriggerCharacter: string,
     ...moreTriggerCharacters: string[]
@@ -1453,7 +1556,7 @@ export class LanguagesAPI {
   }
 
   registerDocumentHighlightProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: DocumentHighlightProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.documentHighlightProviders, selector, provider);
@@ -1466,7 +1569,7 @@ export class LanguagesAPI {
   }
 
   registerImplementationProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: ImplementationProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.implementationProviders, selector, provider);
@@ -1479,7 +1582,7 @@ export class LanguagesAPI {
   }
 
   registerTypeDefinitionProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: TypeDefinitionProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.typeDefinitionProviders, selector, provider);
@@ -1492,7 +1595,7 @@ export class LanguagesAPI {
   }
 
   registerDeclarationProvider(
-    selector: string | string[],
+    selector: DocumentSelector | string | string[],
     provider: DeclarationProvider
   ): { dispose(): void } {
     const languages = this.addProviders(this.declarationProviders, selector, provider);

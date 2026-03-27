@@ -1,3 +1,4 @@
+use super::contributions::ExtensionContributes;
 use super::{ExtensionInfo, SessionEvent, SessionManager, SessionState};
 use crate::marketplace;
 use semver::Version;
@@ -38,7 +39,7 @@ pub struct InstalledExtension {
     pub description: Option<String>,
     pub path: String,
     #[serde(default)]
-    pub contributes: Option<serde_json::Value>,
+    pub contributes: Option<ExtensionContributes>,
     #[serde(default)]
     pub dependencies: Vec<String>,
     #[serde(default)]
@@ -50,7 +51,7 @@ pub struct InstalledExtension {
 pub struct ExtensionContribution {
     pub extension_id: String,
     pub extension_name: String,
-    pub contributes: Option<serde_json::Value>,
+    pub contributes: Option<ExtensionContributes>,
 }
 
 impl SessionManager {
@@ -90,10 +91,7 @@ impl SessionManager {
         self.rebuild_command_index(&extensions).await;
         self.publish_command_list().await;
 
-        println!(
-            "[SessionManager] Found {} installed extensions",
-            extensions.len()
-        );
+        println!("[SessionManager] Found {} installed extensions", extensions.len());
 
         self.emit_event(SessionEvent::ExtensionsChanged { extensions });
 
@@ -163,12 +161,7 @@ impl SessionManager {
     }
 
     async fn is_extension_active(&self, extension_id: &str) -> bool {
-        self.state
-            .read()
-            .await
-            .active_extensions
-            .iter()
-            .any(|ext| ext.id == extension_id)
+        self.state.read().await.active_extensions.iter().any(|ext| ext.id == extension_id)
     }
 
     async fn owners_from_activation_events(&self, command: &str) -> Vec<String> {
@@ -229,22 +222,14 @@ impl SessionManager {
             .ok_or("Missing 'name' field")?
             .to_string();
 
-        let version = manifest
-            .get("version")
-            .and_then(|v| v.as_str())
-            .unwrap_or("0.0.0")
-            .to_string();
+        let version =
+            manifest.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
 
-        let publisher = manifest
-            .get("publisher")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string();
+        let publisher =
+            manifest.get("publisher").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
 
-        let description = manifest
-            .get("description")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let description =
+            manifest.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
 
         let extension_id = format!("{}.{}", publisher, name);
 
@@ -296,9 +281,7 @@ impl SessionManager {
             .map(|arr| {
                 arr.iter()
                     .filter_map(|item| {
-                        item.get("command")
-                            .and_then(|c| c.as_str())
-                            .map(|s| s.to_string())
+                        item.get("command").and_then(|c| c.as_str()).map(|s| s.to_string())
                     })
                     .collect::<Vec<String>>()
             })
@@ -308,13 +291,14 @@ impl SessionManager {
             if let Some(url) = value.as_str() {
                 Some(url.to_string())
             } else if let Some(obj) = value.as_object() {
-                obj.get("url")
-                    .and_then(|u| u.as_str())
-                    .map(|s| s.to_string())
+                obj.get("url").and_then(|u| u.as_str()).map(|s| s.to_string())
             } else {
                 None
             }
         });
+
+        let contributes: Option<ExtensionContributes> =
+            manifest.get("contributes").map(|v| ExtensionContributes::from_json(v));
 
         Ok(ExtensionInfo {
             id: extension_id,
@@ -329,25 +313,19 @@ impl SessionManager {
             repository,
             activation_events,
             commands,
+            contributes,
         })
     }
 
     pub(super) async fn load_auto_start_extensions(&self) -> Result<(), String> {
         let state = self.state.read().await;
-        let extensions: Vec<_> = state
-            .installed_extensions
-            .iter()
-            .filter(|ext| ext.enabled)
-            .cloned()
-            .collect();
+        let extensions: Vec<_> =
+            state.installed_extensions.iter().filter(|ext| ext.enabled).cloned().collect();
         drop(state);
 
         for ext_info in extensions {
             if let Err(e) = self.load_extension_internal(&ext_info.id).await {
-                eprintln!(
-                    "[SessionManager] Failed to load extension {}: {}",
-                    ext_info.id, e
-                );
+                eprintln!("[SessionManager] Failed to load extension {}: {}", ext_info.id, e);
             }
         }
 
@@ -358,9 +336,7 @@ impl SessionManager {
         self.load_extension_internal(extension_id).await?;
 
         self.mark_extension_active(extension_id, true).await;
-        self.emit_event(SessionEvent::ExtensionLoaded {
-            extension_id: extension_id.to_string(),
-        });
+        self.emit_event(SessionEvent::ExtensionLoaded { extension_id: extension_id.to_string() });
 
         Ok(())
     }
@@ -369,18 +345,13 @@ impl SessionManager {
         let extension_path = self.app_dirs.extensions_dir.join(extension_id);
 
         if !extension_path.exists() {
-            return Err(format!(
-                "Extension directory not found: {:?}",
-                extension_path
-            ));
+            return Err(format!("Extension directory not found: {:?}", extension_path));
         }
 
         println!("[SessionManager] Loading extension: {}", extension_id);
 
         let payload = json!({ "extensionId": extension_id });
-        self.nng_manager
-            .request("main", "activate-extension", payload)
-            .await?;
+        self.ipc_manager.request("main", "activate-extension", payload).await?;
 
         Ok(())
     }
@@ -389,14 +360,10 @@ impl SessionManager {
         println!("[SessionManager] Unloading extension: {}", extension_id);
 
         let payload = json!({ "extensionId": extension_id });
-        self.nng_manager
-            .request("main", "deactivate-extension", payload)
-            .await?;
+        self.ipc_manager.request("main", "deactivate-extension", payload).await?;
 
         self.mark_extension_active(extension_id, false).await;
-        self.emit_event(SessionEvent::ExtensionUnloaded {
-            extension_id: extension_id.to_string(),
-        });
+        self.emit_event(SessionEvent::ExtensionUnloaded { extension_id: extension_id.to_string() });
         self.remove_extension_status_bar_items(extension_id).await;
 
         Ok(())
@@ -408,24 +375,15 @@ impl SessionManager {
         let _ = self.unload_extension(extension_id).await;
 
         let payload = json!({ "extensionId": extension_id });
-        let response = self
-            .nng_manager
-            .request("main", "uninstall-extension", payload)
-            .await?;
+        let response = self.ipc_manager.request("main", "uninstall-extension", payload).await?;
 
-        let success = response
-            .get("success")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let success = response.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
         if !success {
             let error = response
                 .get("error")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Unknown error returned from extension host");
-            return Err(format!(
-                "Extension host failed to uninstall {}: {}",
-                extension_id, error
-            ));
+            return Err(format!("Extension host failed to uninstall {}: {}", extension_id, error));
         }
 
         let extension_path = self.app_dirs.extensions_dir.join(extension_id);
@@ -446,16 +404,11 @@ impl SessionManager {
 
         let logs_dir = self.app_dirs.logs_dir.join(extension_id);
         if let Err(e) = remove_dir_if_exists(&logs_dir) {
-            eprintln!(
-                "[SessionManager] Failed to delete log directory {:?}: {}",
-                logs_dir, e
-            );
+            eprintln!("[SessionManager] Failed to delete log directory {:?}: {}", logs_dir, e);
         }
 
         let mut state = self.state.write().await;
-        state
-            .installed_extensions
-            .retain(|ext| ext.id != extension_id);
+        state.installed_extensions.retain(|ext| ext.id != extension_id);
         state.active_extensions.retain(|ext| ext.id != extension_id);
         let extensions = state.installed_extensions.clone();
         drop(state);
@@ -464,9 +417,7 @@ impl SessionManager {
         self.publish_command_list().await;
         self.remove_extension_status_bar_items(extension_id).await;
 
-        self.emit_event(SessionEvent::ExtensionDeleted {
-            extension_id: extension_id.to_string(),
-        });
+        self.emit_event(SessionEvent::ExtensionDeleted { extension_id: extension_id.to_string() });
         self.emit_event(SessionEvent::ExtensionsChanged { extensions });
 
         Ok(())
@@ -475,20 +426,12 @@ impl SessionManager {
     async fn mark_extension_active(&self, extension_id: &str, active: bool) {
         let mut state = self.state.write().await;
 
-        if let Some(ext) = state
-            .installed_extensions
-            .iter_mut()
-            .find(|e| e.id == extension_id)
-        {
+        if let Some(ext) = state.installed_extensions.iter_mut().find(|e| e.id == extension_id) {
             ext.active = active;
         }
 
         if active {
-            if let Some(ext) = state
-                .installed_extensions
-                .iter()
-                .find(|e| e.id == extension_id)
-            {
+            if let Some(ext) = state.installed_extensions.iter().find(|e| e.id == extension_id) {
                 let ext_clone = ext.clone();
                 if !state.active_extensions.iter().any(|e| e.id == extension_id) {
                     state.active_extensions.push(ext_clone);
@@ -517,8 +460,7 @@ impl SessionManager {
     }
 
     pub async fn install_vsix_package(
-        &self,
-        vsix_path: String,
+        &self, vsix_path: String,
     ) -> Result<InstalledExtension, String> {
         let extensions_dir = self.app_dirs.extensions_dir.clone();
         let installed =
@@ -530,29 +472,18 @@ impl SessionManager {
             ensure_extension_dependencies(&installed.dependencies, &self.app_dirs).await?;
 
         if !dependency_installs.is_empty() {
-            let ids: Vec<String> = dependency_installs
-                .iter()
-                .map(|ext| ext.id.clone())
-                .collect();
-            println!(
-                "[Extensions] Installed dependencies for {}: {:?}",
-                installed.id, ids
-            );
+            let ids: Vec<String> = dependency_installs.iter().map(|ext| ext.id.clone()).collect();
+            println!("[Extensions] Installed dependencies for {}: {:?}", installed.id, ids);
         }
 
         self.reload_extensions_after_install().await?;
-        self.emit_event(SessionEvent::ExtensionInstalled {
-            extension_id: installed.id.clone(),
-        });
+        self.emit_event(SessionEvent::ExtensionInstalled { extension_id: installed.id.clone() });
 
         Ok(installed)
     }
 
     pub async fn install_marketplace_extension(
-        &self,
-        publisher: String,
-        name: String,
-        version: String,
+        &self, publisher: String, name: String, version: String,
     ) -> Result<InstalledExtension, String> {
         let vsix_path = marketplace::download_extension(publisher, name, version).await?;
         let vsix_string = vsix_path.to_string_lossy().to_string();
@@ -560,10 +491,7 @@ impl SessionManager {
 
         if let Err(err) = fs::remove_file(&vsix_path) {
             if err.kind() != ErrorKind::NotFound {
-                eprintln!(
-                    "[Extensions] Failed to delete temporary VSIX {:?}: {}",
-                    vsix_path, err
-                );
+                eprintln!("[Extensions] Failed to delete temporary VSIX {:?}: {}", vsix_path, err);
             }
         }
 
@@ -571,33 +499,38 @@ impl SessionManager {
     }
 
     pub async fn list_extensions_detailed(&self) -> Result<Vec<InstalledExtension>, String> {
-        if !self.app_dirs.extensions_dir.exists() {
-            return Ok(Vec::new());
-        }
-
-        let entries = fs::read_dir(&self.app_dirs.extensions_dir)
-            .map_err(|e| format!("Failed to read extensions directory: {}", e))?;
-        let mut extensions = Vec::new();
-
-        for entry in entries {
-            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-            let path = entry.path();
-
-            if !path.is_dir() {
-                continue;
+        let extensions_dir = self.app_dirs.extensions_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            if !extensions_dir.exists() {
+                return Ok(Vec::new());
             }
 
-            match self.read_installed_extension(&path) {
-                Ok(extension) => extensions.push(extension),
-                Err(err) => eprintln!(
-                    "[SessionManager] Failed to read installed extension at {:?}: {}",
-                    path, err
-                ),
-            }
-        }
+            let entries = fs::read_dir(&extensions_dir)
+                .map_err(|e| format!("Failed to read extensions directory: {}", e))?;
+            let mut extensions = Vec::new();
 
-        extensions.sort_by(|left, right| left.id.cmp(&right.id));
-        Ok(extensions)
+            for entry in entries {
+                let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+                let path = entry.path();
+
+                if !path.is_dir() {
+                    continue;
+                }
+
+                match Self::scan_extension_dir(&path) {
+                    Ok(extension) => extensions.push(extension),
+                    Err(err) => eprintln!(
+                        "[SessionManager] Failed to read installed extension at {:?}: {}",
+                        path, err
+                    ),
+                }
+            }
+
+            extensions.sort_by(|left, right| left.id.cmp(&right.id));
+            Ok(extensions)
+        })
+        .await
+        .map_err(|e| format!("Failed to list extensions: {}", e))?
     }
 
     pub async fn get_extension_contributions_detailed(
@@ -619,12 +552,10 @@ impl SessionManager {
     }
 
     pub async fn get_extension_tree_children(
-        &self,
-        view_id: String,
-        element: Option<serde_json::Value>,
+        &self, view_id: String, element: Option<serde_json::Value>,
     ) -> Result<Vec<serde_json::Value>, String> {
         let response = self
-            .nng_manager
+            .ipc_manager
             .request(
                 "main",
                 "treeView:getChildren",
@@ -637,14 +568,9 @@ impl SessionManager {
 
         let children_value = if let Some(obj) = response.as_object() {
             let success = obj.get("success").and_then(|v| v.as_bool()).unwrap_or(true);
-            let error = obj
-                .get("error")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let children = obj
-                .get("children")
-                .cloned()
-                .unwrap_or(serde_json::Value::Array(Vec::new()));
+            let error = obj.get("error").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let children =
+                obj.get("children").cloned().unwrap_or(serde_json::Value::Array(Vec::new()));
             if success {
                 children
             } else {
@@ -666,13 +592,11 @@ impl SessionManager {
 
         for element_value in elements {
             let element_clone = element_value.clone();
-            let item_value = match self
-                .get_extension_tree_item(view_id.clone(), element_value)
-                .await
-            {
-                Ok(item) => item,
-                Err(_) => element_clone.clone(),
-            };
+            let item_value =
+                match self.get_extension_tree_item(view_id.clone(), element_value).await {
+                    Ok(item) => item,
+                    Err(_) => element_clone.clone(),
+                };
 
             results.push(json!({
                 "element": element_clone,
@@ -684,12 +608,10 @@ impl SessionManager {
     }
 
     pub async fn get_extension_tree_item(
-        &self,
-        view_id: String,
-        element: serde_json::Value,
+        &self, view_id: String, element: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         let response = self
-            .nng_manager
+            .ipc_manager
             .request(
                 "main",
                 "treeView:getTreeItem",
@@ -715,12 +637,10 @@ impl SessionManager {
     }
 
     pub async fn execute_extension_command(
-        &self,
-        command: String,
-        args: Vec<serde_json::Value>,
+        &self, command: String, args: Vec<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
         self.ensure_command_ready(&command).await?;
-        self.nng_manager
+        self.ipc_manager
             .request(
                 "main",
                 "executeCommand",
@@ -733,12 +653,8 @@ impl SessionManager {
     }
 
     pub async fn notify_extension_tree_event(
-        &self,
-        view_id: String,
-        event: String,
-        element: Option<serde_json::Value>,
-        selection: Option<Vec<serde_json::Value>>,
-        visible: Option<bool>,
+        &self, view_id: String, event: String, element: Option<serde_json::Value>,
+        selection: Option<Vec<serde_json::Value>>, visible: Option<bool>,
     ) -> Result<(), String> {
         let mut payload = serde_json::Map::new();
         payload.insert("viewId".to_string(), serde_json::Value::String(view_id));
@@ -757,44 +673,28 @@ impl SessionManager {
         }
 
         let response = self
-            .nng_manager
+            .ipc_manager
             .request("main", "treeView:event", serde_json::Value::Object(payload))
             .await?;
 
-        if response
-            .get("success")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true)
-        {
+        if response.get("success").and_then(|v| v.as_bool()).unwrap_or(true) {
             Ok(())
         } else {
-            let err = response
-                .get("error")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Tree view event failed");
+            let err =
+                response.get("error").and_then(|v| v.as_str()).unwrap_or("Tree view event failed");
             Err(err.to_string())
         }
     }
 
     async fn reload_extensions_after_install(&self) -> Result<(), String> {
-        if let Err(err) = self
-            .nng_manager
-            .request("main", "reload-extensions", json!({}))
-            .await
-        {
-            eprintln!(
-                "[Extensions] Failed to request extension host reload: {}",
-                err
-            );
+        if let Err(err) = self.ipc_manager.request("main", "reload-extensions", json!({})).await {
+            eprintln!("[Extensions] Failed to request extension host reload: {}", err);
         }
 
         self.scan_and_emit_extensions().await
     }
 
-    fn read_installed_extension(
-        &self,
-        extension_path: &Path,
-    ) -> Result<InstalledExtension, String> {
+    fn scan_extension_dir(extension_path: &Path) -> Result<InstalledExtension, String> {
         let manifest = read_extension_manifest_from_disk(extension_path)?;
         let mut dependencies = manifest.extension_dependencies.clone().unwrap_or_default();
 
@@ -812,13 +712,10 @@ impl SessionManager {
             publisher: manifest.publisher,
             description: manifest.description,
             path: extension_path.to_string_lossy().to_string(),
-            contributes: manifest.contributes,
+            contributes: manifest.contributes.as_ref().map(|v| ExtensionContributes::from_json(v)),
             dependencies,
             categories: manifest.categories.unwrap_or_default(),
-            repository: manifest
-                .repository
-                .as_ref()
-                .and_then(extract_repository_url),
+            repository: manifest.repository.as_ref().and_then(extract_repository_url),
         })
     }
 }
@@ -846,9 +743,8 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
     let mut extension_folder: Option<String> = None;
 
     for i in 0..archive.len() {
-        let mut file = archive
-            .by_index(i)
-            .map_err(|e| format!("Failed to read archive entry: {}", e))?;
+        let mut file =
+            archive.by_index(i).map_err(|e| format!("Failed to read archive entry: {}", e))?;
 
         let file_path = file.name().to_string();
 
@@ -899,9 +795,8 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
         ZipArchive::new(file).map_err(|e| format!("Failed to read .vsix archive: {}", e))?;
 
     for i in 0..archive.len() {
-        let mut file = archive
-            .by_index(i)
-            .map_err(|e| format!("Failed to read archive entry: {}", e))?;
+        let mut file =
+            archive.by_index(i).map_err(|e| format!("Failed to read archive entry: {}", e))?;
 
         let path = file.name().to_string();
 
@@ -917,12 +812,15 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
             // This prevents Zip Slip attacks where archive entries contain paths like "../../../etc/passwd"
             if let Some(parent) = outpath.parent() {
                 // Canonicalize parent if it exists; for new dirs, verify manually
-                let canonical_install = fs::canonicalize(&install_path)
-                    .unwrap_or_else(|_| install_path.clone());
+                let canonical_install =
+                    fs::canonicalize(&install_path).unwrap_or_else(|_| install_path.clone());
                 if parent.exists() {
                     if let Ok(canonical_parent) = fs::canonicalize(parent) {
                         if !canonical_parent.starts_with(&canonical_install) {
-                            eprintln!("[Extensions] Skipping path outside install dir: {}", relative_path);
+                            eprintln!(
+                                "[Extensions] Skipping path outside install dir: {}",
+                                relative_path
+                            );
                             continue;
                         }
                     }
@@ -935,7 +833,10 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
                             std::path::Component::ParentDir => {
                                 depth -= 1;
                                 if depth < 0 {
-                                    eprintln!("[Extensions] Skipping path with traversal: {}", relative_path);
+                                    eprintln!(
+                                        "[Extensions] Skipping path with traversal: {}",
+                                        relative_path
+                                    );
                                     continue;
                                 }
                             }
@@ -956,7 +857,11 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
                 // Enforce maximum single file size of 500MB
                 const MAX_SINGLE_FILE_SIZE: u64 = 500 * 1024 * 1024;
                 if file.size() > MAX_SINGLE_FILE_SIZE {
-                    eprintln!("[Extensions] Skipping oversized file: {} ({} bytes)", relative_path, file.size());
+                    eprintln!(
+                        "[Extensions] Skipping oversized file: {} ({} bytes)",
+                        relative_path,
+                        file.size()
+                    );
                     continue;
                 }
 
@@ -977,10 +882,7 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
     dependency_list.dedup();
 
     let categories = manifest.categories.clone().unwrap_or_default();
-    let repository = manifest
-        .repository
-        .as_ref()
-        .and_then(extract_repository_url);
+    let repository = manifest.repository.as_ref().and_then(extract_repository_url);
 
     Ok(InstalledExtension {
         id: extension_id,
@@ -989,7 +891,7 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
         publisher: manifest.publisher,
         description: manifest.description,
         path: install_path.to_string_lossy().to_string(),
-        contributes: manifest.contributes,
+        contributes: manifest.contributes.as_ref().map(|v| ExtensionContributes::from_json(v)),
         dependencies: dependency_list,
         categories,
         repository,
@@ -1009,31 +911,12 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
         return Err("Extension publisher is required".to_string());
     }
 
-    if !manifest
-        .name
-        .chars()
-        .all(|c| c.is_lowercase() || c.is_numeric() || c == '-')
-    {
+    if !manifest.name.chars().all(|c| c.is_lowercase() || c.is_numeric() || c == '-') {
         return Err("Extension name must be lowercase alphanumeric with hyphens".to_string());
     }
 
-    let version_parts: Vec<&str> = manifest.version.split('.').collect();
-    if version_parts.len() != 3 {
-        return Err("Extension version must follow semantic versioning (x.y.z)".to_string());
-    }
-
-    for part in version_parts {
-        if part.parse::<u32>().is_err() {
-            return Err("Extension version parts must be numbers".to_string());
-        }
-    }
-
-    if let Some(engines) = &manifest.engines {
-        if engines.get("vscode").is_none() {
-            return Err("Extension must specify vscode engine version".to_string());
-        }
-    } else {
-        return Err("Extension must specify engines field with vscode version".to_string());
+    if Version::parse(&manifest.version).is_err() {
+        return Err("Extension version must follow semantic versioning".to_string());
     }
 
     Ok(())
@@ -1066,8 +949,7 @@ fn extract_repository_url(value: &serde_json::Value) -> Option<String> {
 }
 
 async fn ensure_extension_dependencies(
-    dependencies: &[String],
-    app_dirs: &crate::config::AppDirectories,
+    dependencies: &[String], app_dirs: &crate::config::AppDirectories,
 ) -> Result<Vec<InstalledExtension>, String> {
     if dependencies.is_empty() {
         return Ok(Vec::new());
@@ -1114,10 +996,7 @@ async fn ensure_extension_dependencies(
 
         if let Err(err) = fs::remove_file(&vsix_path) {
             if err.kind() != ErrorKind::NotFound {
-                eprintln!(
-                    "[Extensions] Failed to delete temporary VSIX {:?}: {}",
-                    vsix_path, err
-                );
+                eprintln!("[Extensions] Failed to delete temporary VSIX {:?}: {}", vsix_path, err);
             }
         }
 

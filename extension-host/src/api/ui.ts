@@ -6,25 +6,38 @@
 
 import { ExtensionHostBridge } from '../bridge';
 import { Disposable, Event, EventEmitter } from './events';
+import { Uri } from './uri';
+import { ThemeColor, ThemeIcon } from './common';
+
+type Command = { title: string; command: string; arguments?: unknown[] };
+type ThemeIconPath = Uri | { light: Uri; dark: Uri } | ThemeIcon;
 
 // StatusBar
 export enum StatusBarAlignment {
   Left = 1,
-  Right = 2
+  Right = 2,
 }
 
 export class StatusBarItem {
   readonly alignment!: StatusBarAlignment;
   readonly priority?: number;
-  get text(): string { return ''; }
+  get text(): string {
+    return '';
+  }
   set text(value: string) {}
-  get tooltip(): string | { value: string } | undefined { return undefined; }
+  get tooltip(): string | { value: string } | undefined {
+    return undefined;
+  }
   set tooltip(value: string | { value: string } | undefined) {}
-  get color(): string | undefined { return undefined; }
+  get color(): string | undefined {
+    return undefined;
+  }
   set color(value: string | undefined) {}
-  get command(): string | { title: string; command: string; arguments?: any[] } | undefined { return undefined; }
-  set command(value: string | { title: string; command: string; arguments?: any[] } | undefined) {}
-  backgroundColor?: any;
+  get command(): string | Command | undefined {
+    return undefined;
+  }
+  set command(value: string | Command | undefined) {}
+  backgroundColor?: ThemeColor;
   accessibilityInformation?: { label: string; role?: string };
   name?: string;
   show(): void {}
@@ -36,8 +49,10 @@ class StatusBarItemImpl extends StatusBarItem {
   private _text = '';
   private _tooltip?: string | { value: string };
   private _color?: string;
-  private _command?: string | { title: string; command: string; arguments?: any[] };
+  private _command?: string | Command;
   private _visible = false;
+  readonly alignment: StatusBarAlignment;
+  readonly priority?: number;
 
   constructor(
     private bridge: ExtensionHostBridge,
@@ -47,8 +62,8 @@ class StatusBarItemImpl extends StatusBarItem {
     private id?: string
   ) {
     super();
-    (this as any).alignment = alignment;
-    (this as any).priority = priority;
+    this.alignment = alignment;
+    this.priority = priority;
     this.id = id || `statusbar_${Date.now()}_${Math.random()}`;
   }
 
@@ -79,11 +94,11 @@ class StatusBarItemImpl extends StatusBarItem {
     this.update();
   }
 
-  get command(): string | { title: string; command: string; arguments?: any[] } | undefined {
+  get command(): string | Command | undefined {
     return this._command;
   }
 
-  set command(value: string | { title: string; command: string; arguments?: any[] } | undefined) {
+  set command(value: string | Command | undefined) {
     this._command = value;
     this.update();
   }
@@ -139,11 +154,11 @@ export class TreeItem {
   ) {}
 
   id?: string;
-  iconPath?: string | { light: string; dark: string } | any;
+  iconPath?: string | { light: string; dark: string } | ThemeIconPath;
   description?: string | boolean;
-  resourceUri?: any;
+  resourceUri?: Uri;
   tooltip?: string | { value: string };
-  command?: { title: string; command: string; arguments?: any[] };
+  command?: Command;
   contextValue?: string;
   accessibilityInformation?: { label: string; role?: string };
 }
@@ -151,7 +166,7 @@ export class TreeItem {
 export enum TreeItemCollapsibleState {
   None = 0,
   Collapsed = 1,
-  Expanded = 2
+  Expanded = 2,
 }
 
 export interface TreeDataProvider<T> {
@@ -172,7 +187,10 @@ export interface TreeView<T> extends Disposable {
   readonly message?: string;
   readonly title?: string;
   readonly description?: string;
-  reveal(element: T, options?: { select?: boolean; focus?: boolean; expand?: boolean | number }): Promise<void>;
+  reveal(
+    element: T,
+    options?: { select?: boolean; focus?: boolean; expand?: boolean | number }
+  ): Promise<void>;
   dispose(): void;
 }
 
@@ -217,11 +235,14 @@ class TreeViewImpl<T> implements TreeView<T> {
     });
   }
 
-  async reveal(element: T, options?: { select?: boolean; focus?: boolean; expand?: boolean | number }): Promise<void> {
+  async reveal(
+    element: T,
+    options?: { select?: boolean; focus?: boolean; expand?: boolean | number }
+  ): Promise<void> {
     this.bridge.send('revealTreeItem', {
       viewId: this.viewId,
       element,
-      options
+      options,
     });
   }
 
@@ -233,16 +254,16 @@ class TreeViewImpl<T> implements TreeView<T> {
     this.bridge.send('disposeTreeView', { viewId: this.viewId });
   }
 
-  handleHostEvent(event: string, payload: any): void {
+  handleHostEvent(event: string, payload: Record<string, unknown>): void {
     switch (event) {
       case 'didExpand':
-        this._onDidExpandElement.fire({ element: payload.element });
+        this._onDidExpandElement.fire({ element: payload.element as T });
         break;
       case 'didCollapse':
-        this._onDidCollapseElement.fire({ element: payload.element });
+        this._onDidCollapseElement.fire({ element: payload.element as T });
         break;
       case 'didChangeSelection':
-        this._selection = Array.isArray(payload.selection) ? payload.selection : [];
+        this._selection = Array.isArray(payload.selection) ? (payload.selection as T[]) : [];
         this._onDidChangeSelection.fire({ selection: this._selection });
         break;
       case 'didChangeVisibility':
@@ -259,9 +280,9 @@ class TreeViewImpl<T> implements TreeView<T> {
 export interface Webview {
   html: string;
   options: WebviewOptions;
-  readonly onDidReceiveMessage: Event<any>;
-  postMessage(message: any): Promise<boolean>;
-  asWebviewUri(localResource: any): any;
+  readonly onDidReceiveMessage: Event<unknown>;
+  postMessage(message: unknown): Promise<boolean>;
+  asWebviewUri(localResource: Uri): Uri;
   readonly cspSource: string;
 }
 
@@ -269,7 +290,7 @@ export interface WebviewOptions {
   enableScripts?: boolean;
   enableForms?: boolean;
   enableCommandUris?: boolean;
-  localResourceRoots?: any[];
+  localResourceRoots?: Uri[];
   portMapping?: Array<{ webviewPort: number; extensionHostPort: number }>;
 }
 
@@ -277,7 +298,7 @@ export interface WebviewPanel extends Disposable {
   readonly webview: Webview;
   readonly viewType: string;
   title: string;
-  iconPath?: any;
+  iconPath?: string | { light: string; dark: string } | ThemeIconPath;
   readonly options: WebviewPanelOptions;
   readonly viewColumn?: number;
   readonly active: boolean;
@@ -295,7 +316,7 @@ export interface WebviewPanelOptions {
 
 class WebviewImpl implements Webview {
   private _html = '';
-  private _onDidReceiveMessage = new EventEmitter<any>();
+  private _onDidReceiveMessage = new EventEmitter<unknown>();
 
   readonly onDidReceiveMessage = this._onDidReceiveMessage.event;
   readonly cspSource = 'vscode-resource:';
@@ -314,20 +335,20 @@ class WebviewImpl implements Webview {
     this._html = value;
     this.bridge.send('updateWebviewHtml', {
       panelId: this.panelId,
-      html: value
+      html: value,
     });
   }
 
-  async postMessage(message: any): Promise<boolean> {
+  async postMessage(message: unknown): Promise<boolean> {
     this.bridge.send('webviewPostMessage', {
       panelId: this.panelId,
-      message
+      message,
     });
     return true;
   }
 
-  asWebviewUri(localResource: any): any {
-    return { scheme: 'vscode-resource', path: localResource.path };
+  asWebviewUri(localResource: Uri): Uri {
+    return Uri.from({ scheme: 'vscode-resource', path: localResource.path });
   }
 }
 
@@ -367,7 +388,7 @@ class WebviewPanelImpl implements WebviewPanel {
     this._title = value;
     this.bridge.send('updateWebviewTitle', {
       panelId: this.panelId,
-      title: value
+      title: value,
     });
   }
 
@@ -383,7 +404,7 @@ class WebviewPanelImpl implements WebviewPanel {
     this.bridge.send('revealWebview', {
       panelId: this.panelId,
       viewColumn,
-      preserveFocus
+      preserveFocus,
     });
   }
 
@@ -396,10 +417,10 @@ class WebviewPanelImpl implements WebviewPanel {
 }
 
 // UI API
-type TreeProviderEntry = {
-  provider: TreeDataProvider<any>;
+type TreeProviderEntry<T = unknown> = {
+  provider: TreeDataProvider<T>;
   owner: string;
-  view: TreeViewImpl<any>;
+  view: TreeViewImpl<T>;
 };
 
 export class UIAPI {
@@ -407,17 +428,26 @@ export class UIAPI {
   private treeProviders = new Map<string, TreeProviderEntry>();
 
   constructor(private bridge: ExtensionHostBridge) {
-    this.bridge.on('treeView:getChildren', async (payload: any, respond: Function) => {
-      respond(await this.handleTreeGetChildren(payload));
-    });
+    this.bridge.on(
+      'treeView:getChildren',
+      async (payload: Record<string, unknown>, respond: (response: unknown) => void) => {
+        respond(await this.handleTreeGetChildren(payload));
+      }
+    );
 
-    this.bridge.on('treeView:getTreeItem', async (payload: any, respond: Function) => {
-      respond(await this.handleTreeGetItem(payload));
-    });
+    this.bridge.on(
+      'treeView:getTreeItem',
+      async (payload: Record<string, unknown>, respond: (response: unknown) => void) => {
+        respond(await this.handleTreeGetItem(payload));
+      }
+    );
 
-    this.bridge.on('treeView:event', async (payload: any, respond: Function) => {
-      respond(await this.handleTreeEvent(payload));
-    });
+    this.bridge.on(
+      'treeView:event',
+      async (payload: Record<string, unknown>, respond: (response: unknown) => void) => {
+        respond(await this.handleTreeEvent(payload));
+      }
+    );
   }
 
   async runWithExtension<T>(extensionId: string, callback: () => Promise<T>): Promise<T> {
@@ -434,8 +464,8 @@ export class UIAPI {
     return this.currentExtensionId || '__core__';
   }
 
-  private async handleTreeGetChildren(payload: any) {
-    const entry = this.treeProviders.get(payload.viewId);
+  private async handleTreeGetChildren(payload: Record<string, unknown>) {
+    const entry = this.treeProviders.get(payload.viewId as string);
     if (!entry) {
       return { success: false, error: `Tree view ${payload.viewId} not registered` };
     }
@@ -445,13 +475,13 @@ export class UIAPI {
         entry.provider.getChildren(payload.element)
       );
       return { success: true, children: children ?? [] };
-    } catch (error: any) {
-      return { success: false, error: error?.message ?? String(error) };
+    } catch (error: unknown) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
-  private async handleTreeGetItem(payload: any) {
-    const entry = this.treeProviders.get(payload.viewId);
+  private async handleTreeGetItem(payload: Record<string, unknown>) {
+    const entry = this.treeProviders.get(payload.viewId as string);
     if (!entry) {
       return { success: false, error: `Tree view ${payload.viewId} not registered` };
     }
@@ -461,24 +491,24 @@ export class UIAPI {
         entry.provider.getTreeItem(payload.element)
       );
       return { success: true, item };
-    } catch (error: any) {
-      return { success: false, error: error?.message ?? String(error) };
+    } catch (error: unknown) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
-  private async handleTreeEvent(payload: any) {
-    const entry = this.treeProviders.get(payload.viewId);
+  private async handleTreeEvent(payload: Record<string, unknown>) {
+    const entry = this.treeProviders.get(payload.viewId as string);
     if (!entry) {
       return { success: false, error: `Tree view ${payload.viewId} not registered` };
     }
 
     try {
       await this.runWithExtension(entry.owner, async () => {
-        entry.view.handleHostEvent(payload.event, payload);
+        entry.view.handleHostEvent(payload.event as string, payload);
       });
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error?.message ?? String(error) };
+    } catch (error: unknown) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -495,7 +525,7 @@ export class UIAPI {
       return new StatusBarItemImpl(
         this.bridge,
         owner,
-        alignmentOrPriority as StatusBarAlignment || StatusBarAlignment.Left,
+        (alignmentOrPriority as StatusBarAlignment) || StatusBarAlignment.Left,
         priority,
         alignmentOrId
       );
@@ -508,10 +538,17 @@ export class UIAPI {
     );
   }
 
-  createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T> {
+  createTreeView<T>(
+    viewId: string,
+    options: { treeDataProvider: TreeDataProvider<T> }
+  ): TreeView<T> {
     const owner = this.currentOwner();
-    const treeView = new TreeViewImpl(this.bridge, viewId, options.treeDataProvider, owner);
-    this.treeProviders.set(viewId, { provider: options.treeDataProvider, owner, view: treeView });
+    const treeView = new TreeViewImpl<T>(this.bridge, viewId, options.treeDataProvider, owner);
+    this.treeProviders.set(viewId, {
+      provider: options.treeDataProvider,
+      owner,
+      view: treeView,
+    } as TreeProviderEntry);
 
     const originalDispose = treeView.dispose.bind(treeView);
     treeView.dispose = () => {
@@ -526,7 +563,7 @@ export class UIAPI {
     viewType: string,
     title: string,
     showOptions: number | { viewColumn: number; preserveFocus?: boolean },
-    options?: WebviewPanelOptions & { enableScripts?: boolean; localResourceRoots?: any[] }
+    options?: WebviewPanelOptions & { enableScripts?: boolean; localResourceRoots?: Uri[] }
   ): WebviewPanel {
     const panelId = `webview_${Date.now()}_${Math.random()}`;
     const viewColumn = typeof showOptions === 'number' ? showOptions : showOptions.viewColumn;
@@ -540,7 +577,7 @@ export class UIAPI {
       options || {},
       {
         enableScripts: options?.enableScripts,
-        localResourceRoots: options?.localResourceRoots
+        localResourceRoots: options?.localResourceRoots,
       }
     );
 
@@ -549,7 +586,7 @@ export class UIAPI {
       viewType,
       title,
       viewColumn,
-      options
+      options,
     });
 
     return panel;
@@ -560,7 +597,7 @@ export class UIAPI {
     return {
       dispose: () => {
         this.bridge.send('unregisterWebviewSerializer', { viewType });
-      }
+      },
     };
   }
 }

@@ -1,7 +1,8 @@
+use super::contributions::ExtensionContributes;
 use super::{SessionEvent, SessionManager, TextEditPayload};
-use crate::commands::{CommandInfo, CommandRegistry};
-use crate::extension_host::IncomingRequestHandler;
+use crate::commands::{CommandInfo, CommandRegistry, LanguageFeaturesRegistry};
 use crate::extension_host::path_validator::PathValidator;
+use crate::extension_host::IncomingRequestHandler;
 use serde_json::{json, Map, Value};
 use std::fs;
 use std::path::PathBuf;
@@ -24,8 +25,8 @@ impl SessionManager {
         }
 
         let session_id = Uuid::new_v4();
-        let outgoing_ipc_url = Self::build_ipc_url("ext-out", &session_id)?;
-        let incoming_ipc_url = Self::build_ipc_url("ext-in", &session_id)?;
+        let outgoing_socket = Self::build_ipc_url("ext-out", &session_id)?;
+        let incoming_socket = Self::build_ipc_url("ext-in", &session_id)?;
 
         let session_manager = self.clone_for_handler();
         let handler: IncomingRequestHandler =
@@ -34,46 +35,30 @@ impl SessionManager {
                 Box::pin(async move { sm.handle_incoming_request(&msg_type, payload).await })
             });
 
-        self.nng_manager
-            .setup_incoming("main", &incoming_ipc_url, handler)
-            .await?;
+        self.ipc_manager.setup_incoming("main", &incoming_socket, handler).await?;
 
         let extension_host_main = self.resolve_extension_host_entry()?;
         let extension_host_main_str = extension_host_main.to_string_lossy().to_string();
 
+        {
+            let mut entry = self.extension_host_entry.write().await;
+            *entry = Some(extension_host_main_str.clone());
+        }
+
         let mut manager = self.extension_host.lock().await;
-        manager.start_with_nng(
-            &extension_host_main_str,
-            &outgoing_ipc_url,
-            &incoming_ipc_url,
-        )?;
+        manager.start(&extension_host_main_str, &outgoing_socket, &incoming_socket)?;
         drop(manager);
 
-        const MAX_ATTEMPTS: u8 = 10;
-        for attempt in 1..=MAX_ATTEMPTS {
-            if self.nng_manager.is_connected("main").await {
-                break;
-            }
-
-            match self
-                .nng_manager
-                .connect_outgoing("main", &outgoing_ipc_url)
-                .await
-            {
-                Ok(_) => break,
-                Err(err) if attempt == MAX_ATTEMPTS => {
-                    return Err(format!("Failed to connect to extension host: {}", err));
-                }
-                Err(err) => {
-                    let backoff = Duration::from_millis((attempt as u64) * 200);
-                    println!(
-                        "[SessionManager] Outgoing connect attempt {} failed: {}. Retrying in {:?}",
-                        attempt, err, backoff
-                    );
-                    sleep(backoff).await;
-                }
-            }
+        {
+            let mut outgoing = self.outgoing_socket.write().await;
+            *outgoing = Some(outgoing_socket.clone());
         }
+        {
+            let mut incoming = self.incoming_socket.write().await;
+            *incoming = Some(incoming_socket.clone());
+        }
+
+        self.ipc_manager.connect_outgoing("main", &outgoing_socket).await?;
 
         println!("[SessionManager] Extension Host started successfully");
         Ok(())
@@ -85,7 +70,7 @@ impl SessionManager {
             app_handle: self.app_handle.clone(),
             state: Arc::clone(&self.state),
             extension_host: Arc::clone(&self.extension_host),
-            nng_manager: Arc::clone(&self.nng_manager),
+            ipc_manager: Arc::clone(&self.ipc_manager),
             lsp_pool: Arc::clone(&self.lsp_pool),
             debug_pool: Arc::clone(&self.debug_pool),
             app_dirs: self.app_dirs.clone(),
@@ -106,10 +91,12 @@ impl SessionManager {
             file_decoration_providers: Arc::clone(&self.file_decoration_providers),
             file_decorations: Arc::clone(&self.file_decorations),
             extension_host_ready: Arc::clone(&self.extension_host_ready),
-            extension_host_ready_flag: Arc::clone(&self.extension_host_ready_flag),
             initialized: Arc::clone(&self.initialized),
             secrets: Arc::clone(&self.secrets),
             path_validator: Arc::clone(&self.path_validator),
+            outgoing_socket: Arc::clone(&self.outgoing_socket),
+            incoming_socket: Arc::clone(&self.incoming_socket),
+            extension_host_entry: Arc::clone(&self.extension_host_entry),
         })
     }
 
@@ -159,10 +146,7 @@ impl SessionManager {
 
         for candidate in &candidates {
             if candidate.exists() {
-                println!(
-                    "[SessionManager] Resolved extension host entry to {:?}",
-                    candidate
-                );
+                println!("[SessionManager] Resolved extension host entry to {:?}", candidate);
                 return Ok(candidate.clone());
             }
         }
@@ -192,7 +176,7 @@ impl SessionManager {
 
         #[cfg(target_family = "windows")]
         {
-            return Ok(format!(r"ipc://\\.\pipe\dscode-{}-{}", kind, session_id));
+            return Ok(format!(r"\\.\pipe\dscode-{}-{}", kind, session_id));
         }
 
         #[allow(unreachable_code)]
@@ -203,16 +187,13 @@ impl SessionManager {
 
     /// Handle incoming requests from Extension Host
     async fn handle_incoming_request(
-        &self,
-        msg_type: &str,
-        payload: serde_json::Value,
+        &self, msg_type: &str, payload: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         println!("[SessionManager] Handling incoming request: {}", msg_type);
 
         match msg_type {
             "extension-host-ready" => {
                 println!("[SessionManager] Extension host ready signal received");
-                *self.extension_host_ready_flag.write().await = true;
                 self.extension_host_ready.notify_waiters();
                 Ok(json!({"success": true}))
             }
@@ -222,10 +203,7 @@ impl SessionManager {
                     .extensions_dir
                     .canonicalize()
                     .unwrap_or_else(|_| self.app_dirs.extensions_dir.clone());
-                println!(
-                    "[SessionManager] Extensions directory: {:?}",
-                    extensions_dir
-                );
+                println!("[SessionManager] Extensions directory: {:?}", extensions_dir);
                 Ok(json!(extensions_dir.to_string_lossy().to_string()))
             }
             "get-extension-storage" => {
@@ -357,41 +335,23 @@ impl SessionManager {
                 }
             }
             "window-show-message" => {
-                let message = payload
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let level = payload
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("info")
-                    .to_string();
-                self.emit_event(SessionEvent::WindowMessage {
-                    level,
-                    message,
-                    actions: None,
-                });
+                let message =
+                    payload.get("message").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                let level =
+                    payload.get("type").and_then(|v| v.as_str()).unwrap_or("info").to_string();
+                self.emit_event(SessionEvent::WindowMessage { level, message, actions: None });
                 Ok(json!({"success": true}))
             }
             "window-show-message-with-actions" => {
-                let message = payload
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let level = payload
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("info")
-                    .to_string();
+                let message =
+                    payload.get("message").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                let level =
+                    payload.get("type").and_then(|v| v.as_str()).unwrap_or("info").to_string();
                 let actions_vec: Vec<String> = payload
                     .get("actions")
                     .and_then(|v| v.as_array())
                     .map(|arr| {
-                        arr.iter()
-                            .filter_map(|item| item.as_str().map(|s| s.to_string()))
-                            .collect()
+                        arr.iter().filter_map(|item| item.as_str().map(|s| s.to_string())).collect()
                     })
                     .unwrap_or_default();
 
@@ -400,11 +360,7 @@ impl SessionManager {
                 self.emit_event(SessionEvent::WindowMessage {
                     level: level.clone(),
                     message: message.clone(),
-                    actions: if has_actions {
-                        Some(actions_vec.clone())
-                    } else {
-                        None
-                    },
+                    actions: if has_actions { Some(actions_vec.clone()) } else { None },
                 });
 
                 if !has_actions {
@@ -439,16 +395,9 @@ impl SessionManager {
                 result
             }
             "window-set-status-bar-message" => {
-                let id = payload
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let text = payload
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
+                let id = payload.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                let text =
+                    payload.get("text").and_then(|v| v.as_str()).unwrap_or_default().to_string();
                 let timeout_ms = payload
                     .get("timeout")
                     .and_then(|v| v.as_f64())
@@ -505,12 +454,13 @@ impl SessionManager {
                     .ok_or_else(|| "Missing edits payload".to_string())?;
                 let mut edits: Vec<TextEditPayload> = serde_json::from_value(edits_value)
                     .map_err(|e| format!("Invalid edits payload: {}", e))?;
-                let end_of_line = payload
-                    .get("endOfLine")
-                    .and_then(|v| v.as_i64())
-                    .map(|v| v as i32);
+                let end_of_line =
+                    payload.get("endOfLine").and_then(|v| v.as_i64()).map(|v| v as i32);
 
-                let original = fs::read_to_string(path)
+                let path_clone = path.to_string();
+                let original = tokio::task::spawn_blocking(move || fs::read_to_string(&path_clone))
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))?
                     .map_err(|e| format!("Failed to read document {}: {}", path, e))?;
                 let updated = Self::apply_text_edits(&original, &mut edits, end_of_line)?;
                 let version = self.persist_document(path, &updated).await?;
@@ -522,22 +472,19 @@ impl SessionManager {
                     .get("uri")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing document uri".to_string())?;
-                let snippet = payload
-                    .get("snippet")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let snippet = payload.get("snippet").and_then(|v| v.as_str()).unwrap_or("");
                 let locations = Self::parse_snippet_locations(payload.get("location"));
 
                 let plain = Self::snippet_to_plain(snippet);
                 let mut edits: Vec<TextEditPayload> = locations
                     .into_iter()
-                    .map(|range| TextEditPayload {
-                        range,
-                        new_text: plain.clone(),
-                    })
+                    .map(|range| TextEditPayload { range, new_text: plain.clone() })
                     .collect();
 
-                let original = fs::read_to_string(path)
+                let path_clone = path.to_string();
+                let original = tokio::task::spawn_blocking(move || fs::read_to_string(&path_clone))
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))?
                     .map_err(|e| format!("Failed to read document {}: {}", path, e))?;
                 let updated = Self::apply_text_edits(&original, &mut edits, None)?;
                 let version = self.persist_document(path, &updated).await?;
@@ -553,10 +500,8 @@ impl SessionManager {
                     .get("key")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing decoration key".to_string())?;
-                let decorations = payload
-                    .get("decorations")
-                    .cloned()
-                    .unwrap_or(Value::Array(Vec::new()));
+                let decorations =
+                    payload.get("decorations").cloned().unwrap_or(Value::Array(Vec::new()));
 
                 self.update_decorations(uri, key, decorations).await?;
                 Ok(json!({"success": true}))
@@ -578,10 +523,7 @@ impl SessionManager {
                     .get("key")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing decoration key".to_string())?;
-                let options = payload
-                    .get("options")
-                    .cloned()
-                    .unwrap_or(Value::Object(Map::new()));
+                let options = payload.get("options").cloned().unwrap_or(Value::Object(Map::new()));
                 {
                     let mut types = self.decoration_types.write().await;
                     types.insert(key.to_string(), options);
@@ -593,22 +535,13 @@ impl SessionManager {
                     .get("id")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing watcher id".to_string())?;
-                let pattern = payload
-                    .get("globPattern")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("**/*");
-                let ignore_create = payload
-                    .get("ignoreCreateEvents")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let ignore_change = payload
-                    .get("ignoreChangeEvents")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let ignore_delete = payload
-                    .get("ignoreDeleteEvents")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let pattern = payload.get("globPattern").and_then(|v| v.as_str()).unwrap_or("**/*");
+                let ignore_create =
+                    payload.get("ignoreCreateEvents").and_then(|v| v.as_bool()).unwrap_or(false);
+                let ignore_change =
+                    payload.get("ignoreChangeEvents").and_then(|v| v.as_bool()).unwrap_or(false);
+                let ignore_delete =
+                    payload.get("ignoreDeleteEvents").and_then(|v| v.as_bool()).unwrap_or(false);
 
                 self.register_file_system_watcher(
                     id,
@@ -622,60 +555,36 @@ impl SessionManager {
             }
             "workspace-unregister-watcher" => {
                 if let Some(id) = payload.get("id").and_then(|v| v.as_str()) {
-                    self.unregister_file_system_watcher(id);
+                    self.unregister_file_system_watcher(id).await;
                 }
                 Ok(json!({"success": true}))
             }
             "revealTreeItem" => {
-                let view_id = payload
-                    .get("viewId")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
+                let view_id =
+                    payload.get("viewId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
                 let element = payload.get("element").cloned().unwrap_or(Value::Null);
                 let options = payload.get("options").cloned().unwrap_or(Value::Null);
 
-                self.emit_event(SessionEvent::TreeViewReveal {
-                    view_id,
-                    element,
-                    options,
-                });
+                self.emit_event(SessionEvent::TreeViewReveal { view_id, element, options });
 
                 Ok(json!({"success": true}))
             }
             "window-show-quick-pick" => {
-                let items = payload
-                    .get("items")
-                    .and_then(|v| v.as_array())
-                    .cloned()
-                    .unwrap_or_default();
+                let items =
+                    payload.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default();
 
-                let options = payload
-                    .get("options")
-                    .and_then(|v| v.as_object())
-                    .cloned()
-                    .unwrap_or_default();
+                let options =
+                    payload.get("options").and_then(|v| v.as_object()).cloned().unwrap_or_default();
 
-                let can_pick_many = options
-                    .get("canPickMany")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let place_holder = options
-                    .get("placeHolder")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let title = options
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let match_on_description = options
-                    .get("matchOnDescription")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let match_on_detail = options
-                    .get("matchOnDetail")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let can_pick_many =
+                    options.get("canPickMany").and_then(|v| v.as_bool()).unwrap_or(false);
+                let place_holder =
+                    options.get("placeHolder").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let title = options.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let match_on_description =
+                    options.get("matchOnDescription").and_then(|v| v.as_bool()).unwrap_or(false);
+                let match_on_detail =
+                    options.get("matchOnDetail").and_then(|v| v.as_bool()).unwrap_or(false);
 
                 let (tx, rx) = oneshot::channel();
                 let request_id = Uuid::new_v4().to_string();
@@ -707,26 +616,13 @@ impl SessionManager {
                 Ok(json!({ "selected": selection }))
             }
             "window-show-input-box" => {
-                let prompt = payload
-                    .get("prompt")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let place_holder = payload
-                    .get("placeHolder")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let value = payload
-                    .get("value")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let password = payload
-                    .get("password")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let value_selection = payload
-                    .get("valueSelection")
-                    .and_then(|v| v.as_array())
-                    .and_then(|arr| {
+                let prompt = payload.get("prompt").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let place_holder =
+                    payload.get("placeHolder").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let value = payload.get("value").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let password = payload.get("password").and_then(|v| v.as_bool()).unwrap_or(false);
+                let value_selection =
+                    payload.get("valueSelection").and_then(|v| v.as_array()).and_then(|arr| {
                         if arr.len() == 2 {
                             let start = arr[0].as_u64().map(|v| v as usize)?;
                             let end = arr[1].as_u64().map(|v| v as usize)?;
@@ -767,11 +663,8 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .unwrap_or("Extension Host")
                     .to_string();
-                let value = payload
-                    .get("value")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
+                let value =
+                    payload.get("value").and_then(|v| v.as_str()).unwrap_or_default().to_string();
 
                 self.append_output_channel(&channel, &value).await?;
                 Ok(json!({"success": true}))
@@ -801,15 +694,10 @@ impl SessionManager {
                 Ok(json!({"success": true}))
             }
             "workspace-find-files" => {
-                let include = payload
-                    .get("include")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("**/*");
+                let include = payload.get("include").and_then(|v| v.as_str()).unwrap_or("**/*");
                 let exclude = payload.get("exclude").and_then(|v| v.as_str());
-                let max_results = payload
-                    .get("maxResults")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(1000) as usize;
+                let max_results =
+                    payload.get("maxResults").and_then(|v| v.as_u64()).unwrap_or(1000) as usize;
 
                 let include_patterns = Self::split_patterns(include, "**/*");
                 let exclude_patterns = Self::split_patterns_opt(exclude);
@@ -825,10 +713,7 @@ impl SessionManager {
                     .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing document path".to_string())?;
-                let content = payload
-                    .get("content")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let content = payload.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
                 let version = self.persist_document(path, content).await?;
                 Ok(json!({"success": true, "version": version}))
@@ -844,10 +729,8 @@ impl SessionManager {
                     .get("key")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing configuration key".to_string())?;
-                let section = payload
-                    .get("section")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                let section =
+                    payload.get("section").and_then(|v| v.as_str()).map(|s| s.to_string());
                 let value = payload.get("value").cloned().unwrap_or(Value::Null);
                 let mut store = self.configuration.write().await;
                 let changed = store.update(section.as_deref(), key, value.clone())?;
@@ -866,7 +749,7 @@ impl SessionManager {
                     });
 
                     if let Err(err) = self
-                        .nng_manager
+                        .ipc_manager
                         .request("main", "configuration-changed", notify_payload)
                         .await
                     {
@@ -880,21 +763,43 @@ impl SessionManager {
                 Ok(json!({"success": true}))
             }
             "executeCommandRequest" => {
-                let command = payload
-                    .get("command")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
+                let command =
+                    payload.get("command").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                let args =
+                    payload.get("args").and_then(|v| v.as_array()).cloned().unwrap_or_default();
 
-                println!(
-                    "[SessionManager] Extension host requested core command '{}', but no handler is available",
-                    command
-                );
+                let (tx, rx) = oneshot::channel();
+                let request_id = format!("cmd_{}", uuid::Uuid::new_v4());
+                {
+                    let mut pending = self.pending_quick_pick_requests.write().await;
+                    pending.insert(request_id.clone(), tx);
+                }
 
-                Ok(json!({
-                    "success": false,
-                    "error": format!("Command '{}' is not implemented in the host environment", command),
-                }))
+                self.emit_event(SessionEvent::ExecuteCommandRequest {
+                    id: request_id.clone(),
+                    command: command.clone(),
+                    args,
+                });
+
+                let request_id_key = request_id.clone();
+                let result = match tokio::time::timeout(Duration::from_secs(30), rx).await {
+                    Ok(Ok(value)) => value.unwrap_or(Value::Null),
+                    Ok(Err(_)) => json!({
+                        "success": false,
+                        "error": format!("Command '{}' did not return a result", command),
+                    }),
+                    Err(_) => json!({
+                        "success": false,
+                        "error": format!("Command '{}' timed out", command),
+                    }),
+                };
+
+                {
+                    let mut pending = self.pending_quick_pick_requests.write().await;
+                    pending.remove(&request_id_key);
+                }
+
+                Ok(result)
             }
             "workspace-get-folders" => {
                 let state = self.state.read().await;
@@ -937,7 +842,7 @@ impl SessionManager {
                 match self.secrets.set(extension_id, key, value) {
                     Ok(()) => {
                         if let Err(e) = self
-                            .nng_manager
+                            .ipc_manager
                             .request(
                                 "main",
                                 "secretChanged",
@@ -968,7 +873,7 @@ impl SessionManager {
                 match self.secrets.delete(extension_id, key) {
                     Ok(()) => {
                         if let Err(e) = self
-                            .nng_manager
+                            .ipc_manager
                             .request(
                                 "main",
                                 "secretChanged",
@@ -992,7 +897,11 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let validated_path = self.path_validator.read().await.validate_path(uri)
+                let validated_path = self
+                    .path_validator
+                    .read()
+                    .await
+                    .validate_path(uri)
                     .map_err(|e| PathValidator::sanitize_error(&e))?;
 
                 // Limit file size to 50MB to prevent OOM
@@ -1016,13 +925,18 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let validated_path = self.path_validator.read().await.validate_path(uri)
+                let validated_path = self
+                    .path_validator
+                    .read()
+                    .await
+                    .validate_path(uri)
                     .map_err(|e| PathValidator::sanitize_error(&e))?;
 
-                let metadata = tokio::task::spawn_blocking(move || std::fs::metadata(&validated_path))
-                    .await
-                    .map_err(|e| format!("Task failed: {}", e))?
-                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                let metadata =
+                    tokio::task::spawn_blocking(move || std::fs::metadata(&validated_path))
+                        .await
+                        .map_err(|e| format!("Task failed: {}", e))?
+                        .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
 
                 let file_type = if metadata.is_file() {
                     1
@@ -1063,7 +977,11 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let validated_path = self.path_validator.read().await.validate_path(uri)
+                let validated_path = self
+                    .path_validator
+                    .read()
+                    .await
+                    .validate_path(uri)
                     .map_err(|e| PathValidator::sanitize_error(&e))?;
 
                 let entries = tokio::task::spawn_blocking(move || {
@@ -1074,10 +992,15 @@ impl SessionManager {
                     };
                     for entry in dir_entries.flatten() {
                         let name = entry.file_name().to_string_lossy().to_string();
-                        let ft = if entry.path().is_file() { 1 }
-                            else if entry.path().is_dir() { 2 }
-                            else if entry.path().is_symlink() { 64 }
-                            else { 0 };
+                        let ft = if entry.path().is_file() {
+                            1
+                        } else if entry.path().is_dir() {
+                            2
+                        } else if entry.path().is_symlink() {
+                            64
+                        } else {
+                            0
+                        };
                         result.push((name, ft));
                     }
                     Ok(result)
@@ -1094,7 +1017,11 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let validated_path = self.path_validator.read().await.validate_path(uri)
+                let validated_path = self
+                    .path_validator
+                    .read()
+                    .await
+                    .validate_path(uri)
                     .map_err(|e| PathValidator::sanitize_error(&e))?;
 
                 tokio::task::spawn_blocking(move || std::fs::create_dir_all(&validated_path))
@@ -1109,17 +1036,18 @@ impl SessionManager {
                     .get("uri")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
-                let content = payload
-                    .get("content")
-                    .ok_or_else(|| "Missing content".to_string())?;
+                let content =
+                    payload.get("content").ok_or_else(|| "Missing content".to_string())?;
 
-                let validated_path = self.path_validator.read().await.validate_path(uri)
+                let validated_path = self
+                    .path_validator
+                    .read()
+                    .await
+                    .validate_path(uri)
                     .map_err(|e| PathValidator::sanitize_error(&e))?;
 
                 let bytes: Vec<u8> = if let Some(arr) = content.as_array() {
-                    arr.iter()
-                        .filter_map(|v| v.as_u64().map(|n| n as u8))
-                        .collect()
+                    arr.iter().filter_map(|v| v.as_u64().map(|n| n as u8)).collect()
                 } else if let Some(s) = content.as_str() {
                     s.as_bytes().to_vec()
                 } else {
@@ -1150,7 +1078,11 @@ impl SessionManager {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
-                let validated_path = self.path_validator.read().await.validate_path(uri)
+                let validated_path = self
+                    .path_validator
+                    .read()
+                    .await
+                    .validate_path(uri)
                     .map_err(|e| PathValidator::sanitize_error(&e))?;
 
                 tokio::task::spawn_blocking(move || {
@@ -1180,15 +1112,25 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing newUri".to_string())?;
 
-                let old_validated = self.path_validator.read().await.validate_path(old_uri)
+                let old_validated = self
+                    .path_validator
+                    .read()
+                    .await
+                    .validate_path(old_uri)
                     .map_err(|e| PathValidator::sanitize_error(&e))?;
-                let new_validated = self.path_validator.read().await.validate_path(new_uri)
+                let new_validated = self
+                    .path_validator
+                    .read()
+                    .await
+                    .validate_path(new_uri)
                     .map_err(|e| PathValidator::sanitize_error(&e))?;
 
-                tokio::task::spawn_blocking(move || std::fs::rename(&old_validated, &new_validated))
-                    .await
-                    .map_err(|e| format!("Task failed: {}", e))?
-                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                tokio::task::spawn_blocking(move || {
+                    std::fs::rename(&old_validated, &new_validated)
+                })
+                .await
+                .map_err(|e| format!("Task failed: {}", e))?
+                .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
 
                 Ok(json!({ "success": true }))
             }
@@ -1202,15 +1144,25 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing destination".to_string())?;
 
-                let source_validated = self.path_validator.read().await.validate_path(source_uri)
+                let source_validated = self
+                    .path_validator
+                    .read()
+                    .await
+                    .validate_path(source_uri)
                     .map_err(|e| PathValidator::sanitize_error(&e))?;
-                let dest_validated = self.path_validator.read().await.validate_path(dest_uri)
+                let dest_validated = self
+                    .path_validator
+                    .read()
+                    .await
+                    .validate_path(dest_uri)
                     .map_err(|e| PathValidator::sanitize_error(&e))?;
 
-                tokio::task::spawn_blocking(move || std::fs::copy(&source_validated, &dest_validated))
-                    .await
-                    .map_err(|e| format!("Task failed: {}", e))?
-                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                tokio::task::spawn_blocking(move || {
+                    std::fs::copy(&source_validated, &dest_validated)
+                })
+                .await
+                .map_err(|e| format!("Task failed: {}", e))?
+                .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
 
                 Ok(json!({ "success": true }))
             }
@@ -1234,18 +1186,12 @@ impl SessionManager {
             }
             "createFileSystemWatcher" => {
                 let _glob_pattern = payload.get("globPattern");
-                let _ignore_create = payload
-                    .get("ignoreCreateEvents")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let _ignore_change = payload
-                    .get("ignoreChangeEvents")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let _ignore_delete = payload
-                    .get("ignoreDeleteEvents")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let _ignore_create =
+                    payload.get("ignoreCreateEvents").and_then(|v| v.as_bool()).unwrap_or(false);
+                let _ignore_change =
+                    payload.get("ignoreChangeEvents").and_then(|v| v.as_bool()).unwrap_or(false);
+                let _ignore_delete =
+                    payload.get("ignoreDeleteEvents").and_then(|v| v.as_bool()).unwrap_or(false);
 
                 let watcher_id = uuid::Uuid::new_v4().to_string();
 
@@ -1255,10 +1201,162 @@ impl SessionManager {
                 let _watcher_id = payload.get("watcherId");
                 Ok(json!({ "success": true }))
             }
+            "registerCompletionProvider"
+            | "registerHoverProvider"
+            | "registerDefinitionProvider"
+            | "registerReferenceProvider"
+            | "registerCodeActionsProvider"
+            | "registerDocumentSymbolProvider"
+            | "registerFormattingProvider"
+            | "registerRenameProvider"
+            | "registerSignatureHelpProvider"
+            | "registerCodeLensProvider"
+            | "registerDocumentLinkProvider"
+            | "registerColorProvider"
+            | "registerFoldingRangeProvider"
+            | "registerSelectionRangeProvider"
+            | "registerDocumentHighlightProvider"
+            | "registerRangeFormattingProvider"
+            | "registerOnTypeFormattingProvider"
+            | "registerSemanticTokensProvider"
+            | "registerInlineCompletionProvider"
+            | "registerImplementationProvider"
+            | "registerTypeDefinitionProvider"
+            | "registerDeclarationProvider"
+            | "registerWorkspaceSymbolProvider"
+            | "registerCallHierarchyProvider"
+            | "registerTypeHierarchyProvider" => {
+                let provider_type = match msg_type {
+                    "registerCompletionProvider" => "completion",
+                    "registerHoverProvider" => "hover",
+                    "registerDefinitionProvider" => "definition",
+                    "registerReferenceProvider" => "references",
+                    "registerCodeActionsProvider" => "codeAction",
+                    "registerDocumentSymbolProvider" => "documentSymbol",
+                    "registerFormattingProvider" => "formatting",
+                    "registerRenameProvider" => "rename",
+                    "registerSignatureHelpProvider" => "signatureHelp",
+                    "registerCodeLensProvider" => "codeLens",
+                    "registerDocumentLinkProvider" => "documentLink",
+                    "registerColorProvider" => "color",
+                    "registerFoldingRangeProvider" => "foldingRange",
+                    "registerSelectionRangeProvider" => "selectionRange",
+                    "registerDocumentHighlightProvider" => "documentHighlight",
+                    "registerRangeFormattingProvider" => "rangeFormatting",
+                    "registerOnTypeFormattingProvider" => "onTypeFormatting",
+                    "registerSemanticTokensProvider" => "semanticTokens",
+                    "registerInlineCompletionProvider" => "inlineCompletion",
+                    "registerImplementationProvider" => "implementation",
+                    "registerTypeDefinitionProvider" => "typeDefinition",
+                    "registerDeclarationProvider" => "declaration",
+                    "registerWorkspaceSymbolProvider" => "workspaceSymbol",
+                    "registerCallHierarchyProvider" => "callHierarchy",
+                    "registerTypeHierarchyProvider" => "typeHierarchy",
+                    _ => "unknown",
+                };
+                let registry = self.app_handle.try_state::<LanguageFeaturesRegistry>();
+                if let Some(registry) = registry {
+                    let context = crate::session::ipc_providers::ProviderHandlerContext {
+                        payload: &payload,
+                        provider_type,
+                    };
+                    let result = crate::session::ipc_providers::handle_register_provider(
+                        &context, &registry,
+                    )?;
+                    self.emit_event(SessionEvent::ProviderRegistered {
+                        provider_type: provider_type.to_string(),
+                        provider_id: result
+                            .get("providerId")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        owner: payload
+                            .get("owner")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                            .to_string(),
+                        selector: payload.get("selector").cloned().unwrap_or(Value::Null),
+                        trigger_characters: payload
+                            .get("triggerCharacters")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                    .collect()
+                            }),
+                        metadata: payload.get("metadata").cloned(),
+                    });
+                    Ok(result)
+                } else {
+                    Ok(json!({"success": true}))
+                }
+            }
+            "setLanguageConfiguration" => {
+                let language = payload.get("language").and_then(|v| v.as_str()).unwrap_or_default();
+                self.emit_event(SessionEvent::LanguageConfigurationChanged {
+                    language: language.to_string(),
+                    configuration: payload.get("configuration").cloned().unwrap_or(Value::Null),
+                });
+                Ok(json!({"success": true}))
+            }
+            "updateDiagnostics" => {
+                let uri = payload.get("uri").and_then(|v| v.as_str()).unwrap_or_default();
+                let diagnostics = payload.get("diagnostics").cloned().unwrap_or(Value::Null);
+                self.emit_event(SessionEvent::DiagnosticsUpdated {
+                    uri: uri.to_string(),
+                    diagnostics,
+                });
+                Ok(json!({"success": true}))
+            }
+            "clearDiagnostics" => {
+                let uri = payload.get("uri").and_then(|v| v.as_str()).unwrap_or_default();
+                self.emit_event(SessionEvent::DiagnosticsCleared { uri: uri.to_string() });
+                Ok(json!({"success": true}))
+            }
+            "clearAllDiagnostics" => {
+                self.emit_event(SessionEvent::DiagnosticsCleared { uri: String::new() });
+                Ok(json!({"success": true}))
+            }
+            "registerDebugConfigurationProvider"
+            | "registerDebugAdapterDescriptorFactory"
+            | "registerDebugAdapterTrackerFactory"
+            | "registerTaskProvider"
+            | "registerAuthProvider"
+            | "registerTextDocumentContentProvider"
+            | "registerNotebookContentProvider"
+            | "registerWebviewSerializer" => Ok(json!({"success": true})),
             _ => {
                 println!("[SessionManager] Unhandled request type: {}", msg_type);
                 Err(format!("Unhandled request type: {}", msg_type))
             }
         }
+    }
+
+    pub async fn reconnect_extension_host(&self) -> Result<(), String> {
+        if self.ipc_manager.is_connected("main").await {
+            return Ok(());
+        }
+
+        println!("[SessionManager] IPC disconnected, attempting reconnection...");
+
+        let outgoing_socket = self.outgoing_socket.read().await.clone();
+        let incoming_socket = self.incoming_socket.read().await.clone();
+        let extension_host_entry = self.extension_host_entry.read().await.clone();
+
+        let (outgoing, incoming, entry) =
+            match (outgoing_socket, incoming_socket, extension_host_entry) {
+                (Some(o), Some(i), Some(e)) => (o, i, e),
+                _ => return Err("No previous connection info for reconnection".to_string()),
+            };
+
+        {
+            let mut manager = self.extension_host.lock().await;
+            manager.restart_if_needed(&entry, &outgoing, &incoming).await?;
+        }
+
+        self.ipc_manager.reconnect_outgoing("main", &outgoing).await?;
+
+        println!("[SessionManager] Extension host reconnected successfully");
+        Ok(())
     }
 }

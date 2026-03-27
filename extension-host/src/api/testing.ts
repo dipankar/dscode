@@ -8,33 +8,53 @@ import { ExtensionHostBridge } from '../bridge';
 import { Event, EventEmitter, Disposable } from './events';
 import { Uri } from './uri';
 import { Range } from './textDocument';
+import { CancellationToken } from './common';
+
+export interface TestTag {
+  readonly id: string;
+}
+
+export interface TestMessage {
+  message: string | { value: string };
+  expectedOutput?: string;
+  actualOutput?: string;
+  location?: { uri: Uri; range: Range };
+}
+
+export interface TestItemCollection {
+  readonly size: number;
+  get(item: string): TestItem | undefined;
+  add(item: TestItem): void;
+  delete(itemId: string): void;
+  forEach(callback: (item: TestItem, collection: TestItemCollection) => unknown): void;
+}
 
 export interface TestRunProfile {
   label: string;
   kind: TestRunProfileKind;
   isDefault: boolean;
-  tag?: any;
-  runHandler: (request: TestRunRequest, token: any) => void | Promise<void>;
+  tag?: TestTag;
+  runHandler: (request: TestRunRequest, token: CancellationToken) => void | Promise<void>;
   dispose(): void;
 }
 
 export enum TestRunProfileKind {
   Run = 1,
   Debug = 2,
-  Coverage = 3
+  Coverage = 3,
 }
 
 export interface TestItem {
   readonly id: string;
   readonly uri: Uri | undefined;
-  readonly children: any; // TestItemCollection
+  readonly children: TestItemCollection;
   readonly parent: TestItem | undefined;
   label: string;
   description?: string;
   sortText?: string;
   canResolveChildren: boolean;
   busy: boolean;
-  tags: readonly any[]; // TestTag[]
+  tags: readonly TestTag[];
   range: Range | undefined;
   error: string | { value: string } | undefined;
 }
@@ -47,15 +67,15 @@ export interface TestRunRequest {
 
 export interface TestRun {
   readonly name: string | undefined;
-  readonly token: any; // CancellationToken
+  readonly token: CancellationToken;
   readonly isPersisted: boolean;
   enqueued(test: TestItem): void;
   started(test: TestItem): void;
   skipped(test: TestItem): void;
-  failed(test: TestItem, message: any, duration?: number): void;
-  errored(test: TestItem, message: any, duration?: number): void;
+  failed(test: TestItem, message: string | TestMessage, duration?: number): void;
+  errored(test: TestItem, message: string | TestMessage, duration?: number): void;
   passed(test: TestItem, duration?: number): void;
-  appendOutput(output: string, location?: any, test?: TestItem): void;
+  appendOutput(output: string, location?: { uri: Uri; range: Range }, test?: TestItem): void;
   end(): void;
 }
 
@@ -64,46 +84,46 @@ class TestRunImpl implements TestRun {
     private bridge: ExtensionHostBridge,
     private runId: string,
     public readonly name: string | undefined,
-    public readonly token: any,
+    public readonly token: CancellationToken,
     public readonly isPersisted: boolean
   ) {}
 
   enqueued(test: TestItem): void {
     this.bridge.send('testRunEnqueued', {
       runId: this.runId,
-      testId: test.id
+      testId: test.id,
     });
   }
 
   started(test: TestItem): void {
     this.bridge.send('testRunStarted', {
       runId: this.runId,
-      testId: test.id
+      testId: test.id,
     });
   }
 
   skipped(test: TestItem): void {
     this.bridge.send('testRunSkipped', {
       runId: this.runId,
-      testId: test.id
+      testId: test.id,
     });
   }
 
-  failed(test: TestItem, message: any, duration?: number): void {
+  failed(test: TestItem, message: string | TestMessage, duration?: number): void {
     this.bridge.send('testRunFailed', {
       runId: this.runId,
       testId: test.id,
       message,
-      duration
+      duration,
     });
   }
 
-  errored(test: TestItem, message: any, duration?: number): void {
+  errored(test: TestItem, message: string | TestMessage, duration?: number): void {
     this.bridge.send('testRunErrored', {
       runId: this.runId,
       testId: test.id,
       message,
-      duration
+      duration,
     });
   }
 
@@ -111,16 +131,16 @@ class TestRunImpl implements TestRun {
     this.bridge.send('testRunPassed', {
       runId: this.runId,
       testId: test.id,
-      duration
+      duration,
     });
   }
 
-  appendOutput(output: string, location?: any, test?: TestItem): void {
+  appendOutput(output: string, location?: { uri: Uri; range: Range }, test?: TestItem): void {
     this.bridge.send('testRunAppendOutput', {
       runId: this.runId,
       testId: test?.id,
       output,
-      location
+      location,
     });
   }
 
@@ -138,8 +158,11 @@ class TestRunProfileImpl implements TestRunProfile {
     private profileId: string,
     label: string,
     public readonly kind: TestRunProfileKind,
-    public readonly runHandler: (request: TestRunRequest, token: any) => void | Promise<void>,
-    public tag?: any
+    public readonly runHandler: (
+      request: TestRunRequest,
+      token: CancellationToken
+    ) => void | Promise<void>,
+    public tag?: TestTag
   ) {
     this._label = label;
   }
@@ -167,18 +190,35 @@ class TestRunProfileImpl implements TestRunProfile {
 
 export class TestController {
   readonly id!: string;
-  get label(): string { return ''; }
+  get label(): string {
+    return '';
+  }
   set label(value: string) {}
-  get items(): any { return { size: 0 }; }
-  createRunProfile(label: string, kind: TestRunProfileKind, runHandler: (request: TestRunRequest, token: any) => void | Promise<void>, isDefault?: boolean, tag?: any): TestRunProfile { throw new Error('Not implemented'); }
-  createTestRun(request: TestRunRequest, name?: string, persist?: boolean): TestRun { throw new Error('Not implemented'); }
-  createTestItem(id: string, label: string, uri?: Uri): TestItem { throw new Error('Not implemented'); }
+  get items(): TestItemCollection {
+    return { size: 0 } as TestItemCollection;
+  }
+  createRunProfile(
+    label: string,
+    kind: TestRunProfileKind,
+    runHandler: (request: TestRunRequest, token: CancellationToken) => void | Promise<void>,
+    isDefault?: boolean,
+    tag?: TestTag
+  ): TestRunProfile {
+    throw new Error('Not implemented');
+  }
+  createTestRun(request: TestRunRequest, name?: string, persist?: boolean): TestRun {
+    throw new Error('Not implemented');
+  }
+  createTestItem(id: string, label: string, uri?: Uri): TestItem {
+    throw new Error('Not implemented');
+  }
   dispose(): void {}
 }
 
 class TestControllerImpl extends TestController {
   private _label: string;
-  private _items: any = { size: 0 }; // TestItemCollection mock
+  private _items: TestItemCollection = { size: 0 } as TestItemCollection;
+  readonly id: string;
 
   constructor(
     private bridge: ExtensionHostBridge,
@@ -186,7 +226,7 @@ class TestControllerImpl extends TestController {
     label: string
   ) {
     super();
-    (this as any).id = id;
+    this.id = id;
     this._label = label;
   }
 
@@ -198,16 +238,16 @@ class TestControllerImpl extends TestController {
     this._label = value;
   }
 
-  get items(): any {
+  get items(): TestItemCollection {
     return this._items;
   }
 
   createRunProfile(
     label: string,
     kind: TestRunProfileKind,
-    runHandler: (request: TestRunRequest, token: any) => void | Promise<void>,
+    runHandler: (request: TestRunRequest, token: CancellationToken) => void | Promise<void>,
     isDefault?: boolean,
-    tag?: any
+    tag?: TestTag
   ): TestRunProfile {
     const profileId = `profile_${Date.now()}_${Math.random()}`;
     const profile = new TestRunProfileImpl(this.bridge, profileId, label, kind, runHandler, tag);
@@ -220,7 +260,7 @@ class TestControllerImpl extends TestController {
       profileId,
       label,
       kind,
-      isDefault
+      isDefault,
     });
 
     return profile;
@@ -228,13 +268,16 @@ class TestControllerImpl extends TestController {
 
   createTestRun(request: TestRunRequest, name?: string, persist?: boolean): TestRun {
     const runId = `run_${Date.now()}_${Math.random()}`;
-    const token = { isCancellationRequested: false };
+    const token: CancellationToken = {
+      isCancellationRequested: false,
+      onCancellationRequested: () => ({ dispose: () => {} }),
+    };
 
     this.bridge.send('createTestRun', {
       controllerId: this.id,
       runId,
       name,
-      persist
+      persist,
     });
 
     return new TestRunImpl(this.bridge, runId, name, token, persist || false);
@@ -244,7 +287,7 @@ class TestControllerImpl extends TestController {
     const item: TestItem = {
       id,
       uri,
-      children: { size: 0 },
+      children: { size: 0 } as TestItemCollection,
       parent: undefined,
       label,
       description: undefined,
@@ -253,14 +296,14 @@ class TestControllerImpl extends TestController {
       busy: false,
       tags: [],
       range: undefined,
-      error: undefined
+      error: undefined,
     };
 
     this.bridge.send('createTestItem', {
       controllerId: this.id,
       id,
       label,
-      uri
+      uri,
     });
 
     return item;

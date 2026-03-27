@@ -7,11 +7,10 @@
  * - Linux: Secret Service (libsecret) or kernel keyring
  * - Windows: Credential Manager
  */
-
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 
-const SERVICE_NAME: &str = "dscode-extension-secrets";
+const SERVICE_NAME: &str = "com.dscode.secrets";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SecretResult {
@@ -20,10 +19,7 @@ pub struct SecretResult {
 
 /// Get a secret value from secure storage
 #[tauri::command]
-pub async fn secret_get(
-    extension_id: String,
-    key: String,
-) -> Result<SecretResult, String> {
+pub async fn secret_get(extension_id: String, key: String) -> Result<SecretResult, String> {
     let username = format!("{}:{}", extension_id, key);
 
     let entry = Entry::new(SERVICE_NAME, &username)
@@ -38,26 +34,18 @@ pub async fn secret_get(
 
 /// Store a secret value in secure storage
 #[tauri::command]
-pub async fn secret_store(
-    extension_id: String,
-    key: String,
-    value: String,
-) -> Result<(), String> {
+pub async fn secret_store(extension_id: String, key: String, value: String) -> Result<(), String> {
     let username = format!("{}:{}", extension_id, key);
 
     let entry = Entry::new(SERVICE_NAME, &username)
         .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
 
-    entry.set_password(&value)
-        .map_err(|e| format!("Failed to store secret: {}", e))
+    entry.set_password(&value).map_err(|e| format!("Failed to store secret: {}", e))
 }
 
 /// Delete a secret from secure storage
 #[tauri::command]
-pub async fn secret_delete(
-    extension_id: String,
-    key: String,
-) -> Result<(), String> {
+pub async fn secret_delete(extension_id: String, key: String) -> Result<(), String> {
     let username = format!("{}:{}", extension_id, key);
 
     let entry = Entry::new(SERVICE_NAME, &username)
@@ -72,10 +60,7 @@ pub async fn secret_delete(
 
 /// Check if a secret exists in secure storage
 #[tauri::command]
-pub async fn secret_has(
-    extension_id: String,
-    key: String,
-) -> Result<bool, String> {
+pub async fn secret_has(extension_id: String, key: String) -> Result<bool, String> {
     let username = format!("{}:{}", extension_id, key);
 
     let entry = Entry::new(SERVICE_NAME, &username)

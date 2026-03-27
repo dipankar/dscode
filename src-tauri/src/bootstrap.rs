@@ -5,7 +5,8 @@ use crate::commands::{
     TextDocumentRegistry, ThemeRegistry,
 };
 use crate::config::AppDirectories;
-use crate::debug::DebugManager;
+use crate::debug::{DebugAdapterPool, DebugManager};
+use crate::extension_host::path_validator::PathValidator;
 use crate::lsp::LspManager;
 use crate::monitoring::ResourceMonitor;
 use crate::session::SessionManager;
@@ -24,16 +25,17 @@ use tokio::sync::RwLock;
 type SetupResult = Result<(), Box<dyn Error>>;
 
 pub fn configure_builder(
-    builder: tauri::Builder<Wry>,
-    lsp_manager: LspManager,
+    builder: tauri::Builder<Wry>, lsp_manager: LspManager,
 ) -> tauri::Builder<Wry> {
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(FileWatcherState::new())
         .manage(ResourceMonitor::new())
+        .manage(tokio::sync::RwLock::new(PathValidator::new()))
         .manage(tokio::sync::Mutex::new(lsp_manager))
         .manage(Mutex::new(TerminalManager::new()))
         .manage(Mutex::new(DebugManager::new()))
+        .manage(RwLock::new(DebugAdapterPool::new()))
         .setup(setup_app)
 }
 
@@ -70,11 +72,7 @@ fn build_tray(app: &mut tauri::App<Wry>) -> SetupResult {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: tauri::tray::MouseButton::Left,
-                ..
-            } = event
-            {
+            if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
                 if let Some(window) = tray.app_handle().get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
@@ -102,13 +100,10 @@ fn build_tray(app: &mut tauri::App<Wry>) -> SetupResult {
 }
 
 fn register_session_manager(
-    app: &mut tauri::App<Wry>,
-    app_dirs: AppDirectories,
+    app: &mut tauri::App<Wry>, app_dirs: AppDirectories,
 ) -> Arc<RwLock<SessionManager>> {
-    let session_manager = Arc::new(RwLock::new(SessionManager::new(
-        app.handle().clone(),
-        app_dirs,
-    )));
+    let session_manager =
+        Arc::new(RwLock::new(SessionManager::new(app.handle().clone(), app_dirs)));
 
     app.manage(session_manager.clone());
     session_manager
@@ -129,10 +124,7 @@ fn register_feature_registries(app: &mut tauri::App<Wry>) {
     let configuration_registry = Arc::new(ConfigurationRegistry::new(app_handle.clone()));
     app.manage(configuration_registry.clone());
 
-    app.manage(SettingsUIRegistry::new(
-        app_handle.clone(),
-        configuration_registry,
-    ));
+    app.manage(SettingsUIRegistry::new(app_handle.clone(), configuration_registry));
     app.manage(DebugConfigurationRegistry::new(app_handle.clone()));
     app.manage(ThemeRegistry::new(app_handle.clone()));
     app.manage(TaskRegistry::new(app_handle.clone()));

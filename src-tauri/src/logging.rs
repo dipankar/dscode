@@ -1,9 +1,5 @@
-//! Conditional logging utilities for DSCode
-//!
-//! In debug builds, all logging is enabled.
-//! In release builds, only error and warning logs are shown.
+use tracing_subscriber::EnvFilter;
 
-/// Log levels for filtering
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogLevel {
     Trace,
@@ -13,7 +9,6 @@ pub enum LogLevel {
     Error,
 }
 
-/// Get the minimum log level for the current build
 pub fn min_log_level() -> LogLevel {
     #[cfg(debug_assertions)]
     {
@@ -25,54 +20,38 @@ pub fn min_log_level() -> LogLevel {
     }
 }
 
-/// Check if a log level should be displayed
 pub fn should_log(level: LogLevel) -> bool {
     level >= min_log_level()
 }
 
-/// Conditional debug logging macro
-/// Only logs in debug builds
 #[macro_export]
 macro_rules! log_debug {
     ($($arg:tt)*) => {
-        #[cfg(debug_assertions)]
-        {
-            println!($($arg)*);
-        }
+        tracing::debug!($($arg)*);
     };
 }
 
-/// Conditional info logging macro
-/// Only logs in debug builds
 #[macro_export]
 macro_rules! log_info {
     ($($arg:tt)*) => {
-        #[cfg(debug_assertions)]
-        {
-            println!($($arg)*);
-        }
+        tracing::info!($($arg)*);
     };
 }
 
-/// Warning logging macro
-/// Always logs
 #[macro_export]
 macro_rules! log_warn {
     ($($arg:tt)*) => {
-        eprintln!("[WARN] {}", format!($($arg)*));
+        tracing::warn!($($arg)*);
     };
 }
 
-/// Error logging macro
-/// Always logs
 #[macro_export]
 macro_rules! log_error {
     ($($arg:tt)*) => {
-        eprintln!("[ERROR] {}", format!($($arg)*));
+        tracing::error!($($arg)*);
     };
 }
 
-/// Structured log entry
 pub struct LogEntry {
     pub level: LogLevel,
     pub module: String,
@@ -81,35 +60,29 @@ pub struct LogEntry {
 
 impl LogEntry {
     pub fn new(level: LogLevel, module: &str, message: &str) -> Self {
-        Self {
-            level,
-            module: module.to_string(),
-            message: message.to_string(),
-        }
+        Self { level, module: module.to_string(), message: message.to_string() }
     }
 
     pub fn log(&self) {
         if should_log(self.level) {
-            let prefix = match self.level {
-                LogLevel::Trace => "[TRACE]",
-                LogLevel::Debug => "[DEBUG]",
-                LogLevel::Info => "[INFO]",
-                LogLevel::Warn => "[WARN]",
-                LogLevel::Error => "[ERROR]",
-            };
-
-            if self.level >= LogLevel::Warn {
-                eprintln!("{} [{}] {}", prefix, self.module, self.message);
-            } else {
-                println!("{} [{}] {}", prefix, self.module, self.message);
+            match self.level {
+                LogLevel::Trace => tracing::trace!(module = %self.module, "{}", self.message),
+                LogLevel::Debug => tracing::debug!(module = %self.module, "{}", self.message),
+                LogLevel::Info => tracing::info!(module = %self.module, "{}", self.message),
+                LogLevel::Warn => tracing::warn!(module = %self.module, "{}", self.message),
+                LogLevel::Error => tracing::error!(module = %self.module, "{}", self.message),
             }
         }
     }
 }
 
-/// Helper function for logging with module context
 pub fn log(level: LogLevel, module: &str, message: &str) {
     LogEntry::new(level, module, message).log();
+}
+
+pub fn init() {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    tracing_subscriber::fmt().with_env_filter(filter).init();
 }
 
 #[cfg(test)]
@@ -126,14 +99,12 @@ mod tests {
 
     #[test]
     fn test_should_log() {
-        // In debug builds, everything should log
         #[cfg(debug_assertions)]
         {
             assert!(should_log(LogLevel::Trace));
             assert!(should_log(LogLevel::Debug));
         }
 
-        // Warn and Error should always log
         assert!(should_log(LogLevel::Warn));
         assert!(should_log(LogLevel::Error));
     }

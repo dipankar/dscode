@@ -6,8 +6,7 @@ use tauri::State;
 /// Register test suite
 #[tauri::command]
 pub async fn register_test_suite(
-    suite: TestSuite,
-    registry: State<'_, TestRunnerRegistry>,
+    suite: TestSuite, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<String, String> {
     registry.register_test_suite(suite).await
 }
@@ -15,8 +14,7 @@ pub async fn register_test_suite(
 /// Get test suite
 #[tauri::command]
 pub async fn get_test_suite(
-    suite_id: String,
-    registry: State<'_, TestRunnerRegistry>,
+    suite_id: String, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<TestSuite, String> {
     registry.get_test_suite(&suite_id).await
 }
@@ -32,8 +30,7 @@ pub async fn get_all_test_suites(
 /// Get test suites by extension
 #[tauri::command]
 pub async fn get_test_suites_by_extension(
-    extension_id: String,
-    registry: State<'_, TestRunnerRegistry>,
+    extension_id: String, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<Vec<TestSuite>, String> {
     Ok(registry.get_test_suites_by_extension(&extension_id).await)
 }
@@ -43,9 +40,7 @@ pub async fn get_test_suites_by_extension(
 /// Start test run
 #[tauri::command]
 pub async fn start_test_run(
-    suite_id: String,
-    run_id: String,
-    registry: State<'_, TestRunnerRegistry>,
+    suite_id: String, run_id: String, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<(), String> {
     registry.start_test_run(&suite_id, run_id).await
 }
@@ -53,9 +48,7 @@ pub async fn start_test_run(
 /// Update test result
 #[tauri::command]
 pub async fn update_test_result(
-    run_id: String,
-    test_result: TestResult,
-    registry: State<'_, TestRunnerRegistry>,
+    run_id: String, test_result: TestResult, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<(), String> {
     registry.update_test_result(&run_id, test_result).await
 }
@@ -63,9 +56,7 @@ pub async fn update_test_result(
 /// Complete test run
 #[tauri::command]
 pub async fn complete_test_run(
-    run_id: String,
-    duration_ms: u64,
-    registry: State<'_, TestRunnerRegistry>,
+    run_id: String, duration_ms: u64, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<(), String> {
     registry.complete_test_run(&run_id, duration_ms).await
 }
@@ -73,8 +64,7 @@ pub async fn complete_test_run(
 /// Get test run result
 #[tauri::command]
 pub async fn get_test_run_result(
-    run_id: String,
-    registry: State<'_, TestRunnerRegistry>,
+    run_id: String, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<TestRunResult, String> {
     registry.get_test_run_result(&run_id).await
 }
@@ -90,8 +80,7 @@ pub async fn get_all_test_results(
 /// Get test results by suite
 #[tauri::command]
 pub async fn get_test_results_by_suite(
-    suite_id: String,
-    registry: State<'_, TestRunnerRegistry>,
+    suite_id: String, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<Vec<TestRunResult>, String> {
     Ok(registry.get_test_results_by_suite(&suite_id).await)
 }
@@ -101,9 +90,7 @@ pub async fn get_test_results_by_suite(
 /// Update coverage data
 #[tauri::command]
 pub async fn update_coverage(
-    extension_id: String,
-    coverage: CoverageData,
-    registry: State<'_, TestRunnerRegistry>,
+    extension_id: String, coverage: CoverageData, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<(), String> {
     registry.update_coverage(extension_id, coverage).await
 }
@@ -111,8 +98,7 @@ pub async fn update_coverage(
 /// Get coverage data
 #[tauri::command]
 pub async fn get_coverage(
-    extension_id: String,
-    registry: State<'_, TestRunnerRegistry>,
+    extension_id: String, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<Option<CoverageData>, String> {
     Ok(registry.get_coverage(&extension_id).await)
 }
@@ -130,8 +116,7 @@ pub async fn get_all_coverage(
 /// Validate API usage
 #[tauri::command]
 pub async fn validate_api_usage(
-    validation: APIValidation,
-    registry: State<'_, TestRunnerRegistry>,
+    validation: APIValidation, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<ValidationResult, String> {
     Ok(registry.validate_api_usage(validation).await)
 }
@@ -141,8 +126,7 @@ pub async fn validate_api_usage(
 /// Clear test data for extension
 #[tauri::command]
 pub async fn clear_test_data(
-    extension_id: String,
-    registry: State<'_, TestRunnerRegistry>,
+    extension_id: String, registry: State<'_, TestRunnerRegistry>,
 ) -> Result<(), String> {
     registry.clear_test_data(&extension_id).await;
     Ok(())
@@ -150,9 +134,7 @@ pub async fn clear_test_data(
 
 /// Clear all test results
 #[tauri::command]
-pub async fn clear_all_test_results(
-    registry: State<'_, TestRunnerRegistry>,
-) -> Result<(), String> {
+pub async fn clear_all_test_results(registry: State<'_, TestRunnerRegistry>) -> Result<(), String> {
     registry.clear_all_results().await;
     Ok(())
 }

@@ -26,10 +26,7 @@ impl ConfigurationStore {
     }
 
     pub fn empty(path: PathBuf) -> Self {
-        Self {
-            path,
-            data: Value::Object(Map::new()),
-        }
+        Self { path, data: Value::Object(Map::new()) }
     }
 
     pub fn default_in_dir(dir: &Path) -> Result<Self, String> {
@@ -38,16 +35,11 @@ impl ConfigurationStore {
     }
 
     pub fn snapshot(&self, section: Option<&str>) -> Value {
-        self.get_section(section)
-            .cloned()
-            .unwrap_or_else(|| Value::Object(Map::new()))
+        self.get_section(section).cloned().unwrap_or_else(|| Value::Object(Map::new()))
     }
 
     pub fn update(
-        &mut self,
-        section: Option<&str>,
-        key: &str,
-        value: Value,
+        &mut self, section: Option<&str>, key: &str, value: Value,
     ) -> Result<bool, String> {
         let changed = if value.is_null() {
             self.remove_value(section, key)
@@ -129,9 +121,7 @@ impl ConfigurationStore {
     }
 
     fn ensure_path<'a>(
-        &'a mut self,
-        section: Option<&str>,
-        key: &'a str,
+        &'a mut self, section: Option<&str>, key: &'a str,
     ) -> (&'a mut Map<String, Value>, &'a str) {
         let mut segments: Vec<&str> = key.split('.').collect();
         let final_key = segments.pop().unwrap_or(key);
@@ -146,27 +136,26 @@ impl ConfigurationStore {
             if !current.is_object() {
                 *current = Value::Object(Map::new());
             }
-            let map = current.as_object_mut().unwrap();
-            let entry = map
-                .entry(segment.to_string())
-                .or_insert_with(|| Value::Object(Map::new()));
+            let map = current
+                .as_object_mut()
+                .expect("configuration path segment must be an object after conversion");
+            let entry = map.entry(segment.to_string()).or_insert_with(|| Value::Object(Map::new()));
             if !entry.is_object() {
                 *entry = Value::Object(Map::new());
             }
             current = entry;
         }
 
-        let map = current.as_object_mut().unwrap();
+        let map = current
+            .as_object_mut()
+            .expect("configuration target must be an object after path traversal");
         (map, final_key)
     }
 
     fn save(&self) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                format!(
-                    "Failed to create configuration directory {:?}: {}",
-                    parent, e
-                )
+                format!("Failed to create configuration directory {:?}: {}", parent, e)
             })?;
         }
 

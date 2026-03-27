@@ -9,7 +9,7 @@
   let inputEl: HTMLInputElement | null = null;
   let lastRequestId = '';
 
-$: if (request.id !== lastRequestId) {
+  $: if (request.id !== lastRequestId) {
     lastRequestId = request.id;
     value = request.value ?? '';
     submitting = false;
@@ -117,7 +117,7 @@ $: if (request.id !== lastRequestId) {
   .inputbox-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: var(--color-modal-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -189,7 +189,7 @@ $: if (request.id !== lastRequestId) {
 
   button:not(.secondary) {
     background: var(--color-accent);
-    color: #fff;
+    color: var(--color-text-on-accent);
   }
 
   button.secondary {
@@ -198,6 +198,6 @@ $: if (request.id !== lastRequestId) {
   }
 
   button.secondary:hover:not([disabled]) {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--color-surface-hover);
   }
 </style>

@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import * as monaco from 'monaco-editor';
   import { AlertCircle, AlertTriangle, Info, X } from 'lucide-svelte';
+  import { problemCountsStore } from '../stores/problems';
 
   export let visible = true;
   export let editor: monaco.editor.IStandaloneCodeEditor | null;
@@ -25,28 +26,27 @@
   function updateProblems() {
     if (!editor) return;
 
+    const allMarkers = monaco.editor.getModelMarkers({});
     const model = editor.getModel();
-    if (!model) return;
+    const currentUri = model ? model.uri.toString() : null;
 
-    // Get all markers (diagnostics) for the current model
-    const markers = monaco.editor.getModelMarkers({ resource: model.uri });
-
-    problems = markers.map((marker) => ({
+    problems = allMarkers.map((marker) => ({
       severity: marker.severity,
       message: marker.message,
-      resource: model.uri.path,
+      resource: marker.resource.path,
       startLineNumber: marker.startLineNumber,
       startColumn: marker.startColumn,
       endLineNumber: marker.endLineNumber,
       endColumn: marker.endColumn,
     }));
 
-    // Count by severity
     errorCount = problems.filter((p) => p.severity === monaco.MarkerSeverity.Error).length;
     warningCount = problems.filter((p) => p.severity === monaco.MarkerSeverity.Warning).length;
     infoCount = problems.filter(
       (p) => p.severity === monaco.MarkerSeverity.Info || p.severity === monaco.MarkerSeverity.Hint
     ).length;
+
+    problemCountsStore.set({ errors: errorCount, warnings: warningCount, infos: infoCount });
   }
 
   function getSeverityIcon(severity: monaco.MarkerSeverity) {
@@ -198,15 +198,15 @@
   }
 
   .error-count {
-    color: #f48771;
+    color: var(--color-error);
   }
 
   .warning-count {
-    color: #cca700;
+    color: var(--color-warning);
   }
 
   .info-count {
-    color: #75beff;
+    color: var(--color-info);
   }
 
   .problems-list {
@@ -246,15 +246,15 @@
   }
 
   .problem-item.error .problem-icon {
-    color: #f48771;
+    color: var(--color-error);
   }
 
   .problem-item.warning .problem-icon {
-    color: #cca700;
+    color: var(--color-warning);
   }
 
   .problem-item.info .problem-icon {
-    color: #75beff;
+    color: var(--color-info);
   }
 
   .problem-details {

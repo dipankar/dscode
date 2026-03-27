@@ -5,6 +5,7 @@
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
+  import { settingsStore } from '../lib/settings-store';
   import '@xterm/xterm/css/xterm.css';
 
   export let terminalId: string;
@@ -17,8 +18,35 @@
   let unlistenData: (() => void) | null = null;
   let unlistenClosed: (() => void) | null = null;
   let resizeObserver: ResizeObserver | null = null;
+  let closedByBackend = false;
+  let settingsUnsubscribe: (() => void) | null = null;
 
-  // Re-fit and focus when visibility changes
+  function getTerminalTheme(theme: string): Record<string, string> {
+    switch (theme) {
+      case 'light':
+        return {
+          background: '#ffffff',
+          foreground: '#333333',
+          cursor: '#333333',
+          selectionBackground: '#add6ff',
+        };
+      case 'high-contrast':
+        return {
+          background: '#000000',
+          foreground: '#ffffff',
+          cursor: '#ffffff',
+          selectionBackground: '#660000',
+        };
+      default:
+        return {
+          background: '#1e1e1e',
+          foreground: '#cccccc',
+          cursor: '#cccccc',
+          selectionBackground: '#264f78',
+        };
+    }
+  }
+
   $: if (visible && fitAddon && terminal) {
     setTimeout(() => {
       fitAddon?.fit();
@@ -27,17 +55,21 @@
   }
 
   onMount(async () => {
-    // Create terminal instance
+    const currentSettings = $settingsStore;
+
     terminal = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#cccccc',
-        cursor: '#cccccc',
-      },
+      fontSize: currentSettings.terminal.fontSize,
+      fontFamily: currentSettings.terminal.fontFamily,
+      theme: getTerminalTheme(currentSettings.theme.colorTheme),
       scrollback: 10000,
+    });
+
+    settingsUnsubscribe = settingsStore.subscribe((settings) => {
+      if (!terminal) return;
+      terminal.options.theme = getTerminalTheme(settings.theme.colorTheme);
+      terminal.options.fontSize = settings.terminal.fontSize;
+      terminal.options.fontFamily = settings.terminal.fontFamily;
     });
 
     // Add addons
@@ -60,14 +92,13 @@
     setTimeout(() => {
       fitAddon?.fit();
       // Signal backend that we're ready to receive data
-      invoke('terminal_ready', { terminalId }).catch(err => {
+      invoke('terminal_ready', { terminalId }).catch((err) => {
         console.error('Failed to signal terminal ready:', err);
       });
     }, 10);
 
-    // Listen for terminal closure
     unlistenClosed = await listen(`terminal-closed:${terminalId}`, () => {
-      console.log(`Terminal ${terminalId} closed by backend`);
+      closedByBackend = true;
       if (onClose) {
         onClose();
       }
@@ -78,8 +109,8 @@
       // Send input to backend
       invoke('write_to_terminal', {
         terminalId: terminalId,
-        data: data
-      }).catch(err => {
+        data: data,
+      }).catch((err) => {
         console.error('Failed to write to terminal:', err);
       });
     });
@@ -93,8 +124,8 @@
         invoke('resize_terminal', {
           terminalId: terminalId,
           cols: terminal.cols,
-          rows: terminal.rows
-        }).catch(err => {
+          rows: terminal.rows,
+        }).catch((err) => {
           console.error('Failed to resize terminal:', err);
         });
       }
@@ -107,28 +138,24 @@
   });
 
   onDestroy(() => {
-    // Clean up event listeners
     if (unlistenData) {
       unlistenData();
     }
     if (unlistenClosed) {
       unlistenClosed();
     }
-
-    // Clean up resize observer
+    if (settingsUnsubscribe) {
+      settingsUnsubscribe();
+    }
     if (resizeObserver) {
       resizeObserver.disconnect();
     }
-
-    // Dispose terminal
     if (terminal) {
       terminal.dispose();
     }
-
-    // Close terminal in backend
-    invoke('close_terminal', { terminalId: terminalId }).catch(err => {
-      console.error('Failed to close terminal:', err);
-    });
+    if (!closedByBackend) {
+      invoke('close_terminal', { terminalId }).catch(() => {});
+    }
   });
 </script>
 
@@ -140,7 +167,7 @@
   .terminal-wrapper {
     width: 100%;
     height: 100%;
-    background-color: #1e1e1e;
+    background-color: var(--color-bg);
     overflow: hidden;
   }
 

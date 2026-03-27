@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { Download, Search, Trash2, Star, Users } from 'lucide-svelte';
-  import { extensionCommands } from '../lib/contracts/commands';
+  import { Download, Search, Trash2, Star, Users, Power, PowerOff } from 'lucide-svelte';
+  import { extensionCommands, sessionCommands } from '../lib/contracts/commands';
 
   export let visible: boolean = false;
   export let onClose: () => void;
@@ -31,13 +30,17 @@
   let searchQuery = '';
   let marketplaceExtensions: MarketplaceExtension[] = [];
   let installedExtensions: InstalledExtension[] = [];
+  let activeExtensionIds = new Set<string>();
   let loading = false;
   let error: string | null = null;
   let installingExt: string | null = null;
+  let togglingExt: string | null = null;
 
-  onMount(async () => {
-    await loadInstalledExtensions();
-  });
+  let uninstallingExt: string | null = null;
+
+  $: if (visible) {
+    loadInstalledExtensions();
+  }
 
   async function searchMarketplace() {
     if (!searchQuery.trim()) return;
@@ -62,6 +65,34 @@
     } catch (e) {
       console.warn('Failed to load installed extensions:', e);
     }
+
+    try {
+      const state = await sessionCommands.getState<{ activeExtensions: { id: string }[] }>();
+      activeExtensionIds = new Set(
+        (state.activeExtensions || []).map((ext: { id: string }) => ext.id)
+      );
+    } catch {
+      activeExtensionIds = new Set();
+    }
+  }
+
+  async function toggleExtension(extensionId: string) {
+    togglingExt = extensionId;
+    try {
+      if (activeExtensionIds.has(extensionId)) {
+        await sessionCommands.unloadExtension(extensionId);
+        activeExtensionIds.delete(extensionId);
+      } else {
+        await sessionCommands.loadExtension(extensionId);
+        activeExtensionIds.add(extensionId);
+      }
+      activeExtensionIds = activeExtensionIds;
+    } catch (e) {
+      error = `Toggle failed: ${e}`;
+      console.error(error);
+    } finally {
+      togglingExt = null;
+    }
   }
 
   async function installExtension(ext: MarketplaceExtension) {
@@ -82,6 +113,7 @@
   }
 
   async function uninstallExtension(extensionId: string) {
+    uninstallingExt = extensionId;
     try {
       await extensionCommands.uninstall(extensionId);
       await loadInstalledExtensions();
@@ -89,6 +121,8 @@
     } catch (e) {
       error = `Uninstall failed: ${e}`;
       console.error(error);
+    } finally {
+      uninstallingExt = null;
     }
   }
 
@@ -131,7 +165,10 @@
           </button>
           <button
             class:active={activeTab === 'installed'}
-            on:click={() => (activeTab = 'installed')}
+            on:click={() => {
+              activeTab = 'installed';
+              loadInstalledExtensions();
+            }}
           >
             Installed ({installedExtensions.length})
           </button>
@@ -150,7 +187,7 @@
             type="text"
             placeholder="Search extensions..."
             bind:value={searchQuery}
-            on:keypress={handleKeyPress}
+            on:keydown={handleKeyPress}
           />
           <button on:click={searchMarketplace} disabled={loading}>
             {loading ? 'Searching...' : 'Search'}
@@ -224,12 +261,44 @@
                 <p class="ext-id">{ext.id}</p>
                 <p class="ext-description">{ext.description || 'No description'}</p>
                 <span class="ext-version">v{ext.version}</span>
+                {#if activeExtensionIds.has(ext.id)}
+                  <span class="ext-status active">Active</span>
+                {:else}
+                  <span class="ext-status inactive">Inactive</span>
+                {/if}
               </div>
 
-              <button class="btn-uninstall" on:click={() => uninstallExtension(ext.id)}>
-                <Trash2 size={16} />
-                Uninstall
-              </button>
+              <div class="ext-actions-row">
+                <button
+                  class="btn-toggle"
+                  class:enabled={activeExtensionIds.has(ext.id)}
+                  on:click={() => toggleExtension(ext.id)}
+                  disabled={togglingExt === ext.id}
+                  title={activeExtensionIds.has(ext.id) ? 'Disable' : 'Enable'}
+                >
+                  {#if togglingExt === ext.id}
+                    <span class="btn-spinner"></span>
+                  {:else if activeExtensionIds.has(ext.id)}
+                    <PowerOff size={16} />
+                    Disable
+                  {:else}
+                    <Power size={16} />
+                    Enable
+                  {/if}
+                </button>
+                <button
+                  class="btn-uninstall"
+                  on:click={() => uninstallExtension(ext.id)}
+                  disabled={uninstallingExt === ext.id}
+                >
+                  {#if uninstallingExt === ext.id}
+                    <span class="btn-spinner"></span>
+                  {:else}
+                    <Trash2 size={16} />
+                  {/if}
+                  {#if uninstallingExt === ext.id}Removing...{:else}Uninstall{/if}
+                </button>
+              </div>
             </div>
           {/each}
 
@@ -269,7 +338,7 @@
     background: var(--modal-bg);
     color: var(--color-text);
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-md);
     overflow: hidden;
   }
 
@@ -305,14 +374,14 @@
   .tabs button.active {
     background: var(--accent-color);
     border-color: var(--accent-color);
-    color: white;
+    color: var(--color-text-on-accent);
   }
 
   .error-banner {
-    background: #f443361a;
-    color: #f44336;
+    background: var(--color-error-bg);
+    color: var(--color-toast-error);
     padding: 12px 16px;
-    border-bottom: 1px solid #f44336;
+    border-bottom: 1px solid var(--color-toast-error);
   }
 
   .search-box {
@@ -338,7 +407,7 @@
     background: var(--accent-color);
     border: none;
     border-radius: 4px;
-    color: white;
+    color: var(--color-text-on-accent);
     cursor: pointer;
     font-size: 14px;
   }
@@ -384,7 +453,7 @@
     justify-content: center;
     font-size: 24px;
     font-weight: bold;
-    color: white;
+    color: var(--color-text-on-accent);
     flex-shrink: 0;
   }
 
@@ -451,7 +520,7 @@
 
   .btn-install {
     background: var(--accent-color);
-    color: white;
+    color: var(--color-text-on-accent);
   }
 
   .btn-installed {
@@ -474,8 +543,8 @@
   }
 
   .btn-uninstall {
-    background: #f443361a;
-    color: #f44336;
+    background: var(--color-error-bg);
+    color: var(--color-toast-error);
   }
 
   .ext-version {
@@ -500,6 +569,68 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+  }
+
+  .ext-actions-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .btn-toggle {
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  .btn-toggle.enabled {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+
+  .btn-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .ext-status {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 8px;
+  }
+
+  .ext-status.active {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+  }
+
+  .ext-status.inactive {
+    background: var(--color-error-bg);
+    color: var(--color-error);
+  }
+
+  .btn-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-color);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .empty-state {

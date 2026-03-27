@@ -1,12 +1,11 @@
-use tauri::State;
+use crate::commands::{MenuContext, MenuItem, MenuRegistry};
 use serde_json::Value;
-use crate::commands::{MenuRegistry, MenuItem, MenuContext};
+use tauri::State;
 
 /// Get menu items for a specific location
 #[tauri::command]
 pub async fn get_menu_items(
-    location: String,
-    registry: State<'_, MenuRegistry>,
+    location: String, registry: State<'_, MenuRegistry>,
 ) -> Result<Vec<MenuItem>, String> {
     Ok(registry.get_menu_items(&location))
 }
@@ -14,9 +13,7 @@ pub async fn get_menu_items(
 /// Get menu items for a location with context filtering
 #[tauri::command]
 pub async fn get_menu_items_filtered(
-    location: String,
-    context: MenuContext,
-    registry: State<'_, MenuRegistry>,
+    location: String, context: MenuContext, registry: State<'_, MenuRegistry>,
 ) -> Result<Vec<MenuItem>, String> {
     Ok(registry.get_menu_items_filtered(&location, &context))
 }
@@ -24,8 +21,7 @@ pub async fn get_menu_items_filtered(
 /// Register a menu item (called from extension host)
 #[tauri::command]
 pub async fn register_menu_item(
-    item: MenuItem,
-    registry: State<'_, MenuRegistry>,
+    item: MenuItem, registry: State<'_, MenuRegistry>,
 ) -> Result<(), String> {
     registry.register_menu_item(item)
 }
@@ -33,16 +29,13 @@ pub async fn register_menu_item(
 /// Register multiple menu items
 #[tauri::command]
 pub async fn register_menu_items(
-    items: Vec<MenuItem>,
-    registry: State<'_, MenuRegistry>,
+    items: Vec<MenuItem>, registry: State<'_, MenuRegistry>,
 ) -> Result<(), String> {
     registry.register_menu_items(items)
 }
 
 /// Get all menu locations
 #[tauri::command]
-pub async fn get_menu_locations(
-    registry: State<'_, MenuRegistry>,
-) -> Result<Vec<String>, String> {
+pub async fn get_menu_locations(registry: State<'_, MenuRegistry>) -> Result<Vec<String>, String> {
     Ok(registry.get_locations())
 }

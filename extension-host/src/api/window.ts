@@ -5,8 +5,17 @@
  */
 
 import { ExtensionHostBridge } from '../bridge';
-import { Event, EventEmitter } from './events';
+import {
+  Event,
+  EventEmitter,
+  TextEditorEventInfo,
+  TextEditorSelectionChangeEvent,
+  TextEditorVisibleRangesChangeEvent,
+  TextEditorOptionsChangeEvent,
+  TextEditorViewColumnChangeEvent,
+} from './events';
 import { Uri } from './uri';
+import type { Selection } from './textEditor';
 
 export enum MessageType {
   Info = 'info',
@@ -16,53 +25,60 @@ export enum MessageType {
 
 export class WindowAPI {
   // Event emitters
-  private _onDidChangeActiveTextEditor = new EventEmitter<any>();
-  private _onDidChangeVisibleTextEditors = new EventEmitter<any[]>();
-  private _onDidChangeTextEditorSelection = new EventEmitter<any>();
-  private _onDidChangeTextEditorVisibleRanges = new EventEmitter<any>();
-  private _onDidChangeTextEditorOptions = new EventEmitter<any>();
-  private _onDidChangeTextEditorViewColumn = new EventEmitter<any>();
-  private _onDidChangeWindowState = new EventEmitter<any>();
+  private _onDidChangeActiveTextEditor = new EventEmitter<TextEditorEventInfo | undefined>();
+  private _onDidChangeVisibleTextEditors = new EventEmitter<TextEditorEventInfo[]>();
+  private _onDidChangeTextEditorSelection = new EventEmitter<TextEditorSelectionChangeEvent>();
+  private _onDidChangeTextEditorVisibleRanges =
+    new EventEmitter<TextEditorVisibleRangesChangeEvent>();
+  private _onDidChangeTextEditorOptions = new EventEmitter<TextEditorOptionsChangeEvent>();
+  private _onDidChangeTextEditorViewColumn = new EventEmitter<TextEditorViewColumnChangeEvent>();
+  private _onDidChangeWindowState = new EventEmitter<{ focused: boolean }>();
 
   // Events
-  readonly onDidChangeActiveTextEditor = this._onDidChangeActiveTextEditor.event;
-  readonly onDidChangeVisibleTextEditors = this._onDidChangeVisibleTextEditors.event;
-  readonly onDidChangeTextEditorSelection = this._onDidChangeTextEditorSelection.event;
-  readonly onDidChangeTextEditorVisibleRanges = this._onDidChangeTextEditorVisibleRanges.event;
-  readonly onDidChangeTextEditorOptions = this._onDidChangeTextEditorOptions.event;
-  readonly onDidChangeTextEditorViewColumn = this._onDidChangeTextEditorViewColumn.event;
-  readonly onDidChangeWindowState = this._onDidChangeWindowState.event;
+  readonly onDidChangeActiveTextEditor: Event<TextEditorEventInfo | undefined> =
+    this._onDidChangeActiveTextEditor.event;
+  readonly onDidChangeVisibleTextEditors: Event<TextEditorEventInfo[]> =
+    this._onDidChangeVisibleTextEditors.event;
+  readonly onDidChangeTextEditorSelection: Event<TextEditorSelectionChangeEvent> =
+    this._onDidChangeTextEditorSelection.event;
+  readonly onDidChangeTextEditorVisibleRanges: Event<TextEditorVisibleRangesChangeEvent> =
+    this._onDidChangeTextEditorVisibleRanges.event;
+  readonly onDidChangeTextEditorOptions: Event<TextEditorOptionsChangeEvent> =
+    this._onDidChangeTextEditorOptions.event;
+  readonly onDidChangeTextEditorViewColumn: Event<TextEditorViewColumnChangeEvent> =
+    this._onDidChangeTextEditorViewColumn.event;
+  readonly onDidChangeWindowState: Event<{ focused: boolean }> = this._onDidChangeWindowState.event;
 
   constructor(private bridge: ExtensionHostBridge) {
     this.setupEventListeners();
   }
 
   private setupEventListeners(): void {
-    this.bridge.on('activeTextEditorChanged', (data: any) => {
+    this.bridge.on('activeTextEditorChanged', (data: TextEditorEventInfo | undefined) => {
       this._onDidChangeActiveTextEditor.fire(data);
     });
 
-    this.bridge.on('visibleTextEditorsChanged', (data: any) => {
+    this.bridge.on('visibleTextEditorsChanged', (data: TextEditorEventInfo[]) => {
       this._onDidChangeVisibleTextEditors.fire(data);
     });
 
-    this.bridge.on('textEditorSelectionChanged', (data: any) => {
+    this.bridge.on('textEditorSelectionChanged', (data: TextEditorSelectionChangeEvent) => {
       this._onDidChangeTextEditorSelection.fire(data);
     });
 
-    this.bridge.on('textEditorVisibleRangesChanged', (data: any) => {
+    this.bridge.on('textEditorVisibleRangesChanged', (data: TextEditorVisibleRangesChangeEvent) => {
       this._onDidChangeTextEditorVisibleRanges.fire(data);
     });
 
-    this.bridge.on('textEditorOptionsChanged', (data: any) => {
+    this.bridge.on('textEditorOptionsChanged', (data: TextEditorOptionsChangeEvent) => {
       this._onDidChangeTextEditorOptions.fire(data);
     });
 
-    this.bridge.on('textEditorViewColumnChanged', (data: any) => {
+    this.bridge.on('textEditorViewColumnChanged', (data: TextEditorViewColumnChangeEvent) => {
       this._onDidChangeTextEditorViewColumn.fire(data);
     });
 
-    this.bridge.on('windowStateChanged', (data: any) => {
+    this.bridge.on('windowStateChanged', (data: { focused: boolean }) => {
       this._onDidChangeWindowState.fire(data);
     });
   }
@@ -83,11 +99,11 @@ export class WindowAPI {
     }
 
     // Show message with actions
-    const result = await this.bridge.request('window-show-message-with-actions', {
+    const result = (await this.bridge.request('window-show-message-with-actions', {
       type: MessageType.Info,
       message,
       actions: items,
-    }) as { action?: string } | null;
+    })) as { action?: string } | null;
 
     return result?.action;
   }
@@ -106,11 +122,11 @@ export class WindowAPI {
       return undefined;
     }
 
-    const result = await this.bridge.request('window-show-message-with-actions', {
+    const result = (await this.bridge.request('window-show-message-with-actions', {
       type: MessageType.Warning,
       message,
       actions: items,
-    }) as { action?: string } | null;
+    })) as { action?: string } | null;
 
     return result?.action;
   }
@@ -129,11 +145,11 @@ export class WindowAPI {
       return undefined;
     }
 
-    const result = await this.bridge.request('window-show-message-with-actions', {
+    const result = (await this.bridge.request('window-show-message-with-actions', {
       type: MessageType.Error,
       message,
       actions: items,
-    }) as { action?: string } | null;
+    })) as { action?: string } | null;
 
     return result?.action;
   }
@@ -147,7 +163,9 @@ export class WindowAPI {
     value?: string;
     password?: boolean;
   }): Promise<string | undefined> {
-    const result = await this.bridge.request('window-show-input-box', options || {}) as { value?: string } | null;
+    const result = (await this.bridge.request('window-show-input-box', options || {})) as {
+      value?: string;
+    } | null;
     return result?.value;
   }
 
@@ -160,13 +178,13 @@ export class WindowAPI {
       placeHolder?: string;
       canPickMany?: boolean;
     }
-  ): Promise<any> {
-    const result = await this.bridge.request('window-show-quick-pick', {
+  ): Promise<string | number | Array<string | number> | undefined> {
+    const result = (await this.bridge.request('window-show-quick-pick', {
       items,
       options: options || {},
-    }) as { selected?: any } | null;
+    })) as { selected?: number | string | Array<string | number> } | null;
 
-    return result?.selected;
+    return result?.selected as string | number | Array<string | number> | undefined;
   }
 
   /**
@@ -201,15 +219,15 @@ export class WindowAPI {
   async showOpenDialog(options?: OpenDialogOptions): Promise<Uri[] | undefined> {
     console.log('[Window] showOpenDialog:', options);
 
-    const result = await this.bridge.request('window-show-open-dialog', {
+    const result = (await this.bridge.request('window-show-open-dialog', {
       canSelectFiles: options?.canSelectFiles ?? true,
       canSelectFolders: options?.canSelectFolders ?? false,
       canSelectMany: options?.canSelectMany ?? false,
       openLabel: options?.openLabel,
       title: options?.title,
       defaultUri: options?.defaultUri?.toString(),
-      filters: options?.filters
-    }) as { uris?: string[] } | null;
+      filters: options?.filters,
+    })) as { uris?: string[] } | null;
 
     if (!result || !result.uris || result.uris.length === 0) {
       return undefined;
@@ -225,12 +243,12 @@ export class WindowAPI {
   async showSaveDialog(options?: SaveDialogOptions): Promise<Uri | undefined> {
     console.log('[Window] showSaveDialog:', options);
 
-    const result = await this.bridge.request('window-show-save-dialog', {
+    const result = (await this.bridge.request('window-show-save-dialog', {
       saveLabel: options?.saveLabel,
       title: options?.title,
       defaultUri: options?.defaultUri?.toString(),
-      filters: options?.filters
-    }) as { uri?: string } | null;
+      filters: options?.filters,
+    })) as { uri?: string } | null;
 
     if (!result || !result.uri) {
       return undefined;
@@ -242,13 +260,15 @@ export class WindowAPI {
   /**
    * Show a workspace folder picker
    */
-  async showWorkspaceFolderPick(options?: WorkspaceFolderPickOptions): Promise<WorkspaceFolder | undefined> {
+  async showWorkspaceFolderPick(
+    options?: WorkspaceFolderPickOptions
+  ): Promise<WorkspaceFolder | undefined> {
     console.log('[Window] showWorkspaceFolderPick:', options);
 
-    const result = await this.bridge.request('window-show-workspace-folder-pick', {
+    const result = (await this.bridge.request('window-show-workspace-folder-pick', {
       placeHolder: options?.placeHolder,
-      ignoreFocusOut: options?.ignoreFocusOut
-    }) as { uri: string; name: string; index: number } | null;
+      ignoreFocusOut: options?.ignoreFocusOut,
+    })) as { uri: string; name: string; index: number } | null;
 
     if (!result) {
       return undefined;
@@ -257,7 +277,7 @@ export class WindowAPI {
     return {
       uri: Uri.file(result.uri),
       name: result.name,
-      index: result.index
+      index: result.index,
     };
   }
 }
@@ -324,7 +344,10 @@ export interface WorkspaceFolder {
  * Output Channel
  */
 export class OutputChannel {
-  constructor(private name: string, private bridge: ExtensionHostBridge) {}
+  constructor(
+    private name: string,
+    private bridge: ExtensionHostBridge
+  ) {}
 
   append(value: string): void {
     this.bridge.send('output-channel-append', {

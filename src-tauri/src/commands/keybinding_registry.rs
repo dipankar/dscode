@@ -313,7 +313,8 @@ impl KeybindingRegistry {
         }
 
         let normalized_key = keybinding.normalized_key();
-        let mut keybindings = self.keybindings.write().unwrap();
+        let mut keybindings =
+            self.keybindings.write().expect("keybinding_registry write lock poisoned");
 
         let bindings = keybindings.entry(normalized_key).or_insert_with(Vec::new);
 
@@ -359,34 +360,27 @@ impl KeybindingRegistry {
     /// Get all keybindings for a specific key
     pub fn get_keybindings_for_key(&self, key: &str) -> Vec<Keybinding> {
         let normalized_key = Keybinding::normalize_key(key);
-        let keybindings = self.keybindings.read().unwrap();
+        let keybindings = self.keybindings.read().expect("keybinding_registry read lock poisoned");
 
-        keybindings
-            .get(&normalized_key)
-            .cloned()
-            .unwrap_or_default()
+        keybindings.get(&normalized_key).cloned().unwrap_or_default()
     }
 
     /// Get all keybindings
     pub fn get_all_keybindings(&self) -> Vec<Keybinding> {
-        let keybindings = self.keybindings.read().unwrap();
+        let keybindings = self.keybindings.read().expect("keybinding_registry read lock poisoned");
         keybindings.values().flatten().cloned().collect()
     }
 
     /// Get keybindings for a specific command
     pub fn get_keybindings_for_command(&self, command: &str) -> Vec<Keybinding> {
-        let keybindings = self.keybindings.read().unwrap();
-        keybindings
-            .values()
-            .flatten()
-            .filter(|kb| kb.command == command)
-            .cloned()
-            .collect()
+        let keybindings = self.keybindings.read().expect("keybinding_registry read lock poisoned");
+        keybindings.values().flatten().filter(|kb| kb.command == command).cloned().collect()
     }
 
     /// Remove all keybindings from a specific owner
     pub fn clear_keybindings_by_owner(&self, owner: &str) {
-        let mut keybindings = self.keybindings.write().unwrap();
+        let mut keybindings =
+            self.keybindings.write().expect("keybinding_registry write lock poisoned");
 
         for bindings in keybindings.values_mut() {
             bindings.retain(|kb| kb.owner != owner);
@@ -413,10 +407,7 @@ mod tests {
     fn test_normalize_key() {
         assert_eq!(Keybinding::normalize_key("Ctrl+S"), "ctrl+s");
         assert_eq!(Keybinding::normalize_key("Cmd+Shift+P"), "cmd+shift+p");
-        assert_eq!(
-            Keybinding::normalize_key("Control+Alt+Delete"),
-            "ctrl+alt+delete"
-        );
+        assert_eq!(Keybinding::normalize_key("Control+Alt+Delete"), "ctrl+alt+delete");
     }
 
     #[test]

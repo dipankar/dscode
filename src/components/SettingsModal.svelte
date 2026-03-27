@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import { settingsStore, type Settings } from '../lib/settings-store';
   import { showConfirmPrompt } from '../stores/windowPrompt';
 
@@ -7,9 +8,19 @@
 
   let settings: Settings;
   let activeTab: 'editor' | 'theme' | 'terminal' | 'git' = 'editor';
+  let settingsUnsubscribe: (() => void) | null = null;
 
-  settingsStore.subscribe((s) => {
-    settings = JSON.parse(JSON.stringify(s)); // Deep copy
+  onMount(() => {
+    settingsUnsubscribe = settingsStore.subscribe((s) => {
+      settings = JSON.parse(JSON.stringify(s));
+    });
+  });
+
+  onDestroy(() => {
+    if (settingsUnsubscribe) {
+      settingsUnsubscribe();
+      settingsUnsubscribe = null;
+    }
   });
 
   function handleSave() {
@@ -26,9 +37,6 @@
 
     if (confirmed) {
       settingsStore.reset();
-      settingsStore.subscribe((s) => {
-        settings = JSON.parse(JSON.stringify(s));
-      });
     }
   }
 
@@ -232,7 +240,7 @@
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-lg);
   }
 
   .settings-header {
@@ -411,7 +419,7 @@
 
   .save-btn {
     background: var(--accent-color);
-    color: white;
+    color: var(--color-text-on-accent);
   }
 
   .save-btn:hover {

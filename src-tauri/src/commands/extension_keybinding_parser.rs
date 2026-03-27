@@ -1,48 +1,44 @@
-use serde_json::Value;
 use crate::commands::{Keybinding, KeybindingRegistry};
+use serde_json::Value;
 use tauri::State;
 
 /// Parse keybinding contributions from extension package.json and register them
 #[tauri::command]
 pub async fn parse_and_register_extension_keybindings(
-    extension_id: String,
-    package_json: Value,
-    keybinding_registry: State<'_, KeybindingRegistry>,
+    extension_id: String, package_json: Value, keybinding_registry: State<'_, KeybindingRegistry>,
 ) -> Result<usize, String> {
-    let contributes = package_json.get("contributes")
-        .ok_or("No contributes section in package.json")?;
+    let contributes =
+        package_json.get("contributes").ok_or("No contributes section in package.json")?;
 
     let keybindings = contributes.get("keybindings");
     if keybindings.is_none() {
-        // No keybindings contributed, that's fine
         return Ok(0);
     }
 
-    let keybindings_array = keybindings.unwrap().as_array()
-        .ok_or("Keybindings must be an array")?;
+    let keybindings_array =
+        keybindings.unwrap().as_array().ok_or("Keybindings must be an array")?;
 
     let mut count = 0;
 
     for kb_value in keybindings_array {
-        let kb_obj = kb_value.as_object()
-            .ok_or("Keybinding must be an object")?;
+        let kb_obj = kb_value.as_object().ok_or("Keybinding must be an object")?;
 
         // Extract command
-        let command = kb_obj.get("command")
+        let command = kb_obj
+            .get("command")
             .and_then(|v| v.as_str())
             .ok_or("Keybinding must have a command")?
             .to_string();
 
         // Extract key
-        let key = kb_obj.get("key")
+        let key = kb_obj
+            .get("key")
             .and_then(|v| v.as_str())
             .ok_or("Keybinding must have a key")?
             .to_string();
 
         // Extract optional fields
-        let when = kb_obj.get("when")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let when = kb_obj.get("when").and_then(|v| v.as_str()).map(|s| s.to_string());
 
         // Platform-specific key (mac, win, linux)
         let mut platform = None;

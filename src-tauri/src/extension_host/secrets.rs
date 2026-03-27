@@ -4,7 +4,6 @@
  * Uses OS-native secure storage (Keychain/Credential Manager/Secret Service)
  * to store extension secrets securely.
  */
-
 use keyring::Entry;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -18,9 +17,7 @@ pub struct SecretStorage {
 
 impl SecretStorage {
     pub fn new() -> Self {
-        Self {
-            cache: Mutex::new(HashMap::new()),
-        }
+        Self { cache: Mutex::new(HashMap::new()) }
     }
 
     /// Get a secret for an extension
@@ -29,7 +26,7 @@ impl SecretStorage {
 
         // Check cache first
         {
-            let cache = self.cache.lock().unwrap();
+            let cache = self.cache.lock().expect("secrets cache lock poisoned");
             if let Some(value) = cache.get(&full_key) {
                 return Ok(Some(value.clone()));
             }
@@ -41,14 +38,14 @@ impl SecretStorage {
                 match entry.get_password() {
                     Ok(password) => {
                         // Cache it
-                        let mut cache = self.cache.lock().unwrap();
+                        let mut cache = self.cache.lock().expect("secrets cache lock poisoned");
                         cache.insert(full_key, password.clone());
                         Ok(Some(password))
-                    },
+                    }
                     Err(keyring::Error::NoEntry) => Ok(None),
                     Err(e) => Err(format!("Failed to retrieve secret: {}", e)),
                 }
-            },
+            }
             Err(e) => Err(format!("Failed to access keychain: {}", e)),
         }
     }
@@ -60,15 +57,14 @@ impl SecretStorage {
         // Store in OS keychain
         match Entry::new(SERVICE_NAME, &full_key) {
             Ok(entry) => {
-                entry.set_password(value)
-                    .map_err(|e| format!("Failed to store secret: {}", e))?;
+                entry.set_password(value).map_err(|e| format!("Failed to store secret: {}", e))?;
 
                 // Update cache
-                let mut cache = self.cache.lock().unwrap();
+                let mut cache = self.cache.lock().expect("secrets cache lock poisoned");
                 cache.insert(full_key, value.to_string());
 
                 Ok(())
-            },
+            }
             Err(e) => Err(format!("Failed to access keychain: {}", e)),
         }
     }
@@ -83,13 +79,13 @@ impl SecretStorage {
                 match entry.delete_password() {
                     Ok(()) | Err(keyring::Error::NoEntry) => {
                         // Remove from cache
-                        let mut cache = self.cache.lock().unwrap();
+                        let mut cache = self.cache.lock().expect("secrets cache lock poisoned");
                         cache.remove(&full_key);
                         Ok(())
-                    },
+                    }
                     Err(e) => Err(format!("Failed to delete secret: {}", e)),
                 }
-            },
+            }
             Err(e) => Err(format!("Failed to access keychain: {}", e)),
         }
     }
@@ -97,7 +93,7 @@ impl SecretStorage {
     /// Delete all secrets for an extension (used when uninstalling)
     pub fn delete_all_for_extension(&self, extension_id: &str) -> Result<(), String> {
         // Remove from cache
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.lock().expect("secrets cache lock poisoned");
         cache.retain(|k, _| !k.starts_with(&format!("{}:", extension_id)));
         drop(cache);
 

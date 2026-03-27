@@ -43,10 +43,7 @@ pub struct StatusBarRegistry {
 
 impl StatusBarRegistry {
     pub fn new(app_handle: AppHandle) -> Self {
-        Self {
-            items: Arc::new(RwLock::new(HashMap::new())),
-            app_handle,
-        }
+        Self { items: Arc::new(RwLock::new(HashMap::new())), app_handle }
     }
 
     /// Create a unique key for a status bar item
@@ -56,11 +53,7 @@ impl StatusBarRegistry {
 
     /// Create a new status bar item
     pub fn create_item(
-        &self,
-        owner: String,
-        id: String,
-        alignment: StatusBarAlignment,
-        priority: Option<i32>,
+        &self, owner: String, id: String, alignment: StatusBarAlignment, priority: Option<i32>,
     ) -> Result<String, String> {
         let key = Self::item_key(&owner, &id);
 
@@ -88,19 +81,13 @@ impl StatusBarRegistry {
 
     /// Update an existing status bar item
     pub fn update_item(
-        &self,
-        key: String,
-        text: Option<String>,
-        tooltip: Option<String>,
-        color: Option<String>,
-        background_color: Option<String>,
-        command: Option<StatusBarCommand>,
+        &self, key: String, text: Option<String>, tooltip: Option<String>, color: Option<String>,
+        background_color: Option<String>, command: Option<StatusBarCommand>,
     ) -> Result<(), String> {
         let mut items = self.items.write().map_err(|e| e.to_string())?;
 
-        let item = items
-            .get_mut(&key)
-            .ok_or_else(|| format!("Status bar item not found: {}", key))?;
+        let item =
+            items.get_mut(&key).ok_or_else(|| format!("Status bar item not found: {}", key))?;
 
         if let Some(text) = text {
             item.text = text;
@@ -134,9 +121,8 @@ impl StatusBarRegistry {
     pub fn show_item(&self, key: String) -> Result<(), String> {
         let mut items = self.items.write().map_err(|e| e.to_string())?;
 
-        let item = items
-            .get_mut(&key)
-            .ok_or_else(|| format!("Status bar item not found: {}", key))?;
+        let item =
+            items.get_mut(&key).ok_or_else(|| format!("Status bar item not found: {}", key))?;
 
         if !item.visible {
             item.visible = true;
@@ -151,9 +137,8 @@ impl StatusBarRegistry {
     pub fn hide_item(&self, key: String) -> Result<(), String> {
         let mut items = self.items.write().map_err(|e| e.to_string())?;
 
-        let item = items
-            .get_mut(&key)
-            .ok_or_else(|| format!("Status bar item not found: {}", key))?;
+        let item =
+            items.get_mut(&key).ok_or_else(|| format!("Status bar item not found: {}", key))?;
 
         if item.visible {
             item.visible = false;
@@ -168,9 +153,8 @@ impl StatusBarRegistry {
     pub fn dispose_item(&self, key: String) -> Result<(), String> {
         let mut items = self.items.write().map_err(|e| e.to_string())?;
 
-        let item = items
-            .remove(&key)
-            .ok_or_else(|| format!("Status bar item not found: {}", key))?;
+        let item =
+            items.remove(&key).ok_or_else(|| format!("Status bar item not found: {}", key))?;
 
         drop(items); // Release lock before emitting
 
@@ -184,13 +168,10 @@ impl StatusBarRegistry {
 
     /// Get all visible status bar items sorted by priority
     pub fn get_visible_items(&self) -> Vec<StatusBarItem> {
-        let items = self.items.read().unwrap();
+        let items = self.items.read().expect("status_bar_registry read lock poisoned");
 
-        let mut visible_items: Vec<StatusBarItem> = items
-            .values()
-            .filter(|item| item.visible)
-            .cloned()
-            .collect();
+        let mut visible_items: Vec<StatusBarItem> =
+            items.values().filter(|item| item.visible).cloned().collect();
 
         // Sort by priority (higher priority first)
         visible_items.sort_by(|a, b| b.priority.cmp(&a.priority));
@@ -200,7 +181,7 @@ impl StatusBarRegistry {
 
     /// Get a specific status bar item
     pub fn get_item(&self, key: &str) -> Option<StatusBarItem> {
-        let items = self.items.read().unwrap();
+        let items = self.items.read().expect("status_bar_registry read lock poisoned");
         items.get(key).cloned()
     }
 
@@ -214,9 +195,8 @@ impl StatusBarRegistry {
             .map(|(key, _)| key.clone())
             .collect();
 
-        let had_visible = keys_to_remove
-            .iter()
-            .any(|key| items.get(key).map(|i| i.visible).unwrap_or(false));
+        let had_visible =
+            keys_to_remove.iter().any(|key| items.get(key).map(|i| i.visible).unwrap_or(false));
 
         for key in keys_to_remove {
             items.remove(&key);
@@ -236,10 +216,7 @@ impl StatusBarRegistry {
     fn emit_items_changed(&self) {
         let visible_items = self.get_visible_items();
 
-        if let Err(e) = self
-            .app_handle
-            .emit("status-bar-items-changed", &visible_items)
-        {
+        if let Err(e) = self.app_handle.emit("status-bar-items-changed", &visible_items) {
             eprintln!("[StatusBarRegistry] Failed to emit event: {}", e);
         }
     }

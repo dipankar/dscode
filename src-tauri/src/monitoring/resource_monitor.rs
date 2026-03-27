@@ -3,7 +3,6 @@
  *
  * Tracks system resources used by the application and extension host
  */
-
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use sysinfo::{Pid, System};
@@ -40,17 +39,14 @@ impl ResourceMonitor {
     pub fn new() -> Self {
         let main_pid = Pid::from(std::process::id() as usize);
 
-        Self {
-            main_pid,
-            extension_host_pid: Arc::new(Mutex::new(None)),
-        }
+        Self { main_pid, extension_host_pid: Arc::new(Mutex::new(None)) }
     }
 
     /**
      * Set the extension host PID for tracking
      */
     pub fn set_extension_host_pid(&self, pid: u32) {
-        let mut ext_pid = self.extension_host_pid.lock().unwrap();
+        let mut ext_pid = self.extension_host_pid.lock().expect("extension_host_pid lock poisoned");
         *ext_pid = Some(Pid::from(pid as usize));
         println!("[ResourceMonitor] Tracking extension host PID: {}", pid);
     }
@@ -69,7 +65,8 @@ impl ResourceMonitor {
         system.refresh_cpu_usage();
         system.refresh_process(self.main_pid);
 
-        let ext_host_pid = self.extension_host_pid.lock().unwrap();
+        let ext_host_pid =
+            self.extension_host_pid.lock().expect("extension_host_pid lock poisoned");
         if let Some(pid) = *ext_host_pid {
             system.refresh_process(pid);
         }
@@ -78,18 +75,22 @@ impl ResourceMonitor {
         println!("[ResourceMonitor] System info refreshed");
 
         // Get main process metrics
-        let main_process = system.process(self.main_pid).map(|p| ProcessMetrics {
-            cpu_percent: p.cpu_usage(),
-            memory_mb: p.memory() as f64 / 1024.0 / 1024.0,
-            pid: self.main_pid.as_u32() as u32,
-        }).unwrap_or(ProcessMetrics {
-            cpu_percent: 0.0,
-            memory_mb: 0.0,
-            pid: self.main_pid.as_u32() as u32,
-        });
+        let main_process = system
+            .process(self.main_pid)
+            .map(|p| ProcessMetrics {
+                cpu_percent: p.cpu_usage(),
+                memory_mb: p.memory() as f64 / 1024.0 / 1024.0,
+                pid: self.main_pid.as_u32() as u32,
+            })
+            .unwrap_or(ProcessMetrics {
+                cpu_percent: 0.0,
+                memory_mb: 0.0,
+                pid: self.main_pid.as_u32() as u32,
+            });
 
         // Get extension host metrics if available
-        let ext_host_pid = self.extension_host_pid.lock().unwrap();
+        let ext_host_pid =
+            self.extension_host_pid.lock().expect("extension_host_pid lock poisoned");
         let extension_host = ext_host_pid.and_then(|pid| {
             system.process(pid).map(|p| ProcessMetrics {
                 cpu_percent: p.cpu_usage(),
@@ -109,14 +110,13 @@ impl ResourceMonitor {
         ResourceMetrics {
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_millis() as u64,
             main_process,
             extension_host,
             system: system_metrics,
         }
     }
-
 }
 
 impl Default for ResourceMonitor {

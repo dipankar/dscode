@@ -1,17 +1,26 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import { variables, scopes } from '../lib/stores';
   import type { Variable, Scope } from '../lib/types';
 
   let currentScopes: Scope[] = [];
   let currentVariables: Variable[] = [];
   let expandedItems = new Set<string>();
+  let scopesUnsubscribe: (() => void) | null = null;
+  let variablesUnsubscribe: (() => void) | null = null;
 
-  scopes.subscribe((s) => {
-    currentScopes = s;
+  onMount(() => {
+    scopesUnsubscribe = scopes.subscribe((s) => {
+      currentScopes = s;
+    });
+    variablesUnsubscribe = variables.subscribe((v) => {
+      currentVariables = v;
+    });
   });
 
-  variables.subscribe((v) => {
-    currentVariables = v;
+  onDestroy(() => {
+    if (scopesUnsubscribe) scopesUnsubscribe();
+    if (variablesUnsubscribe) variablesUnsubscribe();
   });
 
   function toggleExpand(itemId: string) {
@@ -50,10 +59,7 @@
     {:else}
       {#each currentScopes as scope}
         <div class="scope-section">
-          <button
-            class="scope-header"
-            on:click={() => toggleExpand(`scope-${scope.name}`)}
-          >
+          <button class="scope-header" on:click={() => toggleExpand(`scope-${scope.name}`)}>
             <span class="expand-icon" class:expanded={expandedItems.has(`scope-${scope.name}`)}>
               ▶
             </span>
@@ -259,7 +265,7 @@
   }
 
   .variable-value {
-    color: #ce9178;
+    color: var(--color-debug-variable);
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;

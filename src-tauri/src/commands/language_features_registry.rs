@@ -414,10 +414,7 @@ impl LanguageFeaturesRegistry {
     }
 
     fn register_provider<T: OwnedProvider>(
-        &self,
-        providers: &Arc<RwLock<Vec<T>>>,
-        provider: T,
-        label: &str,
+        &self, providers: &Arc<RwLock<Vec<T>>>, provider: T, label: &str,
     ) -> Result<String, String> {
         let id = provider.id().to_string();
         let mut providers = providers.write().map_err(|e| e.to_string())?;
@@ -429,12 +426,9 @@ impl LanguageFeaturesRegistry {
     }
 
     fn get_matching_providers<T: SelectableProvider + Clone>(
-        &self,
-        providers: &Arc<RwLock<Vec<T>>>,
-        language: &str,
-        uri: &str,
+        &self, providers: &Arc<RwLock<Vec<T>>>, language: &str, uri: &str,
     ) -> Vec<T> {
-        let providers = providers.read().unwrap();
+        let providers = providers.read().expect("language_features_providers read lock poisoned");
         providers
             .iter()
             .filter(|provider| provider.matches_document(language, uri))
@@ -443,26 +437,19 @@ impl LanguageFeaturesRegistry {
     }
 
     fn get_all_providers<T: Clone>(&self, providers: &Arc<RwLock<Vec<T>>>) -> Vec<T> {
-        let providers = providers.read().unwrap();
+        let providers = providers.read().expect("language_features_providers read lock poisoned");
         providers.iter().cloned().collect()
     }
 
     fn clear_owned_provider_list<T: OwnedProvider>(
-        &self,
-        providers: &Arc<RwLock<Vec<T>>>,
-        owner: &str,
+        &self, providers: &Arc<RwLock<Vec<T>>>, owner: &str,
     ) -> Result<(), String> {
         let mut providers = providers.write().map_err(|e| e.to_string())?;
         providers.retain(|provider| provider.owner() != owner);
         Ok(())
     }
 
-    register_provider_method!(
-        register_hover_provider,
-        hover_providers,
-        HoverProvider,
-        "hover"
-    );
+    register_provider_method!(register_hover_provider, hover_providers, HoverProvider, "hover");
     register_provider_method!(
         register_definition_provider,
         definition_providers,
@@ -511,12 +498,7 @@ impl LanguageFeaturesRegistry {
         FoldingRangeProvider,
         "folding range"
     );
-    register_provider_method!(
-        register_rename_provider,
-        rename_providers,
-        RenameProvider,
-        "rename"
-    );
+    register_provider_method!(register_rename_provider, rename_providers, RenameProvider, "rename");
     register_provider_method!(
         register_document_symbols_provider,
         document_symbols_providers,
@@ -559,12 +541,7 @@ impl LanguageFeaturesRegistry {
         InlineValuesProvider,
         "inline values"
     );
-    register_provider_method!(
-        register_color_provider,
-        color_providers,
-        ColorProvider,
-        "color"
-    );
+    register_provider_method!(register_color_provider, color_providers, ColorProvider, "color");
     register_provider_method!(
         register_selection_range_provider,
         selection_range_providers,
@@ -604,11 +581,7 @@ impl LanguageFeaturesRegistry {
         references_providers,
         ReferencesProvider
     );
-    get_matching_provider_method!(
-        get_code_lens_providers,
-        code_lens_providers,
-        CodeLensProvider
-    );
+    get_matching_provider_method!(get_code_lens_providers, code_lens_providers, CodeLensProvider);
     get_matching_provider_method!(
         get_document_highlight_providers,
         document_highlight_providers,
@@ -668,9 +641,7 @@ impl LanguageFeaturesRegistry {
 
     /// Publish diagnostics for a document
     pub fn publish_diagnostics(
-        &self,
-        uri: String,
-        diagnostics: Vec<Diagnostic>,
+        &self, uri: String, diagnostics: Vec<Diagnostic>,
     ) -> Result<(), String> {
         {
             let mut all_diagnostics = self.diagnostics.write().map_err(|e| e.to_string())?;
@@ -683,10 +654,7 @@ impl LanguageFeaturesRegistry {
         }
 
         // Emit event to frontend
-        if let Err(e) = self
-            .app_handle
-            .emit("diagnostics-changed", &(uri, diagnostics))
-        {
+        if let Err(e) = self.app_handle.emit("diagnostics-changed", &(uri, diagnostics)) {
             eprintln!("[LanguageFeatures] Failed to emit diagnostics event: {}", e);
         }
 
@@ -695,13 +663,13 @@ impl LanguageFeaturesRegistry {
 
     /// Get diagnostics for a document
     pub fn get_diagnostics(&self, uri: &str) -> Vec<Diagnostic> {
-        let all_diagnostics = self.diagnostics.read().unwrap();
+        let all_diagnostics = self.diagnostics.read().expect("diagnostics read lock poisoned");
         all_diagnostics.get(uri).cloned().unwrap_or_default()
     }
 
     /// Get all diagnostics
     pub fn get_all_diagnostics(&self) -> HashMap<String, Vec<Diagnostic>> {
-        let all_diagnostics = self.diagnostics.read().unwrap();
+        let all_diagnostics = self.diagnostics.read().expect("diagnostics read lock poisoned");
         all_diagnostics.clone()
     }
 
@@ -717,10 +685,7 @@ impl LanguageFeaturesRegistry {
 
         // Emit event to frontend
         if let Err(e) = self.app_handle.emit("diagnostics-cleared", owner) {
-            eprintln!(
-                "[LanguageFeatures] Failed to emit diagnostics cleared event: {}",
-                e
-            );
+            eprintln!("[LanguageFeatures] Failed to emit diagnostics cleared event: {}", e);
         }
 
         Ok(())
@@ -752,10 +717,7 @@ impl LanguageFeaturesRegistry {
         // Also clear diagnostics
         self.clear_diagnostics(owner)?;
 
-        println!(
-            "[LanguageFeatures] Cleared all providers for owner: {}",
-            owner
-        );
+        println!("[LanguageFeatures] Cleared all providers for owner: {}", owner);
 
         Ok(())
     }

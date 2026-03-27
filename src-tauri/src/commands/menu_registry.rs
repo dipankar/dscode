@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 /// Menu contribution locations (matches VS Code menu IDs)
@@ -114,10 +114,7 @@ pub struct MenuRegistry {
 
 impl MenuRegistry {
     pub fn new(app_handle: AppHandle) -> Self {
-        let registry = Self {
-            menus: Arc::new(RwLock::new(HashMap::new())),
-            app_handle,
-        };
+        let registry = Self { menus: Arc::new(RwLock::new(HashMap::new())), app_handle };
 
         // Register built-in menu items
         registry.register_builtin_menus();
@@ -148,7 +145,6 @@ impl MenuRegistry {
                 owner: "__builtin__".to_string(),
                 alt: None,
             },
-
             // Explorer context menu
             MenuItem {
                 command: "explorer.newFile".to_string(),
@@ -219,10 +215,9 @@ impl MenuRegistry {
 
     /// Register a menu item
     pub fn register_menu_item(&self, item: MenuItem) -> Result<(), String> {
-        let location = item.location.clone()
-            .unwrap_or_else(|| "commandPalette".to_string());
+        let location = item.location.clone().unwrap_or_else(|| "commandPalette".to_string());
 
-        let mut menus = self.menus.write().unwrap();
+        let mut menus = self.menus.write().expect("menu_registry write lock poisoned");
 
         let items = menus.entry(location.clone()).or_insert_with(Vec::new);
         items.push(item.clone());
@@ -248,21 +243,16 @@ impl MenuRegistry {
 
     /// Get menu items for a specific location
     pub fn get_menu_items(&self, location: &str) -> Vec<MenuItem> {
-        let menus = self.menus.read().unwrap();
-        menus.get(location)
-            .cloned()
-            .unwrap_or_default()
+        let menus = self.menus.read().expect("menu_registry read lock poisoned");
+        menus.get(location).cloned().unwrap_or_default()
     }
 
     /// Get menu items for a location, filtered by when clause context
-    pub fn get_menu_items_filtered(
-        &self,
-        location: &str,
-        context: &MenuContext,
-    ) -> Vec<MenuItem> {
+    pub fn get_menu_items_filtered(&self, location: &str, context: &MenuContext) -> Vec<MenuItem> {
         let items = self.get_menu_items(location);
 
-        items.into_iter()
+        items
+            .into_iter()
             .filter(|item| {
                 if let Some(when_clause) = &item.when {
                     self.evaluate_when_clause(when_clause, context)
@@ -281,15 +271,9 @@ impl MenuRegistry {
             "editorHasSelection" => context.has_selection,
             "editorTextFocus" => context.editor_focused,
             "explorerViewletFocus" => context.explorer_focused,
-            "resourceExtname == .rs" => {
-                context.resource_extension.as_deref() == Some("rs")
-            }
-            "resourceExtname == .ts" => {
-                context.resource_extension.as_deref() == Some("ts")
-            }
-            "resourceExtname == .js" => {
-                context.resource_extension.as_deref() == Some("js")
-            }
+            "resourceExtname == .rs" => context.resource_extension.as_deref() == Some("rs"),
+            "resourceExtname == .ts" => context.resource_extension.as_deref() == Some("ts"),
+            "resourceExtname == .js" => context.resource_extension.as_deref() == Some("js"),
             _ => {
                 // Default to true for unknown clauses (permissive)
                 // TODO: Implement proper when clause parser
@@ -300,7 +284,7 @@ impl MenuRegistry {
 
     /// Remove all menu items from a specific owner (when extension deactivates)
     pub fn clear_menu_items_by_owner(&self, owner: &str) {
-        let mut menus = self.menus.write().unwrap();
+        let mut menus = self.menus.write().expect("menu_registry write lock poisoned");
 
         for items in menus.values_mut() {
             items.retain(|item| item.owner != owner);
@@ -312,7 +296,7 @@ impl MenuRegistry {
 
     /// Get all locations that have menu items
     pub fn get_locations(&self) -> Vec<String> {
-        let menus = self.menus.read().unwrap();
+        let menus = self.menus.read().expect("menu_registry read lock poisoned");
         menus.keys().cloned().collect()
     }
 }
@@ -362,10 +346,7 @@ impl MenuContext {
 
     pub fn with_resource(mut self, path: String) -> Self {
         // Extract extension from path
-        if let Some(ext) = std::path::Path::new(&path)
-            .extension()
-            .and_then(|e| e.to_str())
-        {
+        if let Some(ext) = std::path::Path::new(&path).extension().and_then(|e| e.to_str()) {
             self.resource_extension = Some(ext.to_string());
         }
         self.resource_path = Some(path);
@@ -379,14 +360,8 @@ mod tests {
 
     #[test]
     fn test_menu_location_parsing() {
-        assert_eq!(
-            MenuLocation::from_str("editor/context"),
-            MenuLocation::EditorContext
-        );
-        assert_eq!(
-            MenuLocation::from_str("explorer/context"),
-            MenuLocation::ExplorerContext
-        );
+        assert_eq!(MenuLocation::from_str("editor/context"), MenuLocation::EditorContext);
+        assert_eq!(MenuLocation::from_str("explorer/context"), MenuLocation::ExplorerContext);
     }
 
     #[test]

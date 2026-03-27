@@ -6,7 +6,6 @@
  * - Session lifecycle management
  * - Request routing
  */
-
 use super::adapter::DebugAdapter;
 use super::types::*;
 use std::collections::HashMap;
@@ -39,10 +38,7 @@ impl DebugAdapterPool {
 
     /// Register a debug adapter configuration
     pub async fn register_adapter(
-        &self,
-        adapter_type: String,
-        adapter_command: String,
-        adapter_args: Vec<String>,
+        &self, adapter_type: String, adapter_command: String, adapter_args: Vec<String>,
     ) {
         let mut configs = self.configurations.write().await;
         configs.insert(adapter_type.clone(), (adapter_command, adapter_args));
@@ -50,10 +46,7 @@ impl DebugAdapterPool {
     }
 
     /// Create and start a new debug session
-    pub async fn create_session(
-        &self,
-        session: DebugSession,
-    ) -> Result<Arc<DebugAdapter>, String> {
+    pub async fn create_session(&self, session: DebugSession) -> Result<Arc<DebugAdapter>, String> {
         // Get adapter configuration
         let (command, args) = {
             let configs = self.configurations.read().await;
@@ -105,7 +98,7 @@ impl DebugAdapterPool {
         let mut adapters = self.adapters.write().await;
 
         if let Some(adapter_info) = adapters.remove(session_id) {
-            adapter_info.adapter.stop()?;
+            adapter_info.adapter.stop().await?;
             println!("[Debug Pool] Stopped session {}", session_id);
             Ok(())
         } else {
@@ -113,12 +106,11 @@ impl DebugAdapterPool {
         }
     }
 
-    /// Stop all debug sessions
     pub async fn stop_all(&self) -> Result<(), String> {
         let mut adapters = self.adapters.write().await;
 
         for (session_id, adapter_info) in adapters.iter() {
-            adapter_info.adapter.stop()?;
+            adapter_info.adapter.stop().await?;
             println!("[Debug Pool] Stopped session {}", session_id);
         }
 
@@ -142,10 +134,7 @@ impl DebugAdapterPool {
             *states.entry(info.state.clone()).or_insert(0) += 1;
         }
 
-        DebugPoolStats {
-            total_sessions,
-            states,
-        }
+        DebugPoolStats { total_sessions, states }
     }
 }
 

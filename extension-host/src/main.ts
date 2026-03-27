@@ -67,11 +67,6 @@ class ExtensionHost {
       }
     });
 
-    this.bridge.on('executeCommand', async (command: string, args: any[]) => {
-      // Command execution will be handled by vscode.commands API
-      console.error(`[ExtensionHost] Execute command: ${command}`, args);
-    });
-
     // Extension listing - return all loaded extensions
     this.bridge.on('list-extensions', async (payload: any, respond: Function) => {
       if (!this.extensionManager) {
@@ -79,7 +74,7 @@ class ExtensionHost {
         return;
       }
 
-      const extensions = this.extensionManager.getAllExtensions().map(ext => ({
+      const extensions = this.extensionManager.getAllExtensions().map((ext) => ({
         id: ext.id,
         name: ext.manifest.name,
         displayName: ext.manifest.displayName || ext.manifest.name,
@@ -89,7 +84,7 @@ class ExtensionHost {
         path: ext.extensionPath,
         isActive: ext.isActive,
         activationEvents: ext.manifest.activationEvents || [],
-        contributes: ext.manifest.contributes || {}
+        contributes: ext.manifest.contributes || {},
       }));
 
       respond({ extensions });

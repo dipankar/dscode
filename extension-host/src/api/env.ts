@@ -6,6 +6,7 @@
 
 import { ExtensionHostBridge } from '../bridge';
 import { Event, EventEmitter } from './events';
+import { Uri } from './uri';
 
 // Environment
 export interface EnvironmentAPI {
@@ -37,7 +38,7 @@ export interface Clipboard {
 
 export enum UIKind {
   Desktop = 1,
-  Web = 2
+  Web = 2,
 }
 
 export enum LogLevel {
@@ -46,14 +47,14 @@ export enum LogLevel {
   Debug = 2,
   Info = 3,
   Warning = 4,
-  Error = 5
+  Error = 5,
 }
 
 class ClipboardImpl implements Clipboard {
   constructor(private bridge: ExtensionHostBridge) {}
 
   async readText(): Promise<string> {
-    const result = await this.bridge.request('clipboardReadText', {}) as { text?: string };
+    const result = (await this.bridge.request('clipboardReadText', {})) as { text?: string };
     return result.text || '';
   }
 
@@ -92,39 +93,42 @@ export class EnvironmentAPIImpl implements EnvironmentAPI {
     return this._clipboard;
   }
 
-  async asExternalUri(target: any): Promise<any> {
-    return target;
+  asExternalUri(target: Uri): Promise<Uri> {
+    return Promise.resolve(target);
   }
 
-  async openExternal(target: any): Promise<boolean> {
+  async openExternal(target: Uri): Promise<boolean> {
     this.bridge.send('openExternal', { uri: target });
     return true;
   }
 
-  createTelemetryLogger(sender: TelemetrySender, options?: TelemetryLoggerOptions): TelemetryLogger {
+  createTelemetryLogger(
+    sender: TelemetrySender,
+    options?: TelemetryLoggerOptions
+  ): TelemetryLogger {
     return new TelemetryLoggerImpl(sender, options);
   }
 }
 
 // Telemetry API types
 export interface TelemetrySender {
-  sendEventData(eventName: string, data?: Record<string, any>): void;
-  sendErrorData(error: Error, data?: Record<string, any>): void;
+  sendEventData(eventName: string, data?: Record<string, unknown>): void;
+  sendErrorData(error: Error, data?: Record<string, unknown>): void;
   flush?(): void | Promise<void>;
 }
 
 export interface TelemetryLoggerOptions {
   ignoreBuiltInCommonProperties?: boolean;
   ignoreUnhandledErrors?: boolean;
-  additionalCommonProperties?: Record<string, any>;
+  additionalCommonProperties?: Record<string, unknown>;
 }
 
 export interface TelemetryLogger {
   readonly onDidChangeEnableStates: Event<TelemetryLogger>;
   readonly isUsageEnabled: boolean;
   readonly isErrorsEnabled: boolean;
-  logUsage(eventName: string, data?: Record<string, any>): void;
-  logError(eventNameOrError: string | Error, data?: Record<string, any>): void;
+  logUsage(eventName: string, data?: Record<string, unknown>): void;
+  logError(eventNameOrError: string | Error, data?: Record<string, unknown>): void;
   dispose(): void;
 }
 
@@ -139,13 +143,13 @@ class TelemetryLoggerImpl implements TelemetryLogger {
     private options?: TelemetryLoggerOptions
   ) {}
 
-  logUsage(eventName: string, data?: Record<string, any>): void {
+  logUsage(eventName: string, data?: Record<string, unknown>): void {
     if (this.isUsageEnabled) {
       this.sender.sendEventData(eventName, data);
     }
   }
 
-  logError(eventNameOrError: string | Error, data?: Record<string, any>): void {
+  logError(eventNameOrError: string | Error, data?: Record<string, unknown>): void {
     if (this.isErrorsEnabled) {
       if (eventNameOrError instanceof Error) {
         this.sender.sendErrorData(eventNameOrError, data);
@@ -164,18 +168,24 @@ class TelemetryLoggerImpl implements TelemetryLogger {
 // Extensions
 export class Extension<T> {
   readonly id!: string;
-  readonly extensionUri!: any;
+  readonly extensionUri!: Uri;
   readonly extensionPath!: string;
-  get isActive(): boolean { return false; }
-  readonly packageJSON!: any;
+  get isActive(): boolean {
+    return false;
+  }
+  readonly packageJSON!: Record<string, unknown>;
   readonly extensionKind!: ExtensionKind;
-  get exports(): T { return undefined as any; }
-  activate(): Promise<T> { return Promise.resolve(undefined as any); }
+  get exports(): T {
+    return undefined as unknown as T;
+  }
+  activate(): Promise<T> {
+    return Promise.resolve(undefined as unknown as T);
+  }
 }
 
 export enum ExtensionKind {
   UI = 1,
-  Workspace = 2
+  Workspace = 2,
 }
 
 export interface ExtensionMode {
@@ -187,22 +197,27 @@ export interface ExtensionMode {
 class ExtensionImpl<T> extends Extension<T> {
   private _isActive: boolean;
   private _exports: T;
+  readonly id: string;
+  readonly extensionUri: Uri;
+  readonly extensionPath: string;
+  readonly packageJSON: Record<string, unknown>;
+  readonly extensionKind: ExtensionKind;
 
   constructor(
     id: string,
-    extensionUri: any,
+    extensionUri: Uri,
     extensionPath: string,
-    packageJSON: any,
+    packageJSON: Record<string, unknown>,
     extensionKind: ExtensionKind,
     isActive: boolean,
     exports: T
   ) {
     super();
-    (this as any).id = id;
-    (this as any).extensionUri = extensionUri;
-    (this as any).extensionPath = extensionPath;
-    (this as any).packageJSON = packageJSON;
-    (this as any).extensionKind = extensionKind;
+    this.id = id;
+    this.extensionUri = extensionUri;
+    this.extensionPath = extensionPath;
+    this.packageJSON = packageJSON;
+    this.extensionKind = extensionKind;
     this._isActive = isActive;
     this._exports = exports;
   }
@@ -223,29 +238,29 @@ class ExtensionImpl<T> extends Extension<T> {
 
 export class ExtensionsAPI {
   private _onDidChange = new EventEmitter<void>();
-  private _extensions: Extension<any>[] = [];
+  private _extensions: Extension<unknown>[] = [];
 
   readonly onDidChange = this._onDidChange.event;
 
   constructor(private bridge: ExtensionHostBridge) {}
 
-  get all(): readonly Extension<any>[] {
+  get all(): readonly Extension<unknown>[] {
     return this._extensions;
   }
 
-  getExtension<T = any>(extensionId: string): Extension<T> | undefined {
-    return this._extensions.find(ext => ext.id === extensionId);
+  getExtension<T>(extensionId: string): Extension<T> | undefined {
+    return this._extensions.find((ext) => ext.id === extensionId) as Extension<T> | undefined;
   }
 
   registerExtension<T>(
     id: string,
     path: string,
-    packageJSON: any,
+    packageJSON: Record<string, unknown>,
     exports: T
   ): Extension<T> {
     const ext = new ExtensionImpl(
       id,
-      { path },
+      Uri.file(path),
       path,
       packageJSON,
       ExtensionKind.Workspace,

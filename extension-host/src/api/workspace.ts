@@ -5,10 +5,17 @@
  */
 
 import { ExtensionHostBridge } from '../bridge';
-import { Event, EventEmitter, Disposable } from './events';
+import {
+  Event,
+  EventEmitter,
+  Disposable,
+  TextDocumentChangeEvent,
+  ConfigurationChangeEvent,
+  WorkspaceFoldersChangeEvent,
+} from './events';
 import { Uri } from './uri';
 import { WorkspaceEdit, TextEdit } from './textEditor';
-import { Range } from './textDocument';
+import { Range, TextDocument } from './textDocument';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -41,24 +48,39 @@ interface RenameOperation {
   };
 }
 
+export interface OpenTextDocumentResult {
+  uri: { fsPath: string; scheme: string };
+  fileName: string;
+  getText: () => string;
+  lineCount: number;
+}
+
 export interface WorkspaceFolder {
   uri: { fsPath: string; scheme: string };
   name: string;
   index: number;
 }
 
+export interface WorkspaceConfigurationProxy {
+  get: <T>(key: string, defaultValue?: T) => T;
+  has: (key: string) => boolean;
+  update: (key: string, value: unknown, configurationTarget?: string) => Promise<void>;
+  inspect: <T>(key: string) => Record<string, unknown> | undefined;
+  [key: string]: unknown;
+}
+
 export class WorkspaceAPI {
   private workspaceFolders: WorkspaceFolder[] = [];
-  private configurationData: any = {};
+  private configurationData: Record<string, unknown> = {};
   private fileWatchers = new Map<string, FileSystemWatcherImpl>();
 
   // Event emitters
-  private _onDidChangeTextDocument = new EventEmitter<any>();
-  private _onDidSaveTextDocument = new EventEmitter<any>();
-  private _onDidOpenTextDocument = new EventEmitter<any>();
-  private _onDidCloseTextDocument = new EventEmitter<any>();
-  private _onDidChangeWorkspaceFolders = new EventEmitter<any>();
-  private _onDidChangeConfiguration = new EventEmitter<any>();
+  private _onDidChangeTextDocument = new EventEmitter<TextDocumentChangeEvent>();
+  private _onDidSaveTextDocument = new EventEmitter<TextDocument>();
+  private _onDidOpenTextDocument = new EventEmitter<TextDocument>();
+  private _onDidCloseTextDocument = new EventEmitter<TextDocument>();
+  private _onDidChangeWorkspaceFolders = new EventEmitter<WorkspaceFoldersChangeEvent>();
+  private _onDidChangeConfiguration = new EventEmitter<ConfigurationChangeEvent>();
   private _onDidGrantWorkspaceTrust = new EventEmitter<void>();
 
   // Events
@@ -81,27 +103,27 @@ export class WorkspaceAPI {
   }
 
   private setupEventListeners(): void {
-    this.bridge.on('textDocumentChanged', (data: any) => {
+    this.bridge.on('textDocumentChanged', (data: TextDocumentChangeEvent) => {
       this._onDidChangeTextDocument.fire(data);
     });
 
-    this.bridge.on('textDocumentSaved', (data: any) => {
+    this.bridge.on('textDocumentSaved', (data: TextDocument) => {
       this._onDidSaveTextDocument.fire(data);
     });
 
-    this.bridge.on('textDocumentOpened', (data: any) => {
+    this.bridge.on('textDocumentOpened', (data: TextDocument) => {
       this._onDidOpenTextDocument.fire(data);
     });
 
-    this.bridge.on('textDocumentClosed', (data: any) => {
+    this.bridge.on('textDocumentClosed', (data: TextDocument) => {
       this._onDidCloseTextDocument.fire(data);
     });
 
-    this.bridge.on('workspaceFoldersChanged', (data: any) => {
+    this.bridge.on('workspaceFoldersChanged', (data: WorkspaceFoldersChangeEvent) => {
       this._onDidChangeWorkspaceFolders.fire(data);
     });
 
-    this.bridge.on('configurationChanged', (data: any) => {
+    this.bridge.on('configurationChanged', (data: { section?: string; key?: string }) => {
       void this.loadConfiguration();
       const section: string | undefined = data?.section || undefined;
       const key: string | undefined = data?.key || undefined;
@@ -115,24 +137,21 @@ export class WorkspaceAPI {
           if (!changedPath) {
             return true;
           }
-          return (
-            changedPath === testSection ||
-            changedPath.startsWith(`${testSection}.`)
-          );
+          return changedPath === testSection || changedPath.startsWith(`${testSection}.`);
         },
       });
     });
 
-    this.bridge.on('fsWatcher:event', (data: any) => {
+    this.bridge.on('fsWatcher:event', (data: { id?: string; event?: string; path?: string }) => {
       this.handleFileSystemWatcherEvent(data);
     });
   }
 
   private async loadConfiguration() {
     try {
-      const response = await this.bridge.request('workspace-get-configuration', {
+      const response = (await this.bridge.request('workspace-get-configuration', {
         section: null,
-      }) as { config?: any } | null;
+      })) as { config?: Record<string, unknown> } | null;
       this.configurationData = response?.config ?? {};
     } catch (error) {
       console.error('[Workspace] Failed to load configuration:', error);
@@ -194,11 +213,11 @@ export class WorkspaceAPI {
     exclude?: string,
     maxResults?: number
   ): Promise<{ fsPath: string; scheme: string }[]> {
-    const result = await this.bridge.request('workspace-find-files', {
+    const result = (await this.bridge.request('workspace-find-files', {
       include,
       exclude,
       maxResults,
-    }) as { files: string[] };
+    })) as { files: string[] };
 
     return result.files.map((file: string) => ({
       fsPath: file,
@@ -209,7 +228,7 @@ export class WorkspaceAPI {
   /**
    * Open a text document
    */
-  async openTextDocument(uri: string | { fsPath: string }): Promise<any> {
+  async openTextDocument(uri: string | { fsPath: string }): Promise<OpenTextDocumentResult> {
     const filePath = typeof uri === 'string' ? uri : uri.fsPath;
 
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -219,14 +238,13 @@ export class WorkspaceAPI {
       fileName: filePath,
       getText: () => content,
       lineCount: content.split('\n').length,
-      // Add more TextDocument properties as needed
     };
   }
 
   /**
    * Save a text document
    */
-  async saveTextDocument(document: any): Promise<boolean> {
+  async saveTextDocument(document: { fileName: string; getText: () => string }): Promise<boolean> {
     try {
       await this.bridge.request('workspace-save-document', {
         path: document.fileName,
@@ -251,7 +269,8 @@ export class WorkspaceAPI {
       const edits: WorkspaceEditEntry[] = [];
 
       for (const [uri, textEdits] of edit.entries()) {
-        const uriPath = typeof uri === 'string' ? uri : (uri as any).path || (uri as any).fsPath;
+        const uriObj = uri as unknown as { path?: string; fsPath?: string };
+        const uriPath = typeof uri === 'string' ? uri : uriObj.path || uriObj.fsPath || '';
 
         for (const textEdit of textEdits) {
           edits.push({
@@ -259,14 +278,14 @@ export class WorkspaceAPI {
             range: {
               start: {
                 line: textEdit.range.start.line,
-                character: textEdit.range.start.character
+                character: textEdit.range.start.character,
               },
               end: {
                 line: textEdit.range.end.line,
-                character: textEdit.range.end.character
-              }
+                character: textEdit.range.end.character,
+              },
             },
-            newText: textEdit.newText
+            newText: textEdit.newText,
           });
         }
       }
@@ -277,35 +296,44 @@ export class WorkspaceAPI {
       const renameFiles: RenameOperation[] = [];
 
       // Check if edit has file operations (VS Code 1.48+)
-      if (typeof (edit as any)._fileOperations !== 'undefined') {
-        const fileOps = (edit as any)._fileOperations as Map<string, any>;
+      if (
+        typeof (edit as unknown as { _fileOperations?: unknown })._fileOperations !== 'undefined'
+      ) {
+        const fileOps = (
+          edit as unknown as {
+            _fileOperations: Map<
+              string,
+              { type: string; newUri?: string; options?: FileOperation['options'] }
+            >;
+          }
+        )._fileOperations;
         for (const [opUri, op] of fileOps) {
           if (op.type === 'create') {
             createFiles.push({
               uri: opUri,
-              options: op.options
+              options: op.options,
             });
           } else if (op.type === 'delete') {
             deleteFiles.push({
               uri: opUri,
-              options: op.options
+              options: op.options,
             });
           } else if (op.type === 'rename') {
             renameFiles.push({
               oldUri: opUri,
-              newUri: op.newUri,
-              options: op.options
+              newUri: op.newUri ?? '',
+              options: op.options,
             });
           }
         }
       }
 
-      const result = await this.bridge.request('workspace-apply-edit', {
+      const result = (await this.bridge.request('workspace-apply-edit', {
         edits,
         createFiles,
         deleteFiles,
-        renameFiles
-      }) as { success: boolean; failureReason?: string };
+        renameFiles,
+      })) as { success: boolean; failureReason?: string };
 
       if (!result.success) {
         console.error('[Workspace] Apply edit failed:', result.failureReason);
@@ -322,20 +350,24 @@ export class WorkspaceAPI {
   /**
    * Get configuration
    */
-  getConfiguration(section?: string): any {
+  getConfiguration(section?: string): WorkspaceConfigurationProxy {
     return WorkspaceConfiguration(this, section);
   }
 
-  private getSectionData(section?: string): any {
+  private getSectionData(section?: string): unknown {
     if (!section || section.length === 0) {
       return this.configurationData;
     }
 
     const segments = section.split('.').filter(Boolean);
-    let current: any = this.configurationData;
+    let current: Record<string, unknown> = this.configurationData;
     for (const segment of segments) {
       if (current && typeof current === 'object' && segment in current) {
-        current = current[segment];
+        const next = current[segment];
+        current =
+          next && typeof next === 'object' && !Array.isArray(next)
+            ? (next as Record<string, unknown>)
+            : (next as Record<string, unknown>);
       } else {
         return undefined;
       }
@@ -343,17 +375,17 @@ export class WorkspaceAPI {
     return current;
   }
 
-  getConfigurationValue(section: string | undefined, key: string, defaultValue?: any): any {
+  getConfigurationValue(section: string | undefined, key: string, defaultValue?: unknown): unknown {
     const base = this.getSectionData(section);
     if (base === undefined || base === null) {
       return defaultValue;
     }
 
     const segments = key.split('.').filter(Boolean);
-    let current: any = base;
+    let current: Record<string, unknown> = base as Record<string, unknown>;
     for (const segment of segments) {
       if (current && typeof current === 'object' && segment in current) {
-        current = current[segment];
+        current = current[segment] as Record<string, unknown>;
       } else {
         return defaultValue;
       }
@@ -362,7 +394,12 @@ export class WorkspaceAPI {
     return current === undefined ? defaultValue : current;
   }
 
-  async updateConfiguration(section: string | undefined, key: string, value: any, configurationTarget?: any): Promise<void> {
+  async updateConfiguration(
+    section: string | undefined,
+    key: string,
+    value: unknown,
+    configurationTarget?: string
+  ): Promise<void> {
     const payloadValue = value === undefined ? null : value;
 
     await this.bridge.request('workspace-update-configuration', {
@@ -411,7 +448,7 @@ export class WorkspaceAPI {
     return watcher;
   }
 
-  private handleFileSystemWatcherEvent(payload: any) {
+  private handleFileSystemWatcherEvent(payload: { id?: string; event?: string; path?: string }) {
     const id = payload?.id;
     const event = payload?.event;
     const pathValue = payload?.path;
@@ -483,9 +520,11 @@ class FileSystemWatcherImpl implements Disposable {
     this.disposed = true;
     this.workspace.removeWatcher(this.id);
 
-    void this.bridge.request('workspace-unregister-watcher', { id: this.id }).catch((error: any) => {
-      console.error('[Workspace] Failed to unregister file watcher:', error);
-    });
+    void this.bridge
+      .request('workspace-unregister-watcher', { id: this.id })
+      .catch((error: any) => {
+        console.error('[Workspace] Failed to unregister file watcher:', error);
+      });
 
     this._onDidCreate.dispose();
     this._onDidChange.dispose();
@@ -496,23 +535,29 @@ class FileSystemWatcherImpl implements Disposable {
 // Empty configuration proxy for undefined configuration values
 // This allows chained access like config.pylance.indexing.subkey to return undefined
 // instead of throwing "Cannot read properties of undefined"
-const EMPTY_CONFIG: any = new Proxy({}, {
-  get(_target: any, prop: string | symbol): any {
-    // Return undefined for primitive conversions and known methods
-    if (typeof prop === 'symbol') return undefined;
-    if (prop === 'toString' || prop === 'valueOf' || prop === 'toJSON') return () => undefined;
-    // Return itself for any other property access to support deep chaining
-    return EMPTY_CONFIG;
-  },
-  has(): boolean {
-    return false;
+const EMPTY_CONFIG: Record<string, unknown> = new Proxy(
+  {},
+  {
+    get(_target: Record<string, unknown>, prop: string | symbol): unknown {
+      // Return undefined for primitive conversions and known methods
+      if (typeof prop === 'symbol') return undefined;
+      if (prop === 'toString' || prop === 'valueOf' || prop === 'toJSON') return () => undefined;
+      // Return itself for any other property access to support deep chaining
+      return EMPTY_CONFIG;
+    },
+    has(): boolean {
+      return false;
+    },
   }
-});
+);
 
 class WorkspaceConfigurationImpl {
-  constructor(private workspace: WorkspaceAPI, private section?: string) {}
+  constructor(
+    private workspace: WorkspaceAPI,
+    private section?: string
+  ) {}
 
-  get<T = any>(key: string, defaultValue?: T): T {
+  get<T = unknown>(key: string, defaultValue?: T): T {
     const value = this.workspace.getConfigurationValue(this.section, key, defaultValue);
     // Return the value or default - don't use EMPTY_CONFIG here as it breaks array methods
     // Extensions are expected to handle undefined config values
@@ -523,22 +568,24 @@ class WorkspaceConfigurationImpl {
     return this.workspace.getConfigurationValue(this.section, key, undefined) !== undefined;
   }
 
-  update(key: string, value: any, configurationTarget?: any): Promise<void> {
+  update(key: string, value: unknown, configurationTarget?: string): Promise<void> {
     return this.workspace.updateConfiguration(this.section, key, value, configurationTarget);
   }
 
-  inspect<T>(key: string): {
-    key: string;
-    defaultValue?: T;
-    globalValue?: T;
-    workspaceValue?: T;
-    workspaceFolderValue?: T;
-    defaultLanguageValue?: T;
-    globalLanguageValue?: T;
-    workspaceLanguageValue?: T;
-    workspaceFolderLanguageValue?: T;
-    languageIds?: string[];
-  } | undefined {
+  inspect<T>(key: string):
+    | {
+        key: string;
+        defaultValue?: T;
+        globalValue?: T;
+        workspaceValue?: T;
+        workspaceFolderValue?: T;
+        defaultLanguageValue?: T;
+        globalLanguageValue?: T;
+        workspaceLanguageValue?: T;
+        workspaceFolderLanguageValue?: T;
+        languageIds?: string[];
+      }
+    | undefined {
     const value = this.get<T>(key);
     return {
       key: this.section ? `${this.section}.${key}` : key,
@@ -553,28 +600,31 @@ class WorkspaceConfigurationImpl {
  * Create a WorkspaceConfiguration with Proxy support for bracket notation access
  * VS Code allows both config.get('key') and config['key'] access patterns
  */
-function WorkspaceConfiguration(workspace: WorkspaceAPI, section?: string): any {
+function WorkspaceConfiguration(
+  workspace: WorkspaceAPI,
+  section?: string
+): WorkspaceConfigurationProxy {
   const impl = new WorkspaceConfigurationImpl(workspace, section);
 
-  return new Proxy(impl, {
-    get(target: WorkspaceConfigurationImpl, prop: string | symbol): any {
+  return new Proxy(impl as unknown as WorkspaceConfigurationProxy, {
+    get(_target: WorkspaceConfigurationProxy, prop: string | symbol): unknown {
       // Handle known methods first
-      if (prop === 'get') return target.get.bind(target);
-      if (prop === 'has') return target.has.bind(target);
-      if (prop === 'update') return target.update.bind(target);
-      if (prop === 'inspect') return target.inspect.bind(target);
+      if (prop === 'get') return impl.get.bind(impl);
+      if (prop === 'has') return impl.has.bind(impl);
+      if (prop === 'update') return impl.update.bind(impl);
+      if (prop === 'inspect') return impl.inspect.bind(impl);
 
       // Handle symbol properties (like Symbol.toStringTag)
       if (typeof prop === 'symbol') return undefined;
 
       // For any other property access, use get() to retrieve the value
       // This enables config['pylance'] style access
-      // Note: target.get() already returns EMPTY_CONFIG for undefined values
-      return target.get(prop);
+      // Note: impl.get() already returns EMPTY_CONFIG for undefined values
+      return impl.get(prop);
     },
-    has(target: WorkspaceConfigurationImpl, prop: string | symbol): boolean {
+    has(_target: WorkspaceConfigurationProxy, prop: string | symbol): boolean {
       if (typeof prop === 'symbol') return false;
-      return target.has(prop as string);
-    }
+      return impl.has(prop as string);
+    },
   });
 }

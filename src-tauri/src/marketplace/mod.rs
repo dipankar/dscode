@@ -4,12 +4,15 @@
  * Provides access to the official VS Code Extension Marketplace
  * API endpoint: https://marketplace.visualstudio.com/_apis/public/gallery
  */
-
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use zip::ZipArchive;
 
-const MARKETPLACE_API_URL: &str = "https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery";
+static HTTP_CLIENT: once_cell::sync::Lazy<reqwest::Client> =
+    once_cell::sync::Lazy::new(reqwest::Client::new);
+
+const MARKETPLACE_API_URL: &str =
+    "https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery";
 const MARKETPLACE_API_VERSION: &str = "3.0-preview.1";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -103,13 +106,8 @@ struct MarketplaceStatistic {
 
 /// Search the VS Code Marketplace
 pub async fn search_marketplace(
-    query: String,
-    page: i32,
-    page_size: i32,
+    query: String, page: i32, page_size: i32,
 ) -> Result<Vec<MarketplaceExtension>, String> {
-    let client = reqwest::Client::new();
-
-    // Build marketplace query
     let marketplace_query = MarketplaceQuery {
         filters: vec![Filter {
             criteria: vec![Criterion {
@@ -118,14 +116,13 @@ pub async fn search_marketplace(
             }],
             page_number: page,
             page_size,
-            sort_by: 4, // InstallCount
+            sort_by: 4,    // InstallCount
             sort_order: 2, // Descending
         }],
         flags: 0x192, // IncludeVersions | IncludeFiles | IncludeStatistics
     };
 
-    // Make request to marketplace API
-    let response = client
+    let response = HTTP_CLIENT
         .post(MARKETPLACE_API_URL)
         .header("Accept", format!("application/json;api-version={}", MARKETPLACE_API_VERSION))
         .header("Content-Type", "application/json")
@@ -206,20 +203,14 @@ pub async fn search_marketplace(
 
 /// Get detailed information about a specific extension
 pub async fn get_extension_details(
-    publisher: String,
-    extension_name: String,
+    publisher: String, extension_name: String,
 ) -> Result<MarketplaceExtension, String> {
-    let client = reqwest::Client::new();
-
-    // Build marketplace query for specific extension
     let marketplace_query = MarketplaceQuery {
         filters: vec![Filter {
-            criteria: vec![
-                Criterion {
-                    filter_type: 7, // ExtensionName
-                    value: format!("{}.{}", publisher, extension_name),
-                },
-            ],
+            criteria: vec![Criterion {
+                filter_type: 7, // ExtensionName
+                value: format!("{}.{}", publisher, extension_name),
+            }],
             page_number: 1,
             page_size: 1,
             sort_by: 0,
@@ -228,8 +219,7 @@ pub async fn get_extension_details(
         flags: 0x192, // IncludeVersions | IncludeFiles | IncludeStatistics
     };
 
-    // Make request
-    let response = client
+    let response = HTTP_CLIENT
         .post(MARKETPLACE_API_URL)
         .header("Accept", format!("application/json;api-version={}", MARKETPLACE_API_VERSION))
         .header("Content-Type", "application/json")
@@ -248,20 +238,11 @@ pub async fn get_extension_details(
         .map_err(|e| format!("Failed to parse marketplace response: {}", e))?;
 
     // Parse extension
-    let result = marketplace_response
-        .results
-        .first()
-        .ok_or("No results found")?;
+    let result = marketplace_response.results.first().ok_or("No results found")?;
 
-    let ext_raw = result
-        .extensions
-        .first()
-        .ok_or("Extension not found")?;
+    let ext_raw = result.extensions.first().ok_or("Extension not found")?;
 
-    let version = ext_raw
-        .versions
-        .first()
-        .ok_or("No versions found")?;
+    let version = ext_raw.versions.first().ok_or("No versions found")?;
 
     // Get icon URL
     let icon_url = version
@@ -315,21 +296,14 @@ pub async fn get_extension_details(
 
 /// Download extension from marketplace
 pub async fn download_extension(
-    publisher: String,
-    extension_name: String,
-    version: String,
+    publisher: String, extension_name: String, version: String,
 ) -> Result<PathBuf, String> {
-    let client = reqwest::Client::new();
-
-    // First, get the extension details to find the actual download URL
     let marketplace_query = MarketplaceQuery {
         filters: vec![Filter {
-            criteria: vec![
-                Criterion {
-                    filter_type: 7, // ExtensionName
-                    value: format!("{}.{}", publisher, extension_name),
-                },
-            ],
+            criteria: vec![Criterion {
+                filter_type: 7, // ExtensionName
+                value: format!("{}.{}", publisher, extension_name),
+            }],
             page_number: 1,
             page_size: 1,
             sort_by: 0,
@@ -338,7 +312,7 @@ pub async fn download_extension(
         flags: 0x192, // IncludeVersions | IncludeFiles | IncludeStatistics
     };
 
-    let details_response = client
+    let details_response = HTTP_CLIENT
         .post(MARKETPLACE_API_URL)
         .header("Accept", format!("application/json;api-version={}", MARKETPLACE_API_VERSION))
         .header("Content-Type", "application/json")
@@ -369,7 +343,7 @@ pub async fn download_extension(
     println!("[Marketplace] Downloading from: {}", download_url);
 
     // Download the .vsix file with proper headers
-    let response = client
+    let response = HTTP_CLIENT
         .get(&download_url)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) VSCode/1.80.0")
         .header("Accept", "*/*")
@@ -388,59 +362,60 @@ pub async fn download_extension(
         let ct = content_type.to_str().unwrap_or("");
         if !ct.contains("application/octet-stream")
             && !ct.contains("application/zip")
-            && !ct.contains("binary/octet-stream") {
+            && !ct.contains("binary/octet-stream")
+        {
             eprintln!("[Marketplace] Warning: Unexpected content-type: {}", ct);
         }
     }
 
     // Save to temporary file
-    let temp_dir = tempfile::tempdir()
-        .map_err(|e| format!("Failed to create temp directory: {}", e))?;
+    let temp_dir =
+        tempfile::tempdir().map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
-    let vsix_path = temp_dir.path().join(format!("{}.{}-{}.vsix", publisher, extension_name, version));
+    let vsix_path =
+        temp_dir.path().join(format!("{}.{}-{}.vsix", publisher, extension_name, version));
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read response bytes: {}", e))?;
+    let bytes =
+        response.bytes().await.map_err(|e| format!("Failed to read response bytes: {}", e))?;
 
     println!("[Marketplace] Downloaded {} bytes", bytes.len());
 
-    // Validate minimum file size (VSIX should be at least a few KB)
     if bytes.len() < 1024 {
-        return Err(format!("Downloaded file is too small ({} bytes), likely invalid", bytes.len()));
+        return Err(format!(
+            "Downloaded file is too small ({} bytes), likely invalid",
+            bytes.len()
+        ));
     }
 
-    // Validate ZIP magic number (PK\x03\x04 for ZIP files)
     if bytes.len() >= 4 && (&bytes[0..2] != b"PK") {
-        // Log first bytes for debugging
         let preview = if bytes.len() >= 200 {
             String::from_utf8_lossy(&bytes[0..200])
         } else {
             String::from_utf8_lossy(&bytes)
         };
-        eprintln!("[Marketplace] ERROR: File is not a ZIP. First bytes: {:?}", &bytes[0..std::cmp::min(16, bytes.len())]);
+        eprintln!(
+            "[Marketplace] ERROR: File is not a ZIP. First bytes: {:?}",
+            &bytes[0..std::cmp::min(16, bytes.len())]
+        );
         eprintln!("[Marketplace] Preview: {}", preview);
         return Err(format!("Downloaded file is not a valid ZIP archive (invalid magic number). This usually means the marketplace API returned an error page instead of the extension file."));
     }
 
-    std::fs::write(&vsix_path, bytes)
-        .map_err(|e| format!("Failed to write .vsix file: {}", e))?;
+    let vsix_path_clone = vsix_path.clone();
+    tokio::task::spawn_blocking(move || {
+        std::fs::write(&vsix_path_clone, &bytes)
+            .map_err(|e| format!("Failed to write .vsix file: {}", e))?;
 
-    // Verify the written file is a valid ZIP
-    match std::fs::File::open(&vsix_path) {
-        Ok(f) => {
-            if let Err(e) = zip::ZipArchive::new(f) {
-                return Err(format!("Downloaded file is not a valid VSIX archive: {}", e));
-            }
-        }
-        Err(e) => {
-            return Err(format!("Failed to open downloaded file for validation: {}", e));
-        }
-    }
+        let f = std::fs::File::open(&vsix_path_clone)
+            .map_err(|e| format!("Failed to open downloaded file for validation: {}", e))?;
+        zip::ZipArchive::new(f)
+            .map_err(|e| format!("Downloaded file is not a valid VSIX archive: {}", e))?;
 
-    // Persist the temp directory by keeping it
-    // This prevents it from being deleted when temp_dir goes out of scope
+        Ok::<_, String>(())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
+
     let _ = temp_dir.keep();
 
     Ok(vsix_path)

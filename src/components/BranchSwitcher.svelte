@@ -33,8 +33,22 @@
     }
   });
 
-  $: if (visible) {
+  let wasVisible = false;
+
+  $: if (visible && !wasVisible) {
+    wasVisible = true;
     loadBranches();
+    tick().then(() => {
+      if (showCreateForm) {
+        branchNameInput?.focus();
+      } else {
+        searchInput?.focus();
+      }
+    });
+  }
+
+  $: if (!visible) {
+    wasVisible = false;
   }
 
   async function loadBranches() {
@@ -134,16 +148,6 @@
     if (event.target === event.currentTarget) {
       close();
     }
-  }
-
-  $: if (visible) {
-    tick().then(() => {
-      if (showCreateForm) {
-        branchNameInput?.focus();
-      } else {
-        searchInput?.focus();
-      }
-    });
   }
 </script>
 
@@ -305,7 +309,7 @@
     max-height: 70vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-xl);
   }
 
   .modal-header {
@@ -373,10 +377,10 @@
 
   .error-message {
     padding: 8px 12px;
-    background: rgba(244, 135, 113, 0.1);
-    border: 1px solid #f48771;
+    background: var(--color-error-bg);
+    border: 1px solid var(--color-error);
     border-radius: 4px;
-    color: #f48771;
+    color: var(--color-error);
     font-size: 12px;
     margin-bottom: 12px;
   }
@@ -403,7 +407,7 @@
 
   .btn-primary {
     background: var(--color-accent);
-    color: white;
+    color: var(--color-text-on-accent);
   }
 
   .btn-primary:hover {
@@ -487,7 +491,7 @@
   }
 
   .branch-item.current {
-    background: rgba(0, 122, 204, 0.1);
+    background: var(--color-selection-bg);
     border-radius: 4px;
   }
 
@@ -523,7 +527,7 @@
   .current-badge {
     padding: 2px 8px;
     background: var(--color-accent);
-    color: white;
+    color: var(--color-text-on-accent);
     font-size: 10px;
     font-weight: 600;
     border-radius: 3px;
@@ -544,8 +548,8 @@
   }
 
   .delete-btn:hover {
-    background: #f48771;
-    border-color: #f48771;
-    color: white;
+    background: var(--color-error);
+    border-color: var(--color-error);
+    color: var(--color-text-on-accent);
   }
 </style>

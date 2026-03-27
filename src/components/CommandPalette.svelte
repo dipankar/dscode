@@ -34,6 +34,26 @@
   let allCommands: Command[] = [];
   let commandContext: CommandContext = getCommandContext();
   let wasVisible = false;
+  let modalContainer: HTMLDivElement;
+
+  function trapFocus(e: KeyboardEvent) {
+    if (e.key !== 'Tab' || !modalContainer) return;
+    const focusable = Array.from(
+      modalContainer.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => el.offsetParent !== null);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   // Load commands from the command registry
   async function loadCommands(context: CommandContext = commandContext) {
@@ -157,11 +177,10 @@
 
   onMount(async () => {
     window.addEventListener('keydown', handleKeydown);
+    window.addEventListener('keydown', trapFocus);
 
-    // Initial load of commands
     await loadCommands();
 
-    // Listen for command registry updates
     commandRegisteredUnlisten = await listen('command-registered', () => {
       loadCommands();
     });
@@ -173,8 +192,8 @@
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleKeydown);
+    window.removeEventListener('keydown', trapFocus);
 
-    // Unlisten from events
     if (commandRegisteredUnlisten) {
       commandRegisteredUnlisten();
     }
@@ -192,7 +211,13 @@
     role="presentation"
     tabindex="-1"
   >
-    <div class="command-palette" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div
+      bind:this={modalContainer}
+      class="command-palette"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
+    >
       <div class="search-container">
         <input
           bind:this={inputElement}
@@ -267,7 +292,7 @@
     max-height: 500px;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-md);
   }
 
   .search-container {

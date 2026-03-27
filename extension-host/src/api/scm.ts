@@ -6,10 +6,14 @@
 
 import { ExtensionHostBridge } from '../bridge';
 import { Event, EventEmitter, Disposable } from './events';
+import { Uri } from './uri';
+import { CancellationToken } from './common';
+
+type Command = { title: string; command: string; arguments?: unknown[] };
 
 export interface SourceControlResourceState {
-  readonly resourceUri: any;
-  readonly command?: { title: string; command: string; arguments?: any[] };
+  readonly resourceUri: Uri;
+  readonly command?: Command;
   readonly decorations?: SourceControlResourceDecorations;
 }
 
@@ -76,14 +80,14 @@ class SourceControlResourceGroupImpl implements SourceControlResourceGroup {
       groupId: this.id,
       label: this._label,
       hideWhenEmpty: this._hideWhenEmpty,
-      resourceStates: this._resourceStates
+      resourceStates: this._resourceStates,
     });
   }
 
   dispose(): void {
     this.bridge.send('disposeSCMResourceGroup', {
       scmId: this.scmId,
-      groupId: this.id
+      groupId: this.id,
     });
   }
 }
@@ -91,19 +95,33 @@ class SourceControlResourceGroupImpl implements SourceControlResourceGroup {
 export class SourceControl {
   readonly id!: string;
   readonly label!: string;
-  readonly rootUri!: any | undefined;
-  get inputBox(): SourceControlInputBox { throw new Error('Not implemented'); }
-  get count(): number | undefined { return undefined; }
+  readonly rootUri!: Uri | undefined;
+  get inputBox(): SourceControlInputBox {
+    throw new Error('Not implemented');
+  }
+  get count(): number | undefined {
+    return undefined;
+  }
   set count(value: number | undefined) {}
-  get quickDiffProvider(): QuickDiffProvider | undefined { return undefined; }
+  get quickDiffProvider(): QuickDiffProvider | undefined {
+    return undefined;
+  }
   set quickDiffProvider(value: QuickDiffProvider | undefined) {}
-  get commitTemplate(): string | undefined { return undefined; }
+  get commitTemplate(): string | undefined {
+    return undefined;
+  }
   set commitTemplate(value: string | undefined) {}
-  get acceptInputCommand(): { title: string; command: string; arguments?: any[] } | undefined { return undefined; }
-  set acceptInputCommand(value: { title: string; command: string; arguments?: any[] } | undefined) {}
-  get statusBarCommands(): { title: string; command: string; arguments?: any[] }[] | undefined { return undefined; }
-  set statusBarCommands(value: { title: string; command: string; arguments?: any[] }[] | undefined) {}
-  createResourceGroup(id: string, label: string): SourceControlResourceGroup { throw new Error('Not implemented'); }
+  get acceptInputCommand(): Command | undefined {
+    return undefined;
+  }
+  set acceptInputCommand(value: Command | undefined) {}
+  get statusBarCommands(): Command[] | undefined {
+    return undefined;
+  }
+  set statusBarCommands(value: Command[] | undefined) {}
+  createResourceGroup(id: string, label: string): SourceControlResourceGroup {
+    throw new Error('Not implemented');
+  }
   dispose(): void {}
 }
 
@@ -132,7 +150,7 @@ class SourceControlInputBoxImpl implements SourceControlInputBox {
   }
 
   private setupListeners(): void {
-    this.bridge.on(`scm:${this.scmId}:inputChange`, (data: any) => {
+    this.bridge.on(`scm:${this.scmId}:inputChange`, (data: { value: string }) => {
       this._value = data.value;
       this._onDidChange.fire(data.value);
     });
@@ -146,7 +164,7 @@ class SourceControlInputBoxImpl implements SourceControlInputBox {
     this._value = val;
     this.bridge.send('updateSCMInputBox', {
       scmId: this.scmId,
-      value: val
+      value: val,
     });
   }
 
@@ -158,7 +176,7 @@ class SourceControlInputBoxImpl implements SourceControlInputBox {
     this._placeholder = val;
     this.bridge.send('updateSCMInputBox', {
       scmId: this.scmId,
-      placeholder: val
+      placeholder: val,
     });
   }
 
@@ -170,7 +188,7 @@ class SourceControlInputBoxImpl implements SourceControlInputBox {
     this._enabled = val;
     this.bridge.send('updateSCMInputBox', {
       scmId: this.scmId,
-      enabled: val
+      enabled: val,
     });
   }
 
@@ -182,7 +200,7 @@ class SourceControlInputBoxImpl implements SourceControlInputBox {
     this._visible = val;
     this.bridge.send('updateSCMInputBox', {
       scmId: this.scmId,
-      visible: val
+      visible: val,
     });
   }
 
@@ -192,7 +210,10 @@ class SourceControlInputBoxImpl implements SourceControlInputBox {
 }
 
 export interface QuickDiffProvider {
-  provideOriginalResource?(uri: any, token?: any): any | null | undefined | Promise<any | null | undefined>;
+  provideOriginalResource?(
+    uri: Uri,
+    token?: CancellationToken
+  ): Uri | null | undefined | Promise<Uri | null | undefined>;
 }
 
 class SourceControlImpl extends SourceControl {
@@ -200,20 +221,23 @@ class SourceControlImpl extends SourceControl {
   private _count?: number;
   private _quickDiffProvider?: QuickDiffProvider;
   private _commitTemplate?: string;
-  private _acceptInputCommand?: { title: string; command: string; arguments?: any[] };
-  private _statusBarCommands?: { title: string; command: string; arguments?: any[] }[];
+  private _acceptInputCommand?: Command;
+  private _statusBarCommands?: Command[];
   private _resourceGroups: SourceControlResourceGroup[] = [];
+  readonly id: string;
+  readonly label: string;
+  readonly rootUri: Uri | undefined;
 
   constructor(
     private bridge: ExtensionHostBridge,
     id: string,
     label: string,
-    rootUri: any | undefined
+    rootUri: Uri | undefined
   ) {
     super();
-    (this as any).id = id;
-    (this as any).label = label;
-    (this as any).rootUri = rootUri;
+    this.id = id;
+    this.label = label;
+    this.rootUri = rootUri;
     this._inputBox = new SourceControlInputBoxImpl(bridge, id);
   }
 
@@ -247,20 +271,20 @@ class SourceControlImpl extends SourceControl {
     this.update();
   }
 
-  get acceptInputCommand(): { title: string; command: string; arguments?: any[] } | undefined {
+  get acceptInputCommand(): Command | undefined {
     return this._acceptInputCommand;
   }
 
-  set acceptInputCommand(value: { title: string; command: string; arguments?: any[] } | undefined) {
+  set acceptInputCommand(value: Command | undefined) {
     this._acceptInputCommand = value;
     this.update();
   }
 
-  get statusBarCommands(): { title: string; command: string; arguments?: any[] }[] | undefined {
+  get statusBarCommands(): Command[] | undefined {
     return this._statusBarCommands;
   }
 
-  set statusBarCommands(value: { title: string; command: string; arguments?: any[] }[] | undefined) {
+  set statusBarCommands(value: Command[] | undefined) {
     this._statusBarCommands = value;
     this.update();
   }
@@ -278,7 +302,7 @@ class SourceControlImpl extends SourceControl {
       count: this._count,
       commitTemplate: this._commitTemplate,
       acceptInputCommand: this._acceptInputCommand,
-      statusBarCommands: this._statusBarCommands
+      statusBarCommands: this._statusBarCommands,
     });
   }
 
@@ -299,17 +323,13 @@ export class SCMAPI {
 
   constructor(private bridge: ExtensionHostBridge) {}
 
-  createSourceControl(
-    id: string,
-    label: string,
-    rootUri?: any
-  ): SourceControl {
+  createSourceControl(id: string, label: string, rootUri?: Uri): SourceControl {
     const scm = new SourceControlImpl(this.bridge, id, label, rootUri);
 
     this.bridge.send('createSourceControl', {
       id,
       label,
-      rootUri
+      rootUri,
     });
 
     return scm;

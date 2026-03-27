@@ -3,67 +3,77 @@
   import { invoke } from '@tauri-apps/api/core';
   import { editorStore } from '../stores/editor';
   import { workspaceStore } from '../stores/workspace';
-  import type { FileNode } from '../stores/workspace';
+
+  interface FileSearchResult {
+    name: string;
+    path: string;
+    node_type: string;
+  }
 
   export let visible: boolean = false;
   export let onClose: () => void;
 
   let searchQuery = '';
-  let filteredFiles: FileNode[] = [];
+  let filteredFiles: FileSearchResult[] = [];
   let selectedIndex = 0;
   let inputElement: HTMLInputElement;
-  let allFiles: FileNode[] = [];
+  let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+  let isSearching = false;
+  let modalContainer: HTMLDivElement;
+
+  function trapFocus(e: KeyboardEvent) {
+    if (e.key !== 'Tab' || !modalContainer) return;
+    const focusable = Array.from(
+      modalContainer.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => el.offsetParent !== null);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   $: rootPath = $workspaceStore.rootPath;
-  $: fileTree = $workspaceStore.fileTree;
 
-  // Flatten file tree to get all files
-  function flattenFileTree(nodes: FileNode[]): FileNode[] {
-    let files: FileNode[] = [];
-    for (const node of nodes) {
-      if (node.node_type === 'file') {
-        files.push(node);
-      }
-      if (node.children && node.children.length > 0) {
-        files = files.concat(flattenFileTree(node.children));
-      }
+  async function searchFiles(query: string) {
+    if (!rootPath || query.trim() === '') {
+      filteredFiles = [];
+      return;
     }
-    return files;
+
+    isSearching = true;
+    try {
+      const results = await invoke<FileSearchResult[]>('search_files', {
+        query,
+        rootPath,
+        maxResults: 50,
+      });
+      filteredFiles = results.filter((r: FileSearchResult) => r.node_type === 'file');
+      selectedIndex = 0;
+    } catch (error) {
+      console.error('Failed to search files:', error);
+      filteredFiles = [];
+    } finally {
+      isSearching = false;
+    }
   }
 
   $: {
-    allFiles = flattenFileTree(fileTree);
-  }
-
-  $: {
-    if (searchQuery.trim() === '') {
-      // Show recently opened files when no query
-      const recentFiles = allFiles.filter((file) => $editorStore.openFiles.has(file.path));
-      filteredFiles = recentFiles.length > 0 ? recentFiles : allFiles.slice(0, 20);
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+    if (visible && searchQuery.trim() !== '') {
+      searchTimeout = setTimeout(() => searchFiles(searchQuery), 150);
     } else {
-      const query = searchQuery.toLowerCase();
-      filteredFiles = allFiles
-        .filter((file) => {
-          const fileName = file.name.toLowerCase();
-          const filePath = file.path.toLowerCase();
-          return fileName.includes(query) || filePath.includes(query);
-        })
-        .sort((a, b) => {
-          // Fuzzy matching score
-          const aName = a.name.toLowerCase();
-          const bName = b.name.toLowerCase();
-          const aStarts = aName.startsWith(query);
-          const bStarts = bName.startsWith(query);
-
-          if (aStarts && !bStarts) return -1;
-          if (!aStarts && bStarts) return 1;
-
-          // Prioritize shorter names (more relevant)
-          return aName.length - bName.length;
-        })
-        .slice(0, 50); // Limit results
+      filteredFiles = [];
     }
-    selectedIndex = 0;
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -97,9 +107,8 @@
     }
   }
 
-  async function openFile(file: FileNode) {
+  async function openFile(file: FileSearchResult) {
     try {
-      // Check if already open
       if ($editorStore.openFiles.has(file.path)) {
         const tab = $editorStore.tabs.find((t) => t.path === file.path);
         if (tab) {
@@ -109,11 +118,9 @@
         }
       }
 
-      // Read file content
       const content = await invoke<string>('read_file', { path: file.path });
       const language = await invoke<string>('get_file_language', { path: file.path });
 
-      // Open in editor
       editorStore.openFile(file.path, content, language);
       workspaceStore.selectFile(file.path);
       onClose();
@@ -128,28 +135,36 @@
   }
 
   function getFileIcon(fileName: string): string {
-    if (fileName.endsWith('.rs')) return '🦀';
-    if (fileName.endsWith('.ts')) return '📘';
-    if (fileName.endsWith('.js')) return '📜';
-    if (fileName.endsWith('.svelte')) return '🔶';
-    if (fileName.endsWith('.json')) return '📋';
-    if (fileName.endsWith('.md')) return '📝';
-    if (fileName.endsWith('.toml')) return '⚙️';
-    if (fileName.endsWith('.css')) return '🎨';
-    if (fileName.endsWith('.html')) return '🌐';
-    return '📄';
+    if (fileName.endsWith('.rs')) return '\u{1F980}';
+    if (fileName.endsWith('.ts')) return '\u{1F4D8}';
+    if (fileName.endsWith('.js')) return '\u{1F4DC}';
+    if (fileName.endsWith('.svelte')) return '\u{1F536}';
+    if (fileName.endsWith('.json')) return '\u{1F4CB}';
+    if (fileName.endsWith('.md')) return '\u{1F4DD}';
+    if (fileName.endsWith('.toml')) return '\u{2699}\u{FE0F}';
+    if (fileName.endsWith('.css')) return '\u{1F3A8}';
+    if (fileName.endsWith('.html')) return '\u{1F310}';
+    return '\u{1F4C4}';
   }
 
   $: if (visible && inputElement) {
-    inputElement.focus();
+    searchQuery = '';
+    filteredFiles = [];
+    selectedIndex = 0;
+    setTimeout(() => inputElement.focus(), 0);
   }
 
   onMount(() => {
     window.addEventListener('keydown', handleKeydown);
+    window.addEventListener('keydown', trapFocus);
   });
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleKeydown);
+    window.removeEventListener('keydown', trapFocus);
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
   });
 </script>
 
@@ -161,7 +176,13 @@
     role="presentation"
     tabindex="-1"
   >
-    <div class="quick-open" role="dialog" aria-modal="true" aria-label="Quick open">
+    <div
+      bind:this={modalContainer}
+      class="quick-open"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Quick open"
+    >
       <div class="search-container">
         <input
           bind:this={inputElement}
@@ -175,10 +196,12 @@
       </div>
 
       <div class="files-list" id="quick-open-list" role="listbox" aria-label="Files">
-        {#if filteredFiles.length === 0}
+        {#if isSearching}
+          <div class="no-results">Searching...</div>
+        {:else if filteredFiles.length === 0}
           <div class="no-results">
-            {#if allFiles.length === 0}
-              No files in workspace. Open a folder to get started.
+            {#if searchQuery.trim() === ''}
+              Type to search files
             {:else}
               No files match "{searchQuery}"
             {/if}
@@ -204,7 +227,8 @@
       </div>
 
       <div class="quick-open-footer">
-        <span class="hint">↑↓ to navigate • Enter to open • Esc to close</span>
+        <span class="hint">Type to search • Up/Down to navigate • Enter to open • Esc to close</span
+        >
       </div>
     </div>
   </div>
@@ -233,7 +257,7 @@
     max-height: 500px;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-md);
   }
 
   .search-container {

@@ -4,8 +4,8 @@
 // - LSP integration
 // - Configuration management
 
-pub mod text_buffer;
 pub mod syntax;
+pub mod text_buffer;
 
 // Uncomment when these modules are used
 // pub use text_buffer::*;

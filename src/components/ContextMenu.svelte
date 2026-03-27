@@ -38,6 +38,8 @@
   let menuElement: HTMLDivElement;
   let commandContext: CommandContext = getCommandContext();
   let wasVisible = false;
+  let adjustedX = x;
+  let adjustedY = y;
   const explorerResourceCommands = new Set([
     'explorer.newFile',
     'explorer.newFolder',
@@ -50,8 +52,7 @@
   function toCommandContext(location: string, menuContext: MenuContext): CommandContext {
     const base = getCommandContext();
     const editorFocus = menuContext.editor_focused ?? base.editorFocus;
-    const explorerFocus =
-      menuContext.explorer_focused ?? location === 'explorer/context';
+    const explorerFocus = menuContext.explorer_focused ?? location === 'explorer/context';
     const sideBarFocus =
       menuContext.explorer_focused !== undefined
         ? menuContext.explorer_focused
@@ -151,14 +152,16 @@
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
 
-        // Adjust horizontal position
         if (x + rect.width > viewportWidth) {
-          x = viewportWidth - rect.width - 10;
+          adjustedX = viewportWidth - rect.width - 10;
+        } else {
+          adjustedX = x;
         }
 
-        // Adjust vertical position
         if (y + rect.height > viewportHeight) {
-          y = viewportHeight - rect.height - 10;
+          adjustedY = viewportHeight - rect.height - 10;
+        } else {
+          adjustedY = y;
         }
       }
     }, 0);
@@ -185,7 +188,7 @@
   <div
     bind:this={menuElement}
     class="context-menu"
-    style="left: {x}px; top: {y}px;"
+    style="left: {adjustedX}px; top: {adjustedY}px;"
   >
     {#if menuItems.length === 0}
       <div class="context-menu-empty">No actions available</div>
@@ -195,10 +198,7 @@
           <div class="context-menu-separator"></div>
         {/if}
         {#each items as item}
-          <button
-            class="context-menu-item"
-            on:click={() => executeMenuItem(item)}
-          >
+          <button class="context-menu-item" on:click={() => executeMenuItem(item)}>
             {#if item.icon}
               <span class="context-menu-icon">{item.icon}</span>
             {/if}
@@ -218,7 +218,7 @@
     background-color: var(--modal-bg);
     border: 1px solid var(--color-border);
     border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-md);
     min-width: 200px;
     max-width: 400px;
     padding: 4px 0;

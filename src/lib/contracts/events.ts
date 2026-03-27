@@ -18,6 +18,7 @@ export const WindowEventName = {
   refreshWorkspace: 'refreshWorkspace',
   extensionTreeReveal: 'extensionTreeReveal',
   editorDecorations: 'editor-decorations',
+  openDiff: 'openDiff',
 } as const;
 
 export function dispatchWindowEvent(name: (typeof WindowEventName)[keyof typeof WindowEventName]) {
@@ -26,7 +27,7 @@ export function dispatchWindowEvent(name: (typeof WindowEventName)[keyof typeof 
 
 export function dispatchWindowDetailEvent<T>(
   name: (typeof WindowEventName)[keyof typeof WindowEventName],
-  detail: T,
+  detail: T
 ) {
   window.dispatchEvent(new CustomEvent(name, { detail }));
 }

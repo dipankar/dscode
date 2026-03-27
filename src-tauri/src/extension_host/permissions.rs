@@ -4,7 +4,6 @@
  * Implements capability-based security for extensions.
  * Each extension declares its required permissions in manifest.
  */
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -72,13 +71,12 @@ pub struct ExtensionPermissions {
 
 impl ExtensionPermissions {
     pub fn new(extension_id: String, permissions: Vec<Permission>) -> Self {
-        Self {
-            extension_id,
-            granted_permissions: permissions.into_iter().collect(),
-        }
+        Self { extension_id, granted_permissions: permissions.into_iter().collect() }
     }
 
-    pub fn from_manifest(extension_id: String, manifest_permissions: Option<Vec<String>>) -> Result<Self, String> {
+    pub fn from_manifest(
+        extension_id: String, manifest_permissions: Option<Vec<String>>,
+    ) -> Result<Self, String> {
         let permissions = match manifest_permissions {
             Some(perms) => {
                 let mut granted = HashSet::new();
@@ -88,14 +86,11 @@ impl ExtensionPermissions {
                     granted.insert(perm);
                 }
                 granted
-            },
+            }
             None => HashSet::new(), // No permissions by default
         };
 
-        Ok(Self {
-            extension_id,
-            granted_permissions: permissions,
-        })
+        Ok(Self { extension_id, granted_permissions: permissions })
     }
 
     pub fn has_permission(&self, permission: &Permission) -> bool {
@@ -156,11 +151,9 @@ mod tests {
     fn test_permission_parsing() {
         let perms = ExtensionPermissions::from_manifest(
             "test.extension".to_string(),
-            Some(vec![
-                "fileSystem.read".to_string(),
-                "fileSystem.write".to_string(),
-            ])
-        ).unwrap();
+            Some(vec!["fileSystem.read".to_string(), "fileSystem.write".to_string()]),
+        )
+        .unwrap();
 
         assert!(perms.has_permission(&Permission::FileSystemRead));
         assert!(perms.has_permission(&Permission::FileSystemWrite));
@@ -171,8 +164,9 @@ mod tests {
     fn test_permission_check() {
         let perms = ExtensionPermissions::from_manifest(
             "test.extension".to_string(),
-            Some(vec!["fileSystem.read".to_string()])
-        ).unwrap();
+            Some(vec!["fileSystem.read".to_string()]),
+        )
+        .unwrap();
 
         assert!(perms.check_permission(&Permission::FileSystemRead).is_ok());
         assert!(perms.check_permission(&Permission::FileSystemWrite).is_err());

@@ -83,8 +83,7 @@ pub struct TextEditResult {
 /// Register a hover provider
 #[tauri::command]
 pub async fn register_hover_provider(
-    provider: HoverProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: HoverProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_hover_provider(provider)
 }
@@ -92,8 +91,7 @@ pub async fn register_hover_provider(
 /// Register a definition provider
 #[tauri::command]
 pub async fn register_definition_provider(
-    provider: DefinitionProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: DefinitionProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_definition_provider(provider)
 }
@@ -101,8 +99,7 @@ pub async fn register_definition_provider(
 /// Register a completion provider
 #[tauri::command]
 pub async fn register_completion_provider(
-    provider: CompletionProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: CompletionProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_completion_provider(provider)
 }
@@ -110,8 +107,7 @@ pub async fn register_completion_provider(
 /// Register a code action provider
 #[tauri::command]
 pub async fn register_code_action_provider(
-    provider: CodeActionProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: CodeActionProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_code_action_provider(provider)
 }
@@ -119,9 +115,7 @@ pub async fn register_code_action_provider(
 /// Get hover providers for a document
 #[tauri::command]
 pub async fn get_hover_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<HoverProvider>, String> {
     Ok(registry.get_hover_providers(&language, &uri))
 }
@@ -129,9 +123,7 @@ pub async fn get_hover_providers(
 /// Get definition providers for a document
 #[tauri::command]
 pub async fn get_definition_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<DefinitionProvider>, String> {
     Ok(registry.get_definition_providers(&language, &uri))
 }
@@ -139,9 +131,7 @@ pub async fn get_definition_providers(
 /// Get completion providers for a document
 #[tauri::command]
 pub async fn get_completion_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<CompletionProvider>, String> {
     Ok(registry.get_completion_providers(&language, &uri))
 }
@@ -149,9 +139,7 @@ pub async fn get_completion_providers(
 /// Get code action providers for a document
 #[tauri::command]
 pub async fn get_code_action_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<CodeActionProvider>, String> {
     Ok(registry.get_code_action_providers(&language, &uri))
 }
@@ -159,8 +147,7 @@ pub async fn get_code_action_providers(
 /// Register a signature help provider
 #[tauri::command]
 pub async fn register_signature_help_provider(
-    provider: SignatureHelpProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: SignatureHelpProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_signature_help_provider(provider)
 }
@@ -168,8 +155,7 @@ pub async fn register_signature_help_provider(
 /// Register a references provider
 #[tauri::command]
 pub async fn register_references_provider(
-    provider: ReferencesProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: ReferencesProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_references_provider(provider)
 }
@@ -177,8 +163,7 @@ pub async fn register_references_provider(
 /// Register a code lens provider
 #[tauri::command]
 pub async fn register_code_lens_provider(
-    provider: CodeLensProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: CodeLensProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_code_lens_provider(provider)
 }
@@ -186,8 +171,7 @@ pub async fn register_code_lens_provider(
 /// Register a document highlight provider
 #[tauri::command]
 pub async fn register_document_highlight_provider(
-    provider: DocumentHighlightProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: DocumentHighlightProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_document_highlight_provider(provider)
 }
@@ -195,8 +179,7 @@ pub async fn register_document_highlight_provider(
 /// Register a folding range provider
 #[tauri::command]
 pub async fn register_folding_range_provider(
-    provider: FoldingRangeProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: FoldingRangeProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_folding_range_provider(provider)
 }
@@ -204,8 +187,7 @@ pub async fn register_folding_range_provider(
 /// Register a rename provider
 #[tauri::command]
 pub async fn register_rename_provider(
-    provider: RenameProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: RenameProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_rename_provider(provider)
 }
@@ -213,9 +195,7 @@ pub async fn register_rename_provider(
 /// Get signature help providers for a document
 #[tauri::command]
 pub async fn get_signature_help_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<SignatureHelpProvider>, String> {
     Ok(registry.get_signature_help_providers(&language, &uri))
 }
@@ -223,9 +203,7 @@ pub async fn get_signature_help_providers(
 /// Get references providers for a document
 #[tauri::command]
 pub async fn get_references_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<ReferencesProvider>, String> {
     Ok(registry.get_references_providers(&language, &uri))
 }
@@ -233,9 +211,7 @@ pub async fn get_references_providers(
 /// Get code lens providers for a document
 #[tauri::command]
 pub async fn get_code_lens_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<CodeLensProvider>, String> {
     Ok(registry.get_code_lens_providers(&language, &uri))
 }
@@ -243,9 +219,7 @@ pub async fn get_code_lens_providers(
 /// Get document highlight providers for a document
 #[tauri::command]
 pub async fn get_document_highlight_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<DocumentHighlightProvider>, String> {
     Ok(registry.get_document_highlight_providers(&language, &uri))
 }
@@ -253,9 +227,7 @@ pub async fn get_document_highlight_providers(
 /// Get folding range providers for a document
 #[tauri::command]
 pub async fn get_folding_range_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<FoldingRangeProvider>, String> {
     Ok(registry.get_folding_range_providers(&language, &uri))
 }
@@ -263,9 +235,7 @@ pub async fn get_folding_range_providers(
 /// Get rename providers for a document
 #[tauri::command]
 pub async fn get_rename_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<RenameProvider>, String> {
     Ok(registry.get_rename_providers(&language, &uri))
 }
@@ -273,9 +243,7 @@ pub async fn get_rename_providers(
 /// Publish diagnostics for a document
 #[tauri::command]
 pub async fn publish_diagnostics(
-    uri: String,
-    diagnostics: Vec<Diagnostic>,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    uri: String, diagnostics: Vec<Diagnostic>, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<(), String> {
     registry.publish_diagnostics(uri, diagnostics)
 }
@@ -283,8 +251,7 @@ pub async fn publish_diagnostics(
 /// Get diagnostics for a document
 #[tauri::command]
 pub async fn get_diagnostics(
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<Diagnostic>, String> {
     Ok(registry.get_diagnostics(&uri))
 }
@@ -300,8 +267,7 @@ pub async fn get_all_diagnostics(
 /// Clear diagnostics for a specific owner
 #[tauri::command]
 pub async fn clear_diagnostics(
-    owner: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    owner: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<(), String> {
     registry.clear_diagnostics(&owner)
 }
@@ -309,8 +275,7 @@ pub async fn clear_diagnostics(
 /// Register a document symbols provider
 #[tauri::command]
 pub async fn register_document_symbols_provider(
-    provider: DocumentSymbolsProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: DocumentSymbolsProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_document_symbols_provider(provider)
 }
@@ -318,8 +283,7 @@ pub async fn register_document_symbols_provider(
 /// Register a workspace symbols provider
 #[tauri::command]
 pub async fn register_workspace_symbols_provider(
-    provider: WorkspaceSymbolsProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: WorkspaceSymbolsProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_workspace_symbols_provider(provider)
 }
@@ -327,8 +291,7 @@ pub async fn register_workspace_symbols_provider(
 /// Register a document formatting provider
 #[tauri::command]
 pub async fn register_document_formatting_provider(
-    provider: DocumentFormattingProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: DocumentFormattingProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_document_formatting_provider(provider)
 }
@@ -336,8 +299,7 @@ pub async fn register_document_formatting_provider(
 /// Register a range formatting provider
 #[tauri::command]
 pub async fn register_range_formatting_provider(
-    provider: RangeFormattingProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: RangeFormattingProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_range_formatting_provider(provider)
 }
@@ -345,8 +307,7 @@ pub async fn register_range_formatting_provider(
 /// Register an on-type formatting provider
 #[tauri::command]
 pub async fn register_on_type_formatting_provider(
-    provider: OnTypeFormattingProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: OnTypeFormattingProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_on_type_formatting_provider(provider)
 }
@@ -354,9 +315,7 @@ pub async fn register_on_type_formatting_provider(
 /// Get document symbols providers for a document
 #[tauri::command]
 pub async fn get_document_symbols_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<DocumentSymbolsProvider>, String> {
     Ok(registry.get_document_symbols_providers(&language, &uri))
 }
@@ -372,9 +331,7 @@ pub async fn get_workspace_symbols_providers(
 /// Get document formatting providers for a document
 #[tauri::command]
 pub async fn get_document_formatting_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<DocumentFormattingProvider>, String> {
     Ok(registry.get_document_formatting_providers(&language, &uri))
 }
@@ -382,9 +339,7 @@ pub async fn get_document_formatting_providers(
 /// Get range formatting providers for a document
 #[tauri::command]
 pub async fn get_range_formatting_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<RangeFormattingProvider>, String> {
     Ok(registry.get_range_formatting_providers(&language, &uri))
 }
@@ -392,9 +347,7 @@ pub async fn get_range_formatting_providers(
 /// Get on-type formatting providers for a document
 #[tauri::command]
 pub async fn get_on_type_formatting_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<OnTypeFormattingProvider>, String> {
     Ok(registry.get_on_type_formatting_providers(&language, &uri))
 }
@@ -402,8 +355,7 @@ pub async fn get_on_type_formatting_providers(
 /// Register a semantic tokens provider
 #[tauri::command]
 pub async fn register_semantic_tokens_provider(
-    provider: SemanticTokensProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: SemanticTokensProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_semantic_tokens_provider(provider)
 }
@@ -411,8 +363,7 @@ pub async fn register_semantic_tokens_provider(
 /// Register an inline values provider
 #[tauri::command]
 pub async fn register_inline_values_provider(
-    provider: InlineValuesProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: InlineValuesProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_inline_values_provider(provider)
 }
@@ -420,8 +371,7 @@ pub async fn register_inline_values_provider(
 /// Register a color provider
 #[tauri::command]
 pub async fn register_color_provider(
-    provider: ColorProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: ColorProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_color_provider(provider)
 }
@@ -429,8 +379,7 @@ pub async fn register_color_provider(
 /// Register a selection range provider
 #[tauri::command]
 pub async fn register_selection_range_provider(
-    provider: SelectionRangeProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: SelectionRangeProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_selection_range_provider(provider)
 }
@@ -438,8 +387,7 @@ pub async fn register_selection_range_provider(
 /// Register a linked editing range provider
 #[tauri::command]
 pub async fn register_linked_editing_range_provider(
-    provider: LinkedEditingRangeProvider,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    provider: LinkedEditingRangeProvider, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<String, String> {
     registry.register_linked_editing_range_provider(provider)
 }
@@ -447,9 +395,7 @@ pub async fn register_linked_editing_range_provider(
 /// Get semantic tokens providers for a document
 #[tauri::command]
 pub async fn get_semantic_tokens_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<SemanticTokensProvider>, String> {
     Ok(registry.get_semantic_tokens_providers(&language, &uri))
 }
@@ -457,9 +403,7 @@ pub async fn get_semantic_tokens_providers(
 /// Get inline values providers for a document
 #[tauri::command]
 pub async fn get_inline_values_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<InlineValuesProvider>, String> {
     Ok(registry.get_inline_values_providers(&language, &uri))
 }
@@ -467,9 +411,7 @@ pub async fn get_inline_values_providers(
 /// Get color providers for a document
 #[tauri::command]
 pub async fn get_color_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<ColorProvider>, String> {
     Ok(registry.get_color_providers(&language, &uri))
 }
@@ -477,9 +419,7 @@ pub async fn get_color_providers(
 /// Get selection range providers for a document
 #[tauri::command]
 pub async fn get_selection_range_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<SelectionRangeProvider>, String> {
     Ok(registry.get_selection_range_providers(&language, &uri))
 }
@@ -487,9 +427,7 @@ pub async fn get_selection_range_providers(
 /// Get linked editing range providers for a document
 #[tauri::command]
 pub async fn get_linked_editing_range_providers(
-    language: String,
-    uri: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    language: String, uri: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<Vec<LinkedEditingRangeProvider>, String> {
     Ok(registry.get_linked_editing_range_providers(&language, &uri))
 }
@@ -497,8 +435,7 @@ pub async fn get_linked_editing_range_providers(
 /// Clear all providers from a specific owner
 #[tauri::command]
 pub async fn clear_language_providers(
-    owner: String,
-    registry: State<'_, LanguageFeaturesRegistry>,
+    owner: String, registry: State<'_, LanguageFeaturesRegistry>,
 ) -> Result<(), String> {
     registry.clear_owner_providers(&owner)
 }
@@ -523,31 +460,26 @@ fn position_payload(line: u32, character: u32) -> serde_json::Value {
 }
 
 async fn request_language_feature(
-    session: Arc<RwLock<SessionManager>>,
-    request_name: &str,
-    operation_name: &str,
+    session: Arc<RwLock<SessionManager>>, request_name: &str, operation_name: &str,
     payload: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let session = session.read().await;
     session
-        .nng_manager()
+        .ipc_manager()
         .request(EXTENSION_HOST_ID, request_name, payload)
         .await
         .map_err(|e| format!("Failed to invoke {}: {}", operation_name, e))
 }
 
 fn parse_result<T: DeserializeOwned>(
-    response: serde_json::Value,
-    result_name: &str,
+    response: serde_json::Value, result_name: &str,
 ) -> Result<T, String> {
     serde_json::from_value(response)
         .map_err(|e| format!("Failed to parse {} result: {}", result_name, e))
 }
 
 fn parse_result_field<T: DeserializeOwned>(
-    response: serde_json::Value,
-    field: &str,
-    result_name: &str,
+    response: serde_json::Value, field: &str, result_name: &str,
 ) -> Result<Vec<T>, String> {
     let values = response
         .get(field)
@@ -561,10 +493,7 @@ fn parse_result_field<T: DeserializeOwned>(
 /// Invoke hover provider via extension host
 #[tauri::command]
 pub async fn invoke_hover_provider(
-    language_id: String,
-    uri: String,
-    line: u32,
-    character: u32,
+    language_id: String, uri: String, line: u32, character: u32,
     session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Option<HoverResult>, String> {
     let payload = json!({
@@ -591,10 +520,7 @@ pub async fn invoke_hover_provider(
 /// Invoke definition provider via extension host
 #[tauri::command]
 pub async fn invoke_definition_provider(
-    language_id: String,
-    uri: String,
-    line: u32,
-    character: u32,
+    language_id: String, uri: String, line: u32, character: u32,
     session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<DefinitionResult, String> {
     let payload = json!({
@@ -617,11 +543,7 @@ pub async fn invoke_definition_provider(
 /// Invoke references provider via extension host
 #[tauri::command]
 pub async fn invoke_references_provider(
-    language_id: String,
-    uri: String,
-    line: u32,
-    character: u32,
-    include_declaration: bool,
+    language_id: String, uri: String, line: u32, character: u32, include_declaration: bool,
     session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Vec<LocationResult>, String> {
     let payload = json!({
@@ -645,13 +567,8 @@ pub async fn invoke_references_provider(
 /// Invoke code actions provider via extension host
 #[tauri::command]
 pub async fn invoke_code_actions_provider(
-    language_id: String,
-    uri: String,
-    start_line: u32,
-    start_character: u32,
-    end_line: u32,
-    end_character: u32,
-    diagnostics: Vec<serde_json::Value>,
+    language_id: String, uri: String, start_line: u32, start_character: u32, end_line: u32,
+    end_character: u32, diagnostics: Vec<serde_json::Value>,
     session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Vec<CodeActionResult>, String> {
     let payload = json!({
@@ -678,9 +595,7 @@ pub async fn invoke_code_actions_provider(
 /// Invoke document symbols provider via extension host
 #[tauri::command]
 pub async fn invoke_document_symbols_provider(
-    language_id: String,
-    uri: String,
-    session: State<'_, Arc<RwLock<SessionManager>>>,
+    language_id: String, uri: String, session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Vec<DocumentSymbolResult>, String> {
     let payload = json!({
         "languageId": language_id,
@@ -701,10 +616,7 @@ pub async fn invoke_document_symbols_provider(
 /// Invoke document formatting provider via extension host
 #[tauri::command]
 pub async fn invoke_document_formatting_provider(
-    language_id: String,
-    uri: String,
-    tab_size: u32,
-    insert_spaces: bool,
+    language_id: String, uri: String, tab_size: u32, insert_spaces: bool,
     session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Vec<TextEditResult>, String> {
     let payload = json!({
@@ -730,11 +642,7 @@ pub async fn invoke_document_formatting_provider(
 /// Invoke completion provider via extension host
 #[tauri::command]
 pub async fn invoke_completion_provider(
-    language_id: String,
-    uri: String,
-    line: u32,
-    character: u32,
-    trigger_character: Option<String>,
+    language_id: String, uri: String, line: u32, character: u32, trigger_character: Option<String>,
     session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let payload = json!({
@@ -765,8 +673,7 @@ pub async fn invoke_completion_provider(
 /// Trigger language activation event when a file is opened
 #[tauri::command]
 pub async fn trigger_language_activation(
-    language_id: String,
-    session: State<'_, Arc<RwLock<SessionManager>>>,
+    language_id: String, session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<(), String> {
     let payload = json!({
         "languageId": language_id

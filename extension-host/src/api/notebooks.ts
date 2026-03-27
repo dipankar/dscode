@@ -7,16 +7,18 @@
 import { ExtensionHostBridge } from '../bridge';
 import { Event, EventEmitter, Disposable } from './events';
 import { Uri } from './uri';
+import { CancellationToken } from './common';
+import type { TextDocument } from './textDocument';
 
 export enum NotebookCellKind {
   Markup = 1,
-  Code = 2
+  Code = 2,
 }
 
 export enum NotebookCellExecutionState {
   Idle = 1,
   Pending = 2,
-  Executing = 3
+  Executing = 3,
 }
 
 export class NotebookCellData {
@@ -27,7 +29,7 @@ export class NotebookCellData {
   ) {}
 
   outputs?: NotebookCellOutput[];
-  metadata?: { [key: string]: any };
+  metadata?: Record<string, unknown>;
   executionSummary?: NotebookCellExecutionSummary;
 }
 
@@ -40,7 +42,7 @@ export interface NotebookCellExecutionSummary {
 export class NotebookCellOutput {
   constructor(
     public items: NotebookCellOutputItem[],
-    public metadata?: { [key: string]: any }
+    public metadata?: Record<string, unknown>
   ) {}
 }
 
@@ -55,7 +57,7 @@ export class NotebookCellOutputItem {
     return new NotebookCellOutputItem(encoder.encode(value), mime || 'text/plain');
   }
 
-  static json(value: any, mime?: string): NotebookCellOutputItem {
+  static json(value: unknown, mime?: string): NotebookCellOutputItem {
     const encoder = new TextEncoder();
     return new NotebookCellOutputItem(
       encoder.encode(JSON.stringify(value)),
@@ -73,22 +75,33 @@ export class NotebookCellOutputItem {
 
   static stdout(value: string): NotebookCellOutputItem {
     const encoder = new TextEncoder();
-    return new NotebookCellOutputItem(encoder.encode(value), 'application/vnd.code.notebook.stdout');
+    return new NotebookCellOutputItem(
+      encoder.encode(value),
+      'application/vnd.code.notebook.stdout'
+    );
   }
 
   static stderr(value: string): NotebookCellOutputItem {
     const encoder = new TextEncoder();
-    return new NotebookCellOutputItem(encoder.encode(value), 'application/vnd.code.notebook.stderr');
+    return new NotebookCellOutputItem(
+      encoder.encode(value),
+      'application/vnd.code.notebook.stderr'
+    );
   }
 }
 
 export class NotebookCell {
   readonly index!: number;
   readonly kind!: NotebookCellKind;
-  readonly document!: any; // TextDocument
-  readonly metadata!: { [key: string]: any };
+  readonly document!: TextDocument;
+  readonly metadata!: Record<string, unknown>;
   readonly outputs!: readonly NotebookCellOutput[];
   readonly executionSummary!: NotebookCellExecutionSummary | undefined;
+}
+
+export interface NotebookCellRange {
+  start: number;
+  end: number;
 }
 
 export class NotebookDocument {
@@ -98,25 +111,44 @@ export class NotebookDocument {
   readonly isDirty!: boolean;
   readonly isUntitled!: boolean;
   readonly isClosed!: boolean;
-  readonly metadata!: { [key: string]: any };
+  readonly metadata!: Record<string, unknown>;
   readonly cellCount!: number;
-  cellAt(index: number): NotebookCell { throw new Error('Not implemented'); }
-  getCells(range?: any): NotebookCell[] { return []; }
-  save(): Promise<boolean> { return Promise.resolve(false); }
+  cellAt(index: number): NotebookCell {
+    throw new Error('Not implemented');
+  }
+  getCells(range?: NotebookCellRange): NotebookCell[] {
+    return [];
+  }
+  save(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
 }
 
 export interface NotebookData {
   cells: NotebookCellData[];
-  metadata?: { [key: string]: any };
+  metadata?: Record<string, unknown>;
 }
 
 export interface NotebookDocumentContentProvider {
-  onDidChangeNotebookContentOptions?: Event<any>;
-  readonly options?: any;
-  openNotebook(uri: Uri, openContext: any): Promise<NotebookData>;
-  saveNotebook?(document: NotebookDocument, token: any): Promise<void>;
-  saveNotebookAs?(targetResource: Uri, document: NotebookDocument, token: any): Promise<void>;
-  backupNotebook?(document: NotebookDocument, context: any, token: any): Promise<any>;
+  onDidChangeNotebookContentOptions?: Event<unknown>;
+  readonly options?: Record<string, unknown>;
+  openNotebook(uri: Uri, openContext: unknown): Promise<NotebookData>;
+  saveNotebook?(document: NotebookDocument, token: CancellationToken): Promise<void>;
+  saveNotebookAs?(
+    targetResource: Uri,
+    document: NotebookDocument,
+    token: CancellationToken
+  ): Promise<void>;
+  backupNotebook?(
+    document: NotebookDocument,
+    context: unknown,
+    token: CancellationToken
+  ): Promise<unknown>;
+}
+
+export enum NotebookControllerAffinity {
+  Default = 1,
+  Preferred = 2,
 }
 
 export interface NotebookController {
@@ -130,20 +162,32 @@ export interface NotebookController {
   readonly onDidChangeSelectedNotebooks: Event<{ notebook: NotebookDocument; selected: boolean }>;
   createNotebookCellExecution(cell: NotebookCell): NotebookCellExecution;
   dispose(): void;
-  updateNotebookAffinity(notebook: NotebookDocument, affinity: any): void;
+  updateNotebookAffinity(notebook: NotebookDocument, affinity: NotebookControllerAffinity): void;
 }
 
 export interface NotebookCellExecution {
   readonly cell: NotebookCell;
-  readonly token: any; // CancellationToken
+  readonly token: CancellationToken;
   executionOrder: number | undefined;
   start(startTime?: number): void;
   end(success: boolean | undefined, endTime?: number): void;
   clearOutput(cell?: NotebookCell): Promise<void>;
-  replaceOutput(output: NotebookCellOutput | readonly NotebookCellOutput[], cell?: NotebookCell): Promise<void>;
-  appendOutput(output: NotebookCellOutput | readonly NotebookCellOutput[], cell?: NotebookCell): Promise<void>;
-  replaceOutputItems(items: NotebookCellOutputItem | readonly NotebookCellOutputItem[], output: NotebookCellOutput): Promise<void>;
-  appendOutputItems(items: NotebookCellOutputItem | readonly NotebookCellOutputItem[], output: NotebookCellOutput): Promise<void>;
+  replaceOutput(
+    output: NotebookCellOutput | readonly NotebookCellOutput[],
+    cell?: NotebookCell
+  ): Promise<void>;
+  appendOutput(
+    output: NotebookCellOutput | readonly NotebookCellOutput[],
+    cell?: NotebookCell
+  ): Promise<void>;
+  replaceOutputItems(
+    items: NotebookCellOutputItem | readonly NotebookCellOutputItem[],
+    output: NotebookCellOutput
+  ): Promise<void>;
+  appendOutputItems(
+    items: NotebookCellOutputItem | readonly NotebookCellOutputItem[],
+    output: NotebookCellOutput
+  ): Promise<void>;
 }
 
 class NotebookCellExecutionImpl implements NotebookCellExecution {
@@ -152,7 +196,7 @@ class NotebookCellExecutionImpl implements NotebookCellExecution {
   constructor(
     private bridge: ExtensionHostBridge,
     public readonly cell: NotebookCell,
-    public readonly token: any
+    public readonly token: CancellationToken
   ) {}
 
   get executionOrder(): number | undefined {
@@ -166,7 +210,7 @@ class NotebookCellExecutionImpl implements NotebookCellExecution {
   start(startTime?: number): void {
     this.bridge.send('notebookCellExecutionStart', {
       cell: this.cell,
-      startTime
+      startTime,
     });
   }
 
@@ -174,41 +218,53 @@ class NotebookCellExecutionImpl implements NotebookCellExecution {
     this.bridge.send('notebookCellExecutionEnd', {
       cell: this.cell,
       success,
-      endTime
+      endTime,
     });
   }
 
   async clearOutput(cell?: NotebookCell): Promise<void> {
     await this.bridge.request('notebookCellClearOutput', {
-      cell: cell || this.cell
+      cell: cell || this.cell,
     });
   }
 
-  async replaceOutput(output: NotebookCellOutput | readonly NotebookCellOutput[], cell?: NotebookCell): Promise<void> {
+  async replaceOutput(
+    output: NotebookCellOutput | readonly NotebookCellOutput[],
+    cell?: NotebookCell
+  ): Promise<void> {
     await this.bridge.request('notebookCellReplaceOutput', {
       cell: cell || this.cell,
-      output
+      output,
     });
   }
 
-  async appendOutput(output: NotebookCellOutput | readonly NotebookCellOutput[], cell?: NotebookCell): Promise<void> {
+  async appendOutput(
+    output: NotebookCellOutput | readonly NotebookCellOutput[],
+    cell?: NotebookCell
+  ): Promise<void> {
     await this.bridge.request('notebookCellAppendOutput', {
       cell: cell || this.cell,
-      output
+      output,
     });
   }
 
-  async replaceOutputItems(items: NotebookCellOutputItem | readonly NotebookCellOutputItem[], output: NotebookCellOutput): Promise<void> {
+  async replaceOutputItems(
+    items: NotebookCellOutputItem | readonly NotebookCellOutputItem[],
+    output: NotebookCellOutput
+  ): Promise<void> {
     await this.bridge.request('notebookCellReplaceOutputItems', {
       output,
-      items
+      items,
     });
   }
 
-  async appendOutputItems(items: NotebookCellOutputItem | readonly NotebookCellOutputItem[], output: NotebookCellOutput): Promise<void> {
+  async appendOutputItems(
+    items: NotebookCellOutputItem | readonly NotebookCellOutputItem[],
+    output: NotebookCellOutput
+  ): Promise<void> {
     await this.bridge.request('notebookCellAppendOutputItems', {
       output,
-      items
+      items,
     });
   }
 }
@@ -218,7 +274,10 @@ class NotebookControllerImpl implements NotebookController {
   private _description?: string;
   private _detail?: string;
   private _supportsExecutionOrder?: boolean;
-  private _onDidChangeSelectedNotebooks = new EventEmitter<{ notebook: NotebookDocument; selected: boolean }>();
+  private _onDidChangeSelectedNotebooks = new EventEmitter<{
+    notebook: NotebookDocument;
+    selected: boolean;
+  }>();
 
   readonly onDidChangeSelectedNotebooks = this._onDidChangeSelectedNotebooks.event;
 
@@ -265,14 +324,17 @@ class NotebookControllerImpl implements NotebookController {
   }
 
   createNotebookCellExecution(cell: NotebookCell): NotebookCellExecution {
-    return new NotebookCellExecutionImpl(this.bridge, cell, {});
+    return new NotebookCellExecutionImpl(this.bridge, cell, {
+      isCancellationRequested: false,
+      onCancellationRequested: () => ({ dispose: () => {} }),
+    });
   }
 
-  updateNotebookAffinity(notebook: NotebookDocument, affinity: any): void {
+  updateNotebookAffinity(notebook: NotebookDocument, affinity: NotebookControllerAffinity): void {
     this.bridge.send('updateNotebookAffinity', {
       controllerId: this.id,
       notebook,
-      affinity
+      affinity,
     });
   }
 
@@ -296,15 +358,15 @@ export class NotebooksAPI {
   }
 
   private setupListeners(): void {
-    this.bridge.on('notebookOpened', (data: any) => {
+    this.bridge.on('notebookOpened', (data: { document: NotebookDocument }) => {
       this._onDidOpenNotebookDocument.fire(data.document);
     });
 
-    this.bridge.on('notebookClosed', (data: any) => {
+    this.bridge.on('notebookClosed', (data: { document: NotebookDocument }) => {
       this._onDidCloseNotebookDocument.fire(data.document);
     });
 
-    this.bridge.on('notebookSaved', (data: any) => {
+    this.bridge.on('notebookSaved', (data: { document: NotebookDocument }) => {
       this._onDidSaveNotebookDocument.fire(data.document);
     });
   }
@@ -312,17 +374,17 @@ export class NotebooksAPI {
   registerNotebookContentProvider(
     notebookType: string,
     provider: NotebookDocumentContentProvider,
-    options?: any
+    options?: Record<string, unknown>
   ): Disposable {
     this.bridge.send('registerNotebookContentProvider', {
       notebookType,
-      options
+      options,
     });
 
     return {
       dispose: () => {
         this.bridge.send('unregisterNotebookContentProvider', { notebookType });
-      }
+      },
     };
   }
 
@@ -330,15 +392,19 @@ export class NotebooksAPI {
     id: string,
     notebookType: string,
     label: string,
-    handler?: (cells: NotebookCell[], notebook: NotebookDocument, controller: NotebookController) => void | Promise<void>,
-    rendererScripts?: any[]
+    handler?: (
+      cells: NotebookCell[],
+      notebook: NotebookDocument,
+      controller: NotebookController
+    ) => void | Promise<void>,
+    rendererScripts?: unknown[]
   ): NotebookController {
     const controller = new NotebookControllerImpl(this.bridge, id, notebookType, label);
 
     this.bridge.send('createNotebookController', {
       id,
       notebookType,
-      label
+      label,
     });
 
     return controller;

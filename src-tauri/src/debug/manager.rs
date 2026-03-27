@@ -18,26 +18,19 @@ impl DebugManager {
 
     pub fn create_session(&self, name: String, adapter_type: String) -> Result<String, String> {
         let session_id = Uuid::new_v4().to_string();
-        let session = DebugSession {
-            id: session_id.clone(),
-            name,
-            state: DebugState::Stopped,
-            adapter_type,
-        };
+        let session =
+            DebugSession { id: session_id.clone(), name, state: DebugState::Stopped, adapter_type };
 
         let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
         sessions.insert(session_id.clone(), session);
-        
+
         println!("[Debug] Created session: {}", session_id);
         Ok(session_id)
     }
 
     pub fn get_session(&self, session_id: &str) -> Result<DebugSession, String> {
         let sessions = self.sessions.lock().map_err(|e| e.to_string())?;
-        sessions
-            .get(session_id)
-            .cloned()
-            .ok_or_else(|| format!("Session {} not found", session_id))
+        sessions.get(session_id).cloned().ok_or_else(|| format!("Session {} not found", session_id))
     }
 
     pub fn list_sessions(&self) -> Result<Vec<DebugSession>, String> {
@@ -45,11 +38,7 @@ impl DebugManager {
         Ok(sessions.values().cloned().collect())
     }
 
-    pub fn update_session_state(
-        &self,
-        session_id: &str,
-        state: DebugState,
-    ) -> Result<(), String> {
+    pub fn update_session_state(&self, session_id: &str, state: DebugState) -> Result<(), String> {
         let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
         if let Some(session) = sessions.get_mut(session_id) {
             session.state = state;
@@ -68,9 +57,7 @@ impl DebugManager {
     }
 
     pub fn set_breakpoints(
-        &self,
-        file_path: String,
-        breakpoints: Vec<SourceBreakpoint>,
+        &self, file_path: String, breakpoints: Vec<SourceBreakpoint>,
     ) -> Result<(), String> {
         // Convert SourceBreakpoint to Breakpoint
         let converted_bps: Vec<Breakpoint> = breakpoints

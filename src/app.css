@@ -38,6 +38,85 @@
   --editor-fg: #d4d4d4;
   --editor-selection: #264f78;
   --editor-line-number: #858585;
+
+  /* Semantic colors */
+  --color-error: #f48771;
+  --color-error-bg: rgba(244, 135, 113, 0.1);
+  --color-warning: #cca700;
+  --color-warning-bg: rgba(204, 167, 0, 0.1);
+  --color-info: #75beff;
+  --color-success: #89d185;
+  --color-success-bg: rgba(137, 209, 133, 0.2);
+
+  /* Toast/status colors */
+  --color-toast-error: #f44336;
+  --color-toast-success: #4caf50;
+  --color-toast-warning: #ff9800;
+  --color-toast-info: #2196f3;
+
+  /* Overlay/shadow */
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.3);
+
+  /* Surface overlays */
+  --color-surface-hover: rgba(255, 255, 255, 0.06);
+  --color-surface-focus: rgba(255, 255, 255, 0.04);
+  --color-modal-overlay: rgba(0, 0, 0, 0.45);
+
+  /* Button surfaces */
+  --color-btn-primary-bg: rgba(45, 132, 255, 0.15);
+  --color-btn-secondary-bg: rgba(255, 196, 0, 0.18);
+  --color-btn-danger-bg: rgba(255, 70, 66, 0.18);
+
+  /* Badge colors */
+  --color-badge-error: #e51400;
+  --color-badge-muted: #888;
+
+  /* Debug colors */
+  --color-debug-link: #4ec9b0;
+  --color-debug-variable: #ce9178;
+
+  /* Terminal defaults */
+  --terminal-bg-dark: #1e1e1e;
+  --terminal-fg-dark: #cccccc;
+  --terminal-cursor-dark: #cccccc;
+  --terminal-selection-dark: #264f78;
+  --terminal-bg-light: #ffffff;
+  --terminal-fg-light: #333333;
+  --terminal-cursor-light: #333333;
+  --terminal-selection-light: #add6ff;
+  --terminal-bg-hc: #000000;
+  --terminal-fg-hc: #ffffff;
+  --terminal-cursor-hc: #ffffff;
+  --terminal-selection-hc: #660000;
+
+  /* Chart colors */
+  --chart-series-1: #3b82f6;
+  --chart-series-1-bg: rgba(59, 130, 246, 0.1);
+  --chart-series-2: #10b981;
+  --chart-series-2-bg: rgba(16, 185, 129, 0.1);
+  --chart-series-3: #f59e0b;
+  --chart-series-3-bg: rgba(245, 158, 11, 0.1);
+  --chart-axis: #374151;
+  --chart-tick: #9ca3af;
+  --chart-label: #d1d5db;
+
+  /* Text on accent */
+  --color-text-on-accent: #ffffff;
+  --color-text-on-error: #ffffff;
+  --color-text-on-warning: #ffffff;
+  --color-text-on-success: #ffffff;
+
+  /* Git colors */
+  --color-git-added: #89d185;
+  --color-git-modified: #f9c74f;
+  --color-git-deleted: #f48771;
+  --color-git-untracked: #90caf9;
+  --color-git-conflict: #ff6b6b;
+
+  /* Selection highlight */
+  --color-selection-bg: rgba(46, 134, 222, 0.18);
 }
 
 /* Light Theme */
@@ -63,14 +142,79 @@
   --accent-color: var(--color-accent);
 
   /* Activity bar */
-  --activity-bar-bg: #2c2c2c;
-  --activity-bar-item-hover: #3e3e42;
+  --activity-bar-bg: #f3f3f3;
+  --activity-bar-item-hover: #e0e0e0;
 
   /* Editor */
   --editor-bg: #ffffff;
   --editor-fg: #000000;
   --editor-selection: #add6ff;
   --editor-line-number: #237893;
+
+  /* Semantic colors */
+  --color-error: #d32f2f;
+  --color-error-bg: rgba(211, 47, 47, 0.1);
+  --color-warning: #f9a825;
+  --color-warning-bg: rgba(249, 168, 37, 0.1);
+  --color-info: #0288d1;
+  --color-success: #388e3c;
+  --color-success-bg: rgba(56, 142, 60, 0.1);
+
+  /* Toast/status colors */
+  --color-toast-error: #d32f2f;
+  --color-toast-success: #388e3c;
+  --color-toast-warning: #f57c00;
+  --color-toast-info: #1976d2;
+
+  /* Overlay/shadow */
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+
+  /* Surface overlays */
+  --color-surface-hover: rgba(0, 0, 0, 0.04);
+  --color-surface-focus: rgba(0, 0, 0, 0.02);
+  --color-modal-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Button surfaces */
+  --color-btn-primary-bg: rgba(0, 122, 204, 0.1);
+  --color-btn-secondary-bg: rgba(255, 196, 0, 0.15);
+  --color-btn-danger-bg: rgba(211, 47, 47, 0.1);
+
+  /* Badge colors */
+  --color-badge-error: #d32f2f;
+  --color-badge-muted: #999;
+
+  /* Debug colors */
+  --color-debug-link: #267399;
+  --color-debug-variable: #a31515;
+
+  /* Chart colors */
+  --chart-series-1: #2563eb;
+  --chart-series-1-bg: rgba(37, 99, 235, 0.1);
+  --chart-series-2: #059669;
+  --chart-series-2-bg: rgba(5, 150, 105, 0.1);
+  --chart-series-3: #d97706;
+  --chart-series-3-bg: rgba(217, 119, 6, 0.1);
+  --chart-axis: #e5e7eb;
+  --chart-tick: #6b7280;
+  --chart-label: #374151;
+
+  /* Text on accent */
+  --color-text-on-accent: #ffffff;
+  --color-text-on-error: #ffffff;
+  --color-text-on-warning: #1e1e1e;
+  --color-text-on-success: #ffffff;
+
+  /* Git colors */
+  --color-git-added: #388e3c;
+  --color-git-modified: #f9a825;
+  --color-git-deleted: #d32f2f;
+  --color-git-untracked: #1976d2;
+  --color-git-conflict: #c62828;
+
+  /* Selection highlight */
+  --color-selection-bg: rgba(0, 122, 204, 0.15);
 
   /* Modal overlay for light theme */
   --modal-overlay-bg: rgba(0, 0, 0, 0.6);
@@ -107,6 +251,60 @@
   --editor-fg: #ffffff;
   --editor-selection: #ffffff40;
   --editor-line-number: #ffffff;
+
+  /* Semantic colors */
+  --color-error: #f48771;
+  --color-error-bg: rgba(244, 135, 113, 0.15);
+  --color-warning: #f9c74f;
+  --color-warning-bg: rgba(249, 199, 79, 0.15);
+  --color-info: #75beff;
+  --color-success: #89d185;
+  --color-success-bg: rgba(137, 209, 133, 0.2);
+
+  /* Toast/status colors */
+  --color-toast-error: #f44336;
+  --color-toast-success: #4caf50;
+  --color-toast-warning: #ff9800;
+  --color-toast-info: #2196f3;
+
+  /* Overlay/shadow */
+  --shadow-md: 0 4px 12px rgba(255, 255, 255, 0.1);
+  --shadow-lg: 0 8px 32px rgba(255, 255, 255, 0.15);
+  --shadow-xl: 0 20px 25px rgba(255, 255, 255, 0.1);
+
+  /* Surface overlays */
+  --color-surface-hover: rgba(255, 255, 255, 0.1);
+  --color-surface-focus: rgba(255, 255, 255, 0.08);
+  --color-modal-overlay: rgba(0, 0, 0, 0.9);
+
+  /* Button surfaces */
+  --color-btn-primary-bg: rgba(0, 122, 204, 0.3);
+  --color-btn-secondary-bg: rgba(255, 196, 0, 0.25);
+  --color-btn-danger-bg: rgba(255, 70, 66, 0.25);
+
+  /* Badge colors */
+  --color-badge-error: #ff4444;
+  --color-badge-muted: #aaaaaa;
+
+  /* Debug colors */
+  --color-debug-link: #4ec9b0;
+  --color-debug-variable: #ce9178;
+
+  /* Text on accent */
+  --color-text-on-accent: #ffffff;
+  --color-text-on-error: #ffffff;
+  --color-text-on-warning: #1e1e1e;
+  --color-text-on-success: #000000;
+
+  /* Git colors */
+  --color-git-added: #89d185;
+  --color-git-modified: #f9c74f;
+  --color-git-deleted: #f48771;
+  --color-git-untracked: #90caf9;
+  --color-git-conflict: #ff6b6b;
+
+  /* Selection highlight */
+  --color-selection-bg: rgba(255, 255, 255, 0.2);
 
   /* Modal overlay for high contrast */
   --modal-overlay-bg: rgba(0, 0, 0, 0.9);
@@ -146,27 +344,27 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #424242;
+  background: var(--color-bg-tertiary);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4e4e4e;
+  background: var(--color-text-secondary);
 }
 
 /* Git decorations in editor gutter */
 .git-line-added {
-  background: rgba(137, 209, 133, 0.2);
-  border-left: 3px solid #89d185;
+  background: var(--color-success-bg);
+  border-left: 3px solid var(--color-git-added);
 }
 
 .git-line-modified {
-  background: rgba(249, 199, 79, 0.2);
-  border-left: 3px solid #f9c74f;
+  background: var(--color-warning-bg);
+  border-left: 3px solid var(--color-git-modified);
 }
 
 .git-line-deleted {
-  border-left: 3px solid #f48771;
+  border-left: 3px solid var(--color-git-deleted);
   position: relative;
 }
 
@@ -177,5 +375,5 @@ body {
   top: 50%;
   width: 100%;
   height: 0;
-  border-top: 2px solid #f48771;
+  border-top: 2px solid var(--color-git-deleted);
 }

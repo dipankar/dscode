@@ -1,12 +1,5 @@
-/**
- * IPC Bridge between Extension Host and Main App
- *
- * Uses NNG (nanomsg-next-generation) for IPC.
- * Extension host listens on REP socket, Tauri connects with REQ socket.
- */
-
 import { EventEmitter } from 'events';
-import { NngIPC } from './nng-ipc';
+import { SocketIPC } from './ipc';
 
 export interface IPCMessage {
   id: string;
@@ -142,57 +135,34 @@ class InputValidator {
 }
 
 export class ExtensionHostBridge extends EventEmitter {
-  private nng: NngIPC;
+  private ipc: SocketIPC;
   private isConnected = false;
   private ipcUrl: string;
   private incomingIpcUrl: string;
 
   constructor() {
     super();
-    this.nng = new NngIPC();
-    // Get IPC URLs from environment variables or use platform-safe defaults
-    const windowsPipeRoot = '\\.\pipe\\';
+    this.ipc = new SocketIPC();
     const defaultOutgoing =
       process.platform === 'win32'
-        ? `ipc://${windowsPipeRoot}dscode-extension-host`
-        : 'ipc:///tmp/dscode-extension-host.ipc';
+        ? '\\\\.\\pipe\\dscode-ext-out'
+        : 'ipc:///tmp/dscode-ext-out.sock';
     const defaultIncoming =
-      process.platform === 'win32'
-        ? `ipc://${windowsPipeRoot}dscode-incoming-extension-host`
-        : 'ipc:///tmp/dscode-incoming-extension-host.ipc';
+      process.platform === 'win32' ? '\\\\.\\pipe\\dscode-ext-in' : 'ipc:///tmp/dscode-ext-in.sock';
     this.ipcUrl = process.env.DSCODE_IPC_URL || defaultOutgoing;
     this.incomingIpcUrl = process.env.DSCODE_INCOMING_IPC_URL || defaultIncoming;
   }
 
   async connect() {
     try {
-      console.error('[Bridge] Connecting via NNG...');
+      console.error('[Bridge] Connecting via Unix domain sockets...');
       console.error('[Bridge] Outgoing IPC URL (ExtHost listens):', this.ipcUrl);
       console.error('[Bridge] Incoming IPC URL (ExtHost connects):', this.incomingIpcUrl);
 
-      // Start listening for requests from Tauri (REP socket)
-      this.nng.listen(this.ipcUrl);
-
-      // Connect to Tauri for sending requests (REQ socket) with retries
-      const maxAttempts = 10;
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          this.nng.connect(this.incomingIpcUrl);
-          console.error('[Bridge] Connected to incoming socket');
-          break;
-        } catch (error) {
-          if (attempt === maxAttempts) {
-            throw new Error(`Failed to connect after ${maxAttempts} attempts: ${error}`);
-          }
-          const delay = attempt * 200;
-          console.error(`[Bridge] Connection attempt ${attempt} failed, retrying in ${delay}ms...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-      }
+      await this.ipc.connect(this.ipcUrl, this.incomingIpcUrl);
 
       this.isConnected = true;
 
-      // Register message handlers
       this.setupHandlers();
 
       console.error('[Bridge] Bidirectional connection established');
@@ -204,7 +174,7 @@ export class ExtensionHostBridge extends EventEmitter {
 
   async disconnect() {
     this.isConnected = false;
-    this.nng.close();
+    this.ipc.close();
     console.error('[Bridge] Disconnected');
   }
 
@@ -213,7 +183,7 @@ export class ExtensionHostBridge extends EventEmitter {
    */
   private setupHandlers() {
     // Extension lifecycle: activate
-    this.nng.on('activate-extension', async (payload: unknown) => {
+    this.ipc.on('activate-extension', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const extensionId = InputValidator.validateExtensionId(validatedPayload.extensionId);
 
@@ -222,7 +192,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Extension lifecycle: deactivate
-    this.nng.on('deactivate-extension', async (payload: unknown) => {
+    this.ipc.on('deactivate-extension', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const extensionId = InputValidator.validateExtensionId(validatedPayload.extensionId);
 
@@ -231,7 +201,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Extension management: list installed extensions
-    this.nng.on('list-extensions', async (payload: unknown) => {
+    this.ipc.on('list-extensions', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       return new Promise((resolve, reject) => {
         const respond = (response: unknown) => resolve(response);
@@ -247,7 +217,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Extension management: reload extensions after install/uninstall
-    this.nng.on('reload-extensions', async (payload: unknown) => {
+    this.ipc.on('reload-extensions', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       return new Promise((resolve, reject) => {
         const respond = (response: unknown) => resolve(response);
@@ -263,7 +233,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Extension management: uninstall extension
-    this.nng.on('uninstall-extension', async (payload: unknown) => {
+    this.ipc.on('uninstall-extension', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
 
       // Validate extension ID if present
@@ -285,7 +255,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Handle tree view requests
-    this.nng.on('treeView:getChildren', async (payload: unknown) => {
+    this.ipc.on('treeView:getChildren', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
 
       // Validate view ID if present
@@ -303,7 +273,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('treeView:event', async (payload: unknown) => {
+    this.ipc.on('treeView:event', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
 
       // Validate view ID if present
@@ -321,7 +291,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Handle command execution requests
-    this.nng.on('executeCommand', async (payload: unknown) => {
+    this.ipc.on('executeCommand', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
 
       // Validate command ID
@@ -339,7 +309,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('configuration-changed', async (payload: unknown) => {
+    this.ipc.on('configuration-changed', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('configurationChanged', validatedPayload);
@@ -347,7 +317,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('fsWatcher:event', async (payload: unknown) => {
+    this.ipc.on('fsWatcher:event', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('fsWatcher:event', validatedPayload);
@@ -358,13 +328,13 @@ export class ExtensionHostBridge extends EventEmitter {
     // ==================== Activation Event Handlers ====================
 
     // Signal startup finished - triggers onStartupFinished extensions
-    this.nng.on('signal-startup-finished', async () => {
+    this.ipc.on('signal-startup-finished', async () => {
       await this.emitAsync('signal-startup-finished');
       return { success: true };
     });
 
     // Trigger onLanguage activation event
-    this.nng.on('trigger-on-language', async (payload: unknown) => {
+    this.ipc.on('trigger-on-language', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const languageId = InputValidator.validateString(
         validatedPayload.languageId,
@@ -376,7 +346,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger onCommand activation event
-    this.nng.on('trigger-on-command', async (payload: unknown) => {
+    this.ipc.on('trigger-on-command', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const commandId = InputValidator.validateCommandId(validatedPayload.commandId);
       await this.emitAsync('trigger-on-command', commandId);
@@ -384,7 +354,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger onView activation event
-    this.nng.on('trigger-on-view', async (payload: unknown) => {
+    this.ipc.on('trigger-on-view', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const viewId = InputValidator.validateViewId(validatedPayload.viewId);
       await this.emitAsync('trigger-on-view', viewId);
@@ -392,7 +362,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger onDebug activation event
-    this.nng.on('trigger-on-debug', async (payload: unknown) => {
+    this.ipc.on('trigger-on-debug', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const debugType = validatedPayload.debugType
         ? InputValidator.validateString(validatedPayload.debugType, 'debugType', 128)
@@ -402,7 +372,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger onUri activation event
-    this.nng.on('trigger-on-uri', async (payload: unknown) => {
+    this.ipc.on('trigger-on-uri', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const scheme = validatedPayload.scheme
         ? InputValidator.validateString(validatedPayload.scheme, 'scheme', 64)
@@ -412,7 +382,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger onFileSystem activation event
-    this.nng.on('trigger-on-filesystem', async (payload: unknown) => {
+    this.ipc.on('trigger-on-filesystem', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const scheme = InputValidator.validateString(validatedPayload.scheme, 'scheme', 64);
       await this.emitAsync('trigger-on-filesystem', scheme);
@@ -420,7 +390,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger onWebviewPanel activation event
-    this.nng.on('trigger-on-webview-panel', async (payload: unknown) => {
+    this.ipc.on('trigger-on-webview-panel', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const viewType = InputValidator.validateString(validatedPayload.viewType, 'viewType', 256);
       await this.emitAsync('trigger-on-webview-panel', viewType);
@@ -428,7 +398,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger onCustomEditor activation event
-    this.nng.on('trigger-on-custom-editor', async (payload: unknown) => {
+    this.ipc.on('trigger-on-custom-editor', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const viewType = InputValidator.validateString(validatedPayload.viewType, 'viewType', 256);
       await this.emitAsync('trigger-on-custom-editor', viewType);
@@ -436,7 +406,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger onNotebook activation event
-    this.nng.on('trigger-on-notebook', async (payload: unknown) => {
+    this.ipc.on('trigger-on-notebook', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const notebookType = InputValidator.validateString(
         validatedPayload.notebookType,
@@ -448,7 +418,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger onAuthenticationRequest activation event
-    this.nng.on('trigger-on-authentication', async (payload: unknown) => {
+    this.ipc.on('trigger-on-authentication', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const providerId = InputValidator.validateString(
         validatedPayload.providerId,
@@ -460,7 +430,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger onTerminalProfile activation event
-    this.nng.on('trigger-on-terminal-profile', async (payload: unknown) => {
+    this.ipc.on('trigger-on-terminal-profile', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const profileId = InputValidator.validateString(validatedPayload.profileId, 'profileId', 256);
       await this.emitAsync('trigger-on-terminal-profile', profileId);
@@ -468,7 +438,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Trigger workspaceContains activation event
-    this.nng.on('trigger-workspace-contains', async (payload: unknown) => {
+    this.ipc.on('trigger-workspace-contains', async (payload: unknown) => {
       const validatedPayload = InputValidator.validatePayload(payload);
       const pattern = InputValidator.validateString(validatedPayload.pattern, 'pattern', 1024);
       await this.emitAsync('trigger-workspace-contains', pattern);
@@ -476,7 +446,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Get pending activations (for debugging)
-    this.nng.on('get-pending-activations', async () => {
+    this.ipc.on('get-pending-activations', async () => {
       return new Promise((resolve) => {
         this.emit('get-pending-activations', {}, (response: unknown) => {
           resolve(response);
@@ -487,7 +457,7 @@ export class ExtensionHostBridge extends EventEmitter {
     // ==================== Language Provider Handlers ====================
 
     // Hover provider request
-    this.nng.on('provideHover', async (payload: unknown) => {
+    this.ipc.on('provideHover', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideHover', data, (response: unknown) => {
@@ -497,7 +467,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Definition provider request
-    this.nng.on('provideDefinition', async (payload: unknown) => {
+    this.ipc.on('provideDefinition', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideDefinition', data, (response: unknown) => {
@@ -506,7 +476,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideImplementation', async (payload: unknown) => {
+    this.ipc.on('provideImplementation', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideImplementation', data, (response: unknown) => {
@@ -515,7 +485,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideTypeDefinition', async (payload: unknown) => {
+    this.ipc.on('provideTypeDefinition', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideTypeDefinition', data, (response: unknown) => {
@@ -524,7 +494,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideDeclaration', async (payload: unknown) => {
+    this.ipc.on('provideDeclaration', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideDeclaration', data, (response: unknown) => {
@@ -534,7 +504,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // References provider request
-    this.nng.on('provideReferences', async (payload: unknown) => {
+    this.ipc.on('provideReferences', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideReferences', data, (response: unknown) => {
@@ -544,7 +514,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Code actions provider request
-    this.nng.on('provideCodeActions', async (payload: unknown) => {
+    this.ipc.on('provideCodeActions', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideCodeActions', data, (response: unknown) => {
@@ -554,7 +524,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Document symbols provider request
-    this.nng.on('provideDocumentSymbols', async (payload: unknown) => {
+    this.ipc.on('provideDocumentSymbols', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideDocumentSymbols', data, (response: unknown) => {
@@ -564,7 +534,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Document formatting provider request
-    this.nng.on('provideDocumentFormatting', async (payload: unknown) => {
+    this.ipc.on('provideDocumentFormatting', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideDocumentFormatting', data, (response: unknown) => {
@@ -574,7 +544,7 @@ export class ExtensionHostBridge extends EventEmitter {
     });
 
     // Completion provider request
-    this.nng.on('provideCompletion', async (payload: unknown) => {
+    this.ipc.on('provideCompletion', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideCompletion', data, (response: unknown) => {
@@ -583,7 +553,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideSignatureHelp', async (payload: unknown) => {
+    this.ipc.on('provideSignatureHelp', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideSignatureHelp', data, (response: unknown) => {
@@ -592,7 +562,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideRename', async (payload: unknown) => {
+    this.ipc.on('provideRename', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideRename', data, (response: unknown) => {
@@ -601,7 +571,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('prepareRename', async (payload: unknown) => {
+    this.ipc.on('prepareRename', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('prepareRename', data, (response: unknown) => {
@@ -610,7 +580,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideCodeLenses', async (payload: unknown) => {
+    this.ipc.on('provideCodeLenses', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideCodeLenses', data, (response: unknown) => {
@@ -619,7 +589,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideDocumentLinks', async (payload: unknown) => {
+    this.ipc.on('provideDocumentLinks', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideDocumentLinks', data, (response: unknown) => {
@@ -628,7 +598,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideDocumentHighlights', async (payload: unknown) => {
+    this.ipc.on('provideDocumentHighlights', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideDocumentHighlights', data, (response: unknown) => {
@@ -637,7 +607,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideFoldingRanges', async (payload: unknown) => {
+    this.ipc.on('provideFoldingRanges', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideFoldingRanges', data, (response: unknown) => {
@@ -646,7 +616,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideSelectionRanges', async (payload: unknown) => {
+    this.ipc.on('provideSelectionRanges', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideSelectionRanges', data, (response: unknown) => {
@@ -655,7 +625,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideWorkspaceSymbols', async (payload: unknown) => {
+    this.ipc.on('provideWorkspaceSymbols', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideWorkspaceSymbols', data, (response: unknown) => {
@@ -664,7 +634,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideRangeFormatting', async (payload: unknown) => {
+    this.ipc.on('provideRangeFormatting', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideRangeFormatting', data, (response: unknown) => {
@@ -673,7 +643,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideOnTypeFormatting', async (payload: unknown) => {
+    this.ipc.on('provideOnTypeFormatting', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideOnTypeFormatting', data, (response: unknown) => {
@@ -682,7 +652,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideInlineCompletionItems', async (payload: unknown) => {
+    this.ipc.on('provideInlineCompletionItems', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideInlineCompletionItems', data, (response: unknown) => {
@@ -691,7 +661,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideSemanticTokens', async (payload: unknown) => {
+    this.ipc.on('provideSemanticTokens', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideSemanticTokens', data, (response: unknown) => {
@@ -700,7 +670,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideDocumentColors', async (payload: unknown) => {
+    this.ipc.on('provideDocumentColors', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideDocumentColors', data, (response: unknown) => {
@@ -709,7 +679,7 @@ export class ExtensionHostBridge extends EventEmitter {
       });
     });
 
-    this.nng.on('provideColorPresentations', async (payload: unknown) => {
+    this.ipc.on('provideColorPresentations', async (payload: unknown) => {
       const data = InputValidator.validatePayload(payload);
       return new Promise((resolve) => {
         this.emit('provideColorPresentations', data, (response: unknown) => {
@@ -719,21 +689,15 @@ export class ExtensionHostBridge extends EventEmitter {
     });
   }
 
-  /**
-   * Send a one-way message to Tauri (fire and forget)
-   * For one-way messages, we still use request() but ignore the response
-   */
   async send(type: string, payload: unknown): Promise<void> {
     if (!this.isConnected) {
       throw new Error('Bridge not connected');
     }
 
-    // Validate type
     InputValidator.validateString(type, 'Message type', 256);
 
     try {
-      // For one-way messages, we still need to wait for ack due to REQ/REP pattern
-      await this.nng.request(type, payload);
+      await this.ipc.send(type, payload);
     } catch (error) {
       console.error('[Bridge] Failed to send message:', error);
       throw error;
@@ -768,7 +732,7 @@ export class ExtensionHostBridge extends EventEmitter {
     InputValidator.validateString(type, 'Request type', 256);
 
     try {
-      const response = await this.nng.request(type, payload);
+      const response = await this.ipc.request(type, payload);
       return response;
     } catch (error) {
       console.error('[Bridge] Request failed:', error);

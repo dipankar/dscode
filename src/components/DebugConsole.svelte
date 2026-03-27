@@ -1,6 +1,6 @@
 <script lang="ts">
   import { debugConsole } from '../lib/stores';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
 
   export let visible = false;
 
@@ -8,16 +8,21 @@
   let inputValue = '';
   let consoleContainer: HTMLDivElement;
   let autoScroll = true;
-
-  debugConsole.subscribe((msgs) => {
-    messages = msgs;
-    if (autoScroll) {
-      scrollToBottom();
-    }
-  });
+  let unsubscribe: (() => void) | null = null;
 
   onMount(() => {
-    scrollToBottom();
+    unsubscribe = debugConsole.subscribe((msgs) => {
+      messages = msgs;
+      if (autoScroll) {
+        scrollToBottom();
+      }
+    });
+  });
+
+  onDestroy(() => {
+    if (unsubscribe) {
+      unsubscribe();
+    }
   });
 
   function scrollToBottom() {
@@ -210,11 +215,11 @@
   }
 
   .message.output {
-    color: #4ec9b0;
+    color: var(--color-debug-link);
   }
 
   .message.error {
-    color: #f48771;
+    color: var(--color-error);
   }
 
   .message.info {

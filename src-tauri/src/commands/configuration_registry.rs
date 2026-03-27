@@ -102,8 +102,7 @@ impl ConfigurationRegistry {
 
     /// Register configuration schema
     pub fn register_configuration_schema(
-        &self,
-        contribution: ConfigurationContribution,
+        &self, contribution: ConfigurationContribution,
     ) -> Result<(), String> {
         let mut schemas = self.schemas.write().map_err(|e| e.to_string())?;
 
@@ -114,20 +113,14 @@ impl ConfigurationRegistry {
             schemas.insert(property.key.clone(), property);
         }
 
-        println!(
-            "[Configuration] Registered {} schema(s) from: {}",
-            count,
-            extension_id
-        );
+        println!("[Configuration] Registered {} schema(s) from: {}", count, extension_id);
 
         Ok(())
     }
 
     /// Get configuration value
     pub fn get_configuration(
-        &self,
-        key: &str,
-        scope: ConfigurationScope,
+        &self, key: &str, scope: ConfigurationScope,
     ) -> Result<Option<Value>, String> {
         match scope {
             ConfigurationScope::User => {
@@ -135,12 +128,14 @@ impl ConfigurationRegistry {
                 Ok(user_settings.get(key).cloned())
             }
             ConfigurationScope::Workspace => {
-                let workspace_settings = self.workspace_settings.read().map_err(|e| e.to_string())?;
+                let workspace_settings =
+                    self.workspace_settings.read().map_err(|e| e.to_string())?;
                 Ok(workspace_settings.get(key).cloned())
             }
             ConfigurationScope::WorkspaceFolder => {
                 // For now, return workspace settings
-                let workspace_settings = self.workspace_settings.read().map_err(|e| e.to_string())?;
+                let workspace_settings =
+                    self.workspace_settings.read().map_err(|e| e.to_string())?;
                 Ok(workspace_settings.get(key).cloned())
             }
         }
@@ -148,9 +143,7 @@ impl ConfigurationRegistry {
 
     /// Get configuration with fallback
     pub fn get_configuration_with_fallback(
-        &self,
-        key: &str,
-        scope: ConfigurationScope,
+        &self, key: &str, scope: ConfigurationScope,
     ) -> Result<Option<Value>, String> {
         // Try scope-specific first
         if let Some(value) = self.get_configuration(key, scope.clone())? {
@@ -182,10 +175,7 @@ impl ConfigurationRegistry {
 
     /// Update configuration value
     pub fn update_configuration(
-        &self,
-        key: String,
-        value: Value,
-        scope: ConfigurationScope,
+        &self, key: String, value: Value, scope: ConfigurationScope,
     ) -> Result<(), String> {
         // Validate against schema if exists
         let schemas = self.schemas.read().map_err(|e| e.to_string())?;
@@ -205,7 +195,8 @@ impl ConfigurationRegistry {
                 self.save_user_settings()?;
             }
             ConfigurationScope::Workspace => {
-                let mut workspace_settings = self.workspace_settings.write().map_err(|e| e.to_string())?;
+                let mut workspace_settings =
+                    self.workspace_settings.write().map_err(|e| e.to_string())?;
                 workspace_settings.insert(key.clone(), value.clone());
                 drop(workspace_settings);
 
@@ -213,7 +204,8 @@ impl ConfigurationRegistry {
                 self.save_workspace_settings()?;
             }
             ConfigurationScope::WorkspaceFolder => {
-                let mut workspace_settings = self.workspace_settings.write().map_err(|e| e.to_string())?;
+                let mut workspace_settings =
+                    self.workspace_settings.write().map_err(|e| e.to_string())?;
                 workspace_settings.insert(key.clone(), value.clone());
                 drop(workspace_settings);
 
@@ -225,10 +217,7 @@ impl ConfigurationRegistry {
         // Emit change event
         if let Err(e) = self.app_handle.emit(
             "configuration-changed",
-            ConfigurationChangeEvent {
-                affected_keys: vec![key],
-                scope,
-            },
+            ConfigurationChangeEvent { affected_keys: vec![key], scope },
         ) {
             eprintln!("[Configuration] Failed to emit change event: {}", e);
         }
@@ -304,7 +293,8 @@ impl ConfigurationRegistry {
                 let settings: HashMap<String, Value> = serde_json::from_str(&content)
                     .map_err(|e| format!("Failed to parse workspace settings: {}", e))?;
 
-                let mut workspace_settings = self.workspace_settings.write().map_err(|e| e.to_string())?;
+                let mut workspace_settings =
+                    self.workspace_settings.write().map_err(|e| e.to_string())?;
                 *workspace_settings = settings;
 
                 println!("[Configuration] Loaded workspace settings from: {:?}", settings_file);
@@ -369,15 +359,27 @@ impl ConfigurationRegistry {
     /// Get all configuration keys for a scope
     pub fn get_all_keys(&self, scope: ConfigurationScope) -> Vec<String> {
         match scope {
-            ConfigurationScope::User => {
-                self.user_settings.read().unwrap().keys().cloned().collect()
-            }
-            ConfigurationScope::Workspace => {
-                self.workspace_settings.read().unwrap().keys().cloned().collect()
-            }
-            ConfigurationScope::WorkspaceFolder => {
-                self.workspace_settings.read().unwrap().keys().cloned().collect()
-            }
+            ConfigurationScope::User => self
+                .user_settings
+                .read()
+                .expect("user_settings read lock poisoned")
+                .keys()
+                .cloned()
+                .collect(),
+            ConfigurationScope::Workspace => self
+                .workspace_settings
+                .read()
+                .expect("workspace_settings read lock poisoned")
+                .keys()
+                .cloned()
+                .collect(),
+            ConfigurationScope::WorkspaceFolder => self
+                .workspace_settings
+                .read()
+                .expect("workspace_settings read lock poisoned")
+                .keys()
+                .cloned()
+                .collect(),
         }
     }
 
@@ -388,16 +390,13 @@ impl ConfigurationRegistry {
 
     /// Clear all configuration data for an owner
     pub fn clear_configuration_data(&self, owner: &str) {
-        let mut schemas = self.schemas.write().unwrap();
+        let mut schemas = self.schemas.write().expect("configuration_schemas write lock poisoned");
         let before = schemas.len();
         schemas.retain(|_, schema| !schema.key.starts_with(&format!("{}.", owner)));
         let removed = before - schemas.len();
 
         if removed > 0 {
-            println!(
-                "[Configuration] Cleared {} schema(s) for owner: {}",
-                removed, owner
-            );
+            println!("[Configuration] Cleared {} schema(s) for owner: {}", removed, owner);
         }
     }
 }

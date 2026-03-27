@@ -335,7 +335,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--modal-overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -343,14 +343,15 @@
   }
 
   .metrics-modal {
-    background: #1f2937;
+    background: var(--modal-bg);
+    border: 1px solid var(--modal-border);
     border-radius: 8px;
     width: 90%;
     max-width: 1200px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-lg);
   }
 
   .metrics-header {
@@ -358,19 +359,19 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid #374151;
+    border-bottom: 1px solid var(--color-border);
   }
 
   .metrics-header h2 {
     margin: 0;
     font-size: 18px;
-    color: #f3f4f6;
+    color: var(--color-text);
   }
 
   .close-btn {
     background: none;
     border: none;
-    color: #9ca3af;
+    color: var(--color-text-secondary);
     cursor: pointer;
     padding: 4px;
     display: flex;
@@ -380,8 +381,8 @@
   }
 
   .close-btn:hover {
-    background: #374151;
-    color: #f3f4f6;
+    background: var(--color-bg-tertiary);
+    color: var(--color-text);
   }
 
   .metrics-content {
@@ -397,7 +398,7 @@
   }
 
   .metric-card {
-    background: #111827;
+    background: var(--color-bg-tertiary);
     border-radius: 6px;
     padding: 16px;
   }
@@ -405,18 +406,18 @@
   .metric-card h3 {
     margin: 0 0 12px 0;
     font-size: 14px;
-    color: #9ca3af;
+    color: var(--color-text-secondary);
     font-weight: 500;
   }
 
   .metric-card p {
     margin: 6px 0;
-    color: #f3f4f6;
+    color: var(--color-text);
     font-size: 14px;
   }
 
   .metric-card .pid {
-    color: #6b7280;
+    color: var(--color-text-secondary);
     font-size: 12px;
   }
 
@@ -427,7 +428,7 @@
   }
 
   .chart-container {
-    background: #111827;
+    background: var(--color-bg-tertiary);
     border-radius: 6px;
     padding: 16px;
   }
@@ -435,7 +436,7 @@
   .chart-container h3 {
     margin: 0 0 12px 0;
     font-size: 14px;
-    color: #9ca3af;
+    color: var(--color-text-secondary);
     font-weight: 500;
   }
 
@@ -445,7 +446,7 @@
 
   .loading {
     text-align: center;
-    color: #9ca3af;
+    color: var(--color-text-secondary);
     padding: 40px;
   }
 

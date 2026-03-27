@@ -4,6 +4,7 @@
   import { workspaceStore } from '../stores/workspace';
   import { onMount, onDestroy } from 'svelte';
   import { showConfirmPrompt } from '../stores/windowPrompt';
+  import { showDiff } from '../stores/diffViewer';
   import BranchSwitcher from './BranchSwitcher.svelte';
 
   interface GitChange {
@@ -118,15 +119,15 @@
   function getStatusColor(status: string): string {
     switch (status) {
       case 'added':
-        return '#89d185';
+        return 'var(--color-git-added)';
       case 'modified':
-        return '#f9c74f';
+        return 'var(--color-git-modified)';
       case 'deleted':
-        return '#f48771';
+        return 'var(--color-git-deleted)';
       case 'renamed':
-        return '#90caf9';
+        return 'var(--color-git-untracked)';
       case 'conflicted':
-        return '#ff6b6b';
+        return 'var(--color-git-conflict)';
       default:
         return 'var(--text-secondary)';
     }
@@ -264,23 +265,75 @@
     if (!rootPath) return;
 
     try {
-      const diff = await invoke('git_get_diff', {
+      const diff = await invoke<{
+        old_path: string;
+        new_path: string;
+        diff_text: string;
+        additions: number;
+        deletions: number;
+      }>('git_get_diff', {
         repoPath: rootPath,
         filePath,
         staged,
       });
-      console.log('[Git] Diff:', diff);
 
-      // Dispatch event to open diff viewer
-      window.dispatchEvent(
-        new CustomEvent('openDiff', {
-          detail: {
+      let originalContent = '';
+      let modifiedContent = '';
+
+      try {
+        modifiedContent = await invoke<string>('read_file', { path: filePath });
+      } catch {
+        modifiedContent = '';
+      }
+
+      if (staged) {
+        try {
+          originalContent = await invoke<string>('git_get_file_at_head', {
+            repoPath: rootPath,
             filePath,
-            diff,
-            staged,
-          },
-        })
-      );
+          });
+        } catch {
+          originalContent = '';
+        }
+      } else {
+        try {
+          originalContent = await invoke<string>('read_file', { path: `${rootPath}/${filePath}` });
+        } catch {
+          originalContent = '';
+        }
+      }
+
+      const ext = filePath.split('.').pop() || '';
+      const langMap: Record<string, string> = {
+        ts: 'typescript',
+        tsx: 'typescript',
+        js: 'javascript',
+        jsx: 'javascript',
+        json: 'json',
+        md: 'markdown',
+        rs: 'rust',
+        py: 'python',
+        css: 'css',
+        html: 'html',
+        scss: 'scss',
+        less: 'less',
+        yaml: 'yaml',
+        yml: 'yaml',
+        xml: 'xml',
+        sh: 'shell',
+        go: 'go',
+        java: 'java',
+        rb: 'ruby',
+        svelte: 'html',
+        vue: 'html',
+      };
+
+      showDiff({
+        filePath,
+        originalContent,
+        modifiedContent,
+        language: langMap[ext] || 'plaintext',
+      });
     } catch (e) {
       console.error('[Git] Get diff failed:', e);
       error = `Get diff failed: ${e}`;
@@ -659,11 +712,11 @@
   }
 
   .ahead {
-    color: #89d185;
+    color: var(--color-git-added);
   }
 
   .behind {
-    color: #f9c74f;
+    color: var(--color-git-modified);
   }
 
   .commit-section {
@@ -694,7 +747,7 @@
     margin-top: 8px;
     padding: 6px 12px;
     background: var(--accent-color);
-    color: white;
+    color: var(--color-text-on-accent);
     border: none;
     border-radius: 3px;
     font-size: 12px;
@@ -830,12 +883,12 @@
 
   .file-action-btn:hover {
     background: var(--accent-color);
-    color: white;
+    color: var(--color-text-on-accent);
     border-color: var(--accent-color);
   }
 
   .discard-btn:hover {
-    background: #f48771;
-    border-color: #f48771;
+    background: var(--color-error);
+    border-color: var(--color-error);
   }
 </style>

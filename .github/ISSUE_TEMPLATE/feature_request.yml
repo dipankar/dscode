@@ -1,0 +1,34 @@
+name: Feature Request
+description: Suggest a new feature for DSCode
+labels: [enhancement]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Title
+      description: A short summary of the feature request
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the feature you would like to see
+      value: |
+        <!-- Provide a clear description of the feature -->
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use Case
+      description: Why do you need this feature? What problem does it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed Solution
+      description: How do you think this feature should work?
+    validations:
+      required: true

@@ -1,43 +1,23 @@
-/**
- * LSP Server Pool
- *
- * Manages multiple language server instances with:
- * - One server per language
- * - Load balancing for multiple servers per language
- * - Server lifecycle management
- * - Request routing
- */
-
 use super::client::LspClient;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Strategy for allocating language servers
 #[derive(Debug, Clone)]
 pub enum LspServerStrategy {
-    /// One server per language (default)
     OnePerLanguage,
-    /// Multiple servers per language with load balancing
     MultiplePerLanguage { max_servers: usize },
 }
 
-/// Information about a running LSP server
 pub struct LspServerInfo {
     pub language_id: String,
     pub client: Arc<LspClient>,
-    pub request_count: usize,
+    pub request_count: Arc<std::sync::atomic::AtomicU64>,
 }
 
-/// Pool for managing multiple LSP servers
 pub struct LspServerPool {
-    /// All running LSP servers
-    servers: Arc<RwLock<HashMap<String, Vec<LspServerInfo>>>>,
-
-    /// Allocation strategy
+    servers: Arc<RwLock<HashMap<String, Vec<Arc<LspServerInfo>>>>>,
     strategy: LspServerStrategy,
-
-    /// Server configurations: language_id -> (command, args)
     configurations: Arc<RwLock<HashMap<String, (String, Vec<String>)>>>,
 }
 
@@ -50,42 +30,37 @@ impl LspServerPool {
         }
     }
 
-    /// Register a language server configuration
     pub async fn register_server(
-        &self,
-        language_id: String,
-        server_command: String,
-        server_args: Vec<String>,
+        &self, language_id: String, server_command: String, server_args: Vec<String>,
     ) {
         let mut configs = self.configurations.write().await;
         configs.insert(language_id.clone(), (server_command, server_args));
         println!("[LSP Pool] Registered server configuration for {}", language_id);
     }
 
-    /// Get or create a language server for a language
-    pub async fn get_server(&self, language_id: &str) -> Result<Arc<LspClient>, String> {
-        // Check if we have a running server
+    pub async fn get_server(
+        &self, language_id: &str, root_uri: Option<&str>,
+    ) -> Result<Arc<LspClient>, String> {
         {
             let servers = self.servers.read().await;
             if let Some(server_list) = servers.get(language_id) {
                 if !server_list.is_empty() {
-                    // Return the server with the least requests (simple load balancing)
                     let min_server = server_list
                         .iter()
-                        .min_by_key(|s| s.request_count)
-                        .unwrap();
+                        .min_by_key(|s| s.request_count.load(std::sync::atomic::Ordering::Relaxed))
+                        .expect("server list is non-empty");
+                    min_server.request_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     return Ok(Arc::clone(&min_server.client));
                 }
             }
         }
 
-        // Need to start a new server
-        self.start_server(language_id).await
+        self.start_server(language_id, root_uri).await
     }
 
-    /// Start a new language server
-    async fn start_server(&self, language_id: &str) -> Result<Arc<LspClient>, String> {
-        // Get server configuration
+    async fn start_server(
+        &self, language_id: &str, root_uri: Option<&str>,
+    ) -> Result<Arc<LspClient>, String> {
         let (command, args) = {
             let configs = self.configurations.read().await;
             configs
@@ -94,39 +69,48 @@ impl LspServerPool {
                 .clone()
         };
 
-        // Create client
-        let client = Arc::new(LspClient::new(
-            language_id.to_string(),
-            command,
-            args,
-        ));
+        let client = Arc::new(LspClient::new(language_id.to_string(), command, args));
 
-        // Start the server
         client.start().await?;
 
-        // Add to pool
-        let server_info = LspServerInfo {
+        if let Some(uri) = root_uri {
+            match lsp_types::Url::parse(uri) {
+                Ok(url) => {
+                    client.initialize(url).await.map_err(|e| {
+                        eprintln!("[LSP Pool] Failed to initialize {}: {}", language_id, e);
+                        format!("LSP initialize failed: {}", e)
+                    })?;
+                }
+                Err(e) => {
+                    eprintln!("[LSP Pool] Invalid root URI '{}': {}", uri, e);
+                }
+            }
+        }
+
+        client.initialized().await.map_err(|e| {
+            eprintln!("[LSP Pool] Failed to send initialized for {}: {}", language_id, e);
+            format!("LSP initialized notification failed: {}", e)
+        })?;
+
+        let server_info = Arc::new(LspServerInfo {
             language_id: language_id.to_string(),
             client: Arc::clone(&client),
-            request_count: 0,
-        };
+            request_count: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        });
 
         let mut servers = self.servers.write().await;
-        servers
-            .entry(language_id.to_string())
-            .or_insert_with(Vec::new)
-            .push(server_info);
+        servers.entry(language_id.to_string()).or_insert_with(Vec::new).push(server_info);
 
-        println!("[LSP Pool] Started server for {}", language_id);
+        println!("[LSP Pool] Started and initialized server for {}", language_id);
         Ok(client)
     }
 
-    /// Stop a language server
     pub async fn stop_server(&self, language_id: &str) -> Result<(), String> {
         let mut servers = self.servers.write().await;
 
         if let Some(server_list) = servers.remove(language_id) {
             for server_info in server_list {
+                server_info.client.shutdown().await.ok();
                 server_info.client.stop().await?;
             }
             println!("[LSP Pool] Stopped all servers for {}", language_id);
@@ -136,12 +120,12 @@ impl LspServerPool {
         }
     }
 
-    /// Stop all servers
     pub async fn stop_all(&self) -> Result<(), String> {
         let mut servers = self.servers.write().await;
 
         for (language_id, server_list) in servers.iter() {
             for server_info in server_list {
+                server_info.client.shutdown().await.ok();
                 server_info.client.stop().await?;
             }
             println!("[LSP Pool] Stopped servers for {}", language_id);
@@ -151,22 +135,17 @@ impl LspServerPool {
         Ok(())
     }
 
-    /// Get list of running servers
     pub async fn list_servers(&self) -> Vec<String> {
         let servers = self.servers.read().await;
         servers.keys().cloned().collect()
     }
 
-    /// Get statistics
     pub async fn get_stats(&self) -> LspPoolStats {
         let servers = self.servers.read().await;
         let total_servers: usize = servers.values().map(|list| list.len()).sum();
         let total_languages = servers.len();
 
-        LspPoolStats {
-            total_servers,
-            total_languages,
-        }
+        LspPoolStats { total_servers, total_languages }
     }
 }
 

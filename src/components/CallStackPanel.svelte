@@ -1,15 +1,23 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import { callStack } from '../lib/stores';
   import type { StackFrame } from '../lib/types';
 
   let frames: StackFrame[] = [];
   let selectedFrameId: number | null = null;
+  let callStackUnsubscribe: (() => void) | null = null;
 
-  callStack.subscribe((stack) => {
-    frames = stack;
-    if (stack.length > 0 && selectedFrameId === null) {
-      selectedFrameId = stack[0].id;
-    }
+  onMount(() => {
+    callStackUnsubscribe = callStack.subscribe((stack) => {
+      frames = stack;
+      if (stack.length > 0 && selectedFrameId === null) {
+        selectedFrameId = stack[0].id;
+      }
+    });
+  });
+
+  onDestroy(() => {
+    if (callStackUnsubscribe) callStackUnsubscribe();
   });
 
   function selectFrame(frame: StackFrame) {
@@ -174,7 +182,7 @@
 
   .stack-frame.selected .frame-index {
     background: var(--accent-color);
-    color: white;
+    color: var(--color-text-on-accent);
   }
 
   .frame-name {

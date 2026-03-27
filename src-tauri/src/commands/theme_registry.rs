@@ -125,10 +125,7 @@ impl ThemeRegistry {
         let id = theme.id.clone();
         themes.insert(id.clone(), theme.clone());
 
-        println!(
-            "[Theme] Registered color theme: {} ({})",
-            theme.label, theme.id
-        );
+        println!("[Theme] Registered color theme: {} ({})", theme.label, theme.id);
 
         Ok(id)
     }
@@ -137,9 +134,7 @@ impl ThemeRegistry {
     pub fn unregister_color_theme(&self, theme_id: &str) -> Result<(), String> {
         let mut themes = self.color_themes.write().map_err(|e| e.to_string())?;
 
-        themes.remove(theme_id).ok_or_else(|| {
-            format!("Color theme not found: {}", theme_id)
-        })?;
+        themes.remove(theme_id).ok_or_else(|| format!("Color theme not found: {}", theme_id))?;
 
         println!("[Theme] Unregistered color theme: {}", theme_id);
 
@@ -150,25 +145,23 @@ impl ThemeRegistry {
     pub fn get_color_theme(&self, theme_id: &str) -> Result<ColorTheme, String> {
         let themes = self.color_themes.read().map_err(|e| e.to_string())?;
 
-        themes
-            .get(theme_id)
-            .cloned()
-            .ok_or_else(|| format!("Color theme not found: {}", theme_id))
+        themes.get(theme_id).cloned().ok_or_else(|| format!("Color theme not found: {}", theme_id))
     }
 
     /// Get all color themes
     pub fn get_all_color_themes(&self) -> Vec<ColorTheme> {
-        self.color_themes.read().unwrap().values().cloned().collect()
+        self.color_themes
+            .read()
+            .expect("theme_color_themes read lock poisoned")
+            .values()
+            .cloned()
+            .collect()
     }
 
     /// Get color themes by type
     pub fn get_color_themes_by_type(&self, theme_type: ThemeType) -> Vec<ColorTheme> {
-        let themes = self.color_themes.read().unwrap();
-        themes
-            .values()
-            .filter(|t| t.theme_type == theme_type)
-            .cloned()
-            .collect()
+        let themes = self.color_themes.read().expect("theme_color_themes read lock poisoned");
+        themes.values().filter(|t| t.theme_type == theme_type).cloned().collect()
     }
 
     /// Set active color theme
@@ -188,13 +181,10 @@ impl ThemeRegistry {
         println!("[Theme] Set active color theme: {}", theme_id);
 
         // Emit event
-        if let Err(e) = self.app_handle.emit(
-            "theme-changed",
-            ThemeChangeEvent {
-                theme_id,
-                theme_type: "color".to_string(),
-            },
-        ) {
+        if let Err(e) = self
+            .app_handle
+            .emit("theme-changed", ThemeChangeEvent { theme_id, theme_type: "color".to_string() })
+        {
             eprintln!("[Theme] Failed to emit theme changed event: {}", e);
         }
 
@@ -203,7 +193,7 @@ impl ThemeRegistry {
 
     /// Get active color theme
     pub fn get_active_color_theme(&self) -> Option<ColorTheme> {
-        let settings = self.theme_settings.read().unwrap();
+        let settings = self.theme_settings.read().expect("theme_settings read lock poisoned");
         let theme_id = settings.active_color_theme.clone()?;
         drop(settings);
 
@@ -219,10 +209,7 @@ impl ThemeRegistry {
         let id = theme.id.clone();
         themes.insert(id.clone(), theme.clone());
 
-        println!(
-            "[Theme] Registered icon theme: {} ({})",
-            theme.label, theme.id
-        );
+        println!("[Theme] Registered icon theme: {} ({})", theme.label, theme.id);
 
         Ok(id)
     }
@@ -231,9 +218,7 @@ impl ThemeRegistry {
     pub fn unregister_icon_theme(&self, theme_id: &str) -> Result<(), String> {
         let mut themes = self.icon_themes.write().map_err(|e| e.to_string())?;
 
-        themes.remove(theme_id).ok_or_else(|| {
-            format!("Icon theme not found: {}", theme_id)
-        })?;
+        themes.remove(theme_id).ok_or_else(|| format!("Icon theme not found: {}", theme_id))?;
 
         println!("[Theme] Unregistered icon theme: {}", theme_id);
 
@@ -244,15 +229,17 @@ impl ThemeRegistry {
     pub fn get_icon_theme(&self, theme_id: &str) -> Result<IconTheme, String> {
         let themes = self.icon_themes.read().map_err(|e| e.to_string())?;
 
-        themes
-            .get(theme_id)
-            .cloned()
-            .ok_or_else(|| format!("Icon theme not found: {}", theme_id))
+        themes.get(theme_id).cloned().ok_or_else(|| format!("Icon theme not found: {}", theme_id))
     }
 
     /// Get all icon themes
     pub fn get_all_icon_themes(&self) -> Vec<IconTheme> {
-        self.icon_themes.read().unwrap().values().cloned().collect()
+        self.icon_themes
+            .read()
+            .expect("theme_icon_themes read lock poisoned")
+            .values()
+            .cloned()
+            .collect()
     }
 
     /// Set active icon theme
@@ -272,13 +259,10 @@ impl ThemeRegistry {
         println!("[Theme] Set active icon theme: {}", theme_id);
 
         // Emit event
-        if let Err(e) = self.app_handle.emit(
-            "theme-changed",
-            ThemeChangeEvent {
-                theme_id,
-                theme_type: "icon".to_string(),
-            },
-        ) {
+        if let Err(e) = self
+            .app_handle
+            .emit("theme-changed", ThemeChangeEvent { theme_id, theme_type: "icon".to_string() })
+        {
             eprintln!("[Theme] Failed to emit theme changed event: {}", e);
         }
 
@@ -287,7 +271,7 @@ impl ThemeRegistry {
 
     /// Get active icon theme
     pub fn get_active_icon_theme(&self) -> Option<IconTheme> {
-        let settings = self.theme_settings.read().unwrap();
+        let settings = self.theme_settings.read().expect("theme_settings read lock poisoned");
         let theme_id = settings.active_icon_theme.clone()?;
         drop(settings);
 
@@ -303,10 +287,7 @@ impl ThemeRegistry {
         let id = theme.id.clone();
         themes.insert(id.clone(), theme.clone());
 
-        println!(
-            "[Theme] Registered product icon theme: {} ({})",
-            theme.label, theme.id
-        );
+        println!("[Theme] Registered product icon theme: {} ({})", theme.label, theme.id);
 
         Ok(id)
     }
@@ -315,9 +296,9 @@ impl ThemeRegistry {
     pub fn unregister_product_icon_theme(&self, theme_id: &str) -> Result<(), String> {
         let mut themes = self.product_icon_themes.write().map_err(|e| e.to_string())?;
 
-        themes.remove(theme_id).ok_or_else(|| {
-            format!("Product icon theme not found: {}", theme_id)
-        })?;
+        themes
+            .remove(theme_id)
+            .ok_or_else(|| format!("Product icon theme not found: {}", theme_id))?;
 
         println!("[Theme] Unregistered product icon theme: {}", theme_id);
 
@@ -336,7 +317,12 @@ impl ThemeRegistry {
 
     /// Get all product icon themes
     pub fn get_all_product_icon_themes(&self) -> Vec<ProductIconTheme> {
-        self.product_icon_themes.read().unwrap().values().cloned().collect()
+        self.product_icon_themes
+            .read()
+            .expect("theme_product_icon_themes read lock poisoned")
+            .values()
+            .cloned()
+            .collect()
     }
 
     /// Set active product icon theme
@@ -358,10 +344,7 @@ impl ThemeRegistry {
         // Emit event
         if let Err(e) = self.app_handle.emit(
             "theme-changed",
-            ThemeChangeEvent {
-                theme_id,
-                theme_type: "product-icon".to_string(),
-            },
+            ThemeChangeEvent { theme_id, theme_type: "product-icon".to_string() },
         ) {
             eprintln!("[Theme] Failed to emit theme changed event: {}", e);
         }
@@ -371,7 +354,7 @@ impl ThemeRegistry {
 
     /// Get active product icon theme
     pub fn get_active_product_icon_theme(&self) -> Option<ProductIconTheme> {
-        let settings = self.theme_settings.read().unwrap();
+        let settings = self.theme_settings.read().expect("theme_settings read lock poisoned");
         let theme_id = settings.active_product_icon_theme.clone()?;
         drop(settings);
 
@@ -380,50 +363,46 @@ impl ThemeRegistry {
 
     /// Get theme settings
     pub fn get_theme_settings(&self) -> ThemeSettings {
-        self.theme_settings.read().unwrap().clone()
+        self.theme_settings.read().expect("theme_settings read lock poisoned").clone()
     }
 
     /// Clear all theme data for an owner
     pub fn clear_theme_data(&self, owner: &str) {
         // Clear color themes
         {
-            let mut themes = self.color_themes.write().unwrap();
+            let mut themes =
+                self.color_themes.write().expect("theme_color_themes write lock poisoned");
             let before = themes.len();
             themes.retain(|_, t| t.owner != owner);
             let removed = before - themes.len();
             if removed > 0 {
-                println!(
-                    "[Theme] Cleared {} color theme(s) for owner: {}",
-                    removed, owner
-                );
+                println!("[Theme] Cleared {} color theme(s) for owner: {}", removed, owner);
             }
         }
 
         // Clear icon themes
         {
-            let mut themes = self.icon_themes.write().unwrap();
+            let mut themes =
+                self.icon_themes.write().expect("theme_icon_themes write lock poisoned");
             let before = themes.len();
             themes.retain(|_, t| t.owner != owner);
             let removed = before - themes.len();
             if removed > 0 {
-                println!(
-                    "[Theme] Cleared {} icon theme(s) for owner: {}",
-                    removed, owner
-                );
+                println!("[Theme] Cleared {} icon theme(s) for owner: {}", removed, owner);
             }
         }
 
         // Clear product icon themes
         {
-            let mut themes = self.product_icon_themes.write().unwrap();
+            let mut themes = self
+                .product_icon_themes
+                .write()
+                .expect("theme_product_icon_themes write lock poisoned");
             let before = themes.len();
             themes.retain(|_, t| t.owner != owner);
             let removed = before - themes.len();
             if removed > 0 {
-                println!(
-                    "[Theme] Cleared {} product icon theme(s) for owner: {}",
-                    removed, owner
-                );
+                println!("[Theme] Cleared {} product icon theme(s) for owner: {}", removed, owner);
             }
         }
     }

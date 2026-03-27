@@ -9,11 +9,14 @@
  * - Event emission to UI
  */
 mod configuration;
+mod contributions;
 mod documents;
 mod extensions;
 mod ipc;
+mod ipc_providers;
 mod workspace;
 
+pub use contributions::ExtensionContributes;
 pub use extensions::{ExtensionContribution, InstalledExtension};
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
@@ -28,15 +31,15 @@ use std::env;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{oneshot, RwLock};
 use tokio::time::Duration;
 
 use crate::config::AppDirectories;
 use crate::debug::DebugAdapterPool;
-use crate::extension_host::{ExtensionHostManager, NngIpcManager, SecretStorage};
 use crate::extension_host::path_validator::PathValidator;
+use crate::extension_host::{ExtensionHostManager, IpcManager, SecretStorage};
 use crate::lsp::{LspServerPool, LspServerStrategy};
 use configuration::ConfigurationStore;
 
@@ -65,6 +68,8 @@ pub struct ExtensionInfo {
     pub repository: Option<String>,
     pub activation_events: Vec<String>,
     pub commands: Vec<String>,
+    #[serde(default)]
+    pub contributes: Option<ExtensionContributes>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,10 +109,7 @@ struct RangePayload {
 
 impl RangePayload {
     fn from_position(pos: PositionPayload) -> Self {
-        Self {
-            start: pos.clone(),
-            end: pos,
-        }
+        Self { start: pos.clone(), end: pos }
     }
 }
 
@@ -236,19 +238,10 @@ pub enum SessionEvent {
     StatusBarItems { items: Vec<StatusBarItemState> },
 
     /// Window message request
-    WindowMessage {
-        level: String,
-        message: String,
-        actions: Option<Vec<String>>,
-    },
+    WindowMessage { level: String, message: String, actions: Option<Vec<String>> },
 
     /// Window message with actionable items (awaiting user response)
-    WindowActionRequest {
-        id: String,
-        level: String,
-        message: String,
-        actions: Vec<String>,
-    },
+    WindowActionRequest { id: String, level: String, message: String, actions: Vec<String> },
 
     /// Status bar transient message shown
     StatusBarMessageShown { id: String, text: String },
@@ -272,27 +265,16 @@ pub enum SessionEvent {
     OutputChannelVisibility { channel: String, visible: bool },
 
     /// Tree view reveal request from extension host
-    TreeViewReveal {
-        view_id: String,
-        element: Value,
-        options: Value,
-    },
+    TreeViewReveal { view_id: String, element: Value, options: Value },
 
     /// Configuration changed
-    ConfigurationChanged {
-        section: Option<String>,
-        key: Option<String>,
-    },
+    ConfigurationChanged { section: Option<String>, key: Option<String> },
 
     /// Document content changed
     DocumentChanged { path: String, content: String },
 
     /// Editor decorations updated
-    EditorDecorations {
-        uri: String,
-        key: String,
-        decorations: Value,
-    },
+    EditorDecorations { uri: String, key: String, decorations: Value },
 
     /// Quick pick selection required
     QuickPickRequest {
@@ -314,6 +296,28 @@ pub enum SessionEvent {
         password: bool,
         value_selection: Option<(usize, usize)>,
     },
+
+    /// Execute command request from extension host
+    ExecuteCommandRequest { id: String, command: String, args: Vec<Value> },
+
+    /// Language feature provider registered
+    ProviderRegistered {
+        provider_type: String,
+        provider_id: String,
+        owner: String,
+        selector: Value,
+        trigger_characters: Option<Vec<String>>,
+        metadata: Option<Value>,
+    },
+
+    /// Language configuration changed
+    LanguageConfigurationChanged { language: String, configuration: Value },
+
+    /// Diagnostics updated
+    DiagnosticsUpdated { uri: String, diagnostics: Value },
+
+    /// Diagnostics cleared
+    DiagnosticsCleared { uri: String },
 }
 
 /// Central session manager
@@ -321,7 +325,7 @@ pub struct SessionManager {
     app_handle: AppHandle,
     state: Arc<RwLock<SessionState>>,
     extension_host: Arc<tokio::sync::Mutex<ExtensionHostManager>>,
-    nng_manager: Arc<NngIpcManager>,
+    ipc_manager: Arc<IpcManager>,
     lsp_pool: Arc<RwLock<LspServerPool>>,
     debug_pool: Arc<RwLock<DebugAdapterPool>>,
     app_dirs: AppDirectories,
@@ -337,15 +341,17 @@ pub struct SessionManager {
     document_versions: Arc<RwLock<HashMap<String, i32>>>,
     editor_decorations: Arc<RwLock<HashMap<String, HashMap<String, Value>>>>,
     decoration_types: Arc<RwLock<HashMap<String, Value>>>,
-    extension_watchers: Arc<Mutex<HashMap<String, RecommendedWatcher>>>,
+    extension_watchers: Arc<tokio::sync::Mutex<HashMap<String, RecommendedWatcher>>>,
     workspace_configurations: Arc<RwLock<HashMap<String, crate::commands::WorkspaceConfiguration>>>,
     file_decoration_providers: Arc<RwLock<Vec<crate::commands::FileDecorationProvider>>>,
     file_decorations: Arc<RwLock<HashMap<String, Vec<crate::commands::FileDecoration>>>>,
     extension_host_ready: Arc<tokio::sync::Notify>,
-    extension_host_ready_flag: Arc<RwLock<bool>>,
-    initialized: Arc<RwLock<bool>>,
+    initialized: Arc<tokio::sync::OnceCell<()>>,
     secrets: Arc<SecretStorage>,
     path_validator: Arc<RwLock<PathValidator>>,
+    outgoing_socket: Arc<RwLock<Option<String>>>,
+    incoming_socket: Arc<RwLock<Option<String>>>,
+    extension_host_entry: Arc<RwLock<Option<String>>>,
 }
 
 impl SessionManager {
@@ -361,15 +367,12 @@ impl SessionManager {
             status_bar_items: Vec::new(),
         }));
 
-        let extension_host = Arc::new(tokio::sync::Mutex::new(ExtensionHostManager::new(
-            "main".to_string(),
-        )));
+        let extension_host =
+            Arc::new(tokio::sync::Mutex::new(ExtensionHostManager::new("main".to_string())));
 
-        let nng_manager = Arc::new(NngIpcManager::new());
+        let ipc_manager = Arc::new(IpcManager::new());
 
-        let lsp_pool = Arc::new(RwLock::new(LspServerPool::new(
-            LspServerStrategy::OnePerLanguage,
-        )));
+        let lsp_pool = Arc::new(RwLock::new(LspServerPool::new(LspServerStrategy::OnePerLanguage)));
         let debug_pool = Arc::new(RwLock::new(DebugAdapterPool::new()));
 
         let configuration_store = match ConfigurationStore::default_in_dir(&app_dirs.storage_dir) {
@@ -384,7 +387,7 @@ impl SessionManager {
             app_handle,
             state,
             extension_host,
-            nng_manager,
+            ipc_manager,
             lsp_pool,
             debug_pool,
             app_dirs,
@@ -400,15 +403,17 @@ impl SessionManager {
             document_versions: Arc::new(RwLock::new(HashMap::new())),
             editor_decorations: Arc::new(RwLock::new(HashMap::new())),
             decoration_types: Arc::new(RwLock::new(HashMap::new())),
-            extension_watchers: Arc::new(Mutex::new(HashMap::new())),
+            extension_watchers: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             workspace_configurations: Arc::new(RwLock::new(HashMap::new())),
             file_decoration_providers: Arc::new(RwLock::new(Vec::new())),
             file_decorations: Arc::new(RwLock::new(HashMap::new())),
             extension_host_ready: Arc::new(tokio::sync::Notify::new()),
-            extension_host_ready_flag: Arc::new(RwLock::new(false)),
-            initialized: Arc::new(RwLock::new(false)),
+            initialized: Arc::new(tokio::sync::OnceCell::new()),
             secrets: Arc::new(SecretStorage::new()),
             path_validator: Arc::new(RwLock::new(PathValidator::new())),
+            outgoing_socket: Arc::new(RwLock::new(None)),
+            incoming_socket: Arc::new(RwLock::new(None)),
+            extension_host_entry: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -421,50 +426,35 @@ impl SessionManager {
 
     /// Initialize the session - start Extension Host and load extensions
     pub async fn initialize(&self) -> Result<(), String> {
-        // Check if already initialized
-        {
-            let is_initialized = self.initialized.read().await;
-            if *is_initialized {
-                println!("[SessionManager] Already initialized, skipping");
-                return Ok(());
-            }
+        if self.initialized.get().is_some() {
+            println!("[SessionManager] Already initialized, skipping");
+            return Ok(());
         }
 
         println!("[SessionManager] Initializing session...");
 
-        // Start the single Extension Host with NNG IPC
-        println!("[SessionManager] Starting Extension Host with NNG IPC...");
+        println!("[SessionManager] Starting Extension Host...");
         self.start_extension_host().await?;
 
-        // Wait for extension host to signal it's ready (with timeout)
         println!("[SessionManager] Waiting for extension host ready signal...");
 
-        // Check if the ready signal was already received
-        if !*self.extension_host_ready_flag.read().await {
-            let ready_wait = self.extension_host_ready.notified();
-            match tokio::time::timeout(Duration::from_secs(10), ready_wait).await {
-                Ok(_) => println!("[SessionManager] Extension host is ready"),
-                Err(_) => {
-                    eprintln!("[SessionManager] Timeout waiting for extension host ready signal");
-                    return Err("Extension host failed to start within timeout".to_string());
-                }
+        let ready_wait = self.extension_host_ready.notified();
+        match tokio::time::timeout(Duration::from_secs(10), ready_wait).await {
+            Ok(_) => println!("[SessionManager] Extension host is ready"),
+            Err(_) => {
+                eprintln!("[SessionManager] Timeout waiting for extension host ready signal");
+                return Err("Extension host failed to start within timeout".to_string());
             }
-        } else {
-            println!("[SessionManager] Extension host already ready");
         }
 
-        // Scan for installed extensions
         self.scan_extensions().await?;
 
-        // Load auto-start extensions
         self.load_auto_start_extensions().await?;
 
-        // Emit initial state
         let state = self.state.read().await.clone();
         self.emit_event(SessionEvent::StateChanged { state });
 
-        // Mark as initialized
-        *self.initialized.write().await = true;
+        let _ = self.initialized.set(());
 
         println!("[SessionManager] Session initialized");
         Ok(())
@@ -473,12 +463,7 @@ impl SessionManager {
     async fn show_status_bar_message(&self, id: &str, text: &str) -> Result<(), String> {
         {
             let mut map = self.status_messages.write().await;
-            map.insert(
-                id.to_string(),
-                StatusMessageEntry {
-                    text: text.to_string(),
-                },
-            );
+            map.insert(id.to_string(), StatusMessageEntry { text: text.to_string() });
         }
 
         self.emit_event(SessionEvent::StatusBarMessageShown {
@@ -508,11 +493,7 @@ impl SessionManager {
             let mut map = self.output_channels.write().await;
             let entry = map.entry(channel.to_string()).or_insert_with(|| {
                 new_channel = true;
-                OutputChannelEntry {
-                    name: channel.to_string(),
-                    lines: Vec::new(),
-                    visible: false,
-                }
+                OutputChannelEntry { name: channel.to_string(), lines: Vec::new(), visible: false }
             });
 
             entry.lines.push(value.to_string());
@@ -523,9 +504,7 @@ impl SessionManager {
         }
 
         if new_channel {
-            self.emit_event(SessionEvent::OutputChannelRegistered {
-                channel: channel.to_string(),
-            });
+            self.emit_event(SessionEvent::OutputChannelRegistered { channel: channel.to_string() });
         }
 
         self.emit_event(SessionEvent::OutputChannelAppended {
@@ -552,9 +531,7 @@ impl SessionManager {
         };
 
         if cleared {
-            self.emit_event(SessionEvent::OutputChannelCleared {
-                channel: channel.to_string(),
-            });
+            self.emit_event(SessionEvent::OutputChannelCleared { channel: channel.to_string() });
         }
 
         Ok(())
@@ -580,9 +557,7 @@ impl SessionManager {
                 }
             }
 
-            self.emit_event(SessionEvent::OutputChannelDisposed {
-                channel: channel.to_string(),
-            });
+            self.emit_event(SessionEvent::OutputChannelDisposed { channel: channel.to_string() });
 
             if let Some(next) = next_channel {
                 self.emit_event(SessionEvent::OutputChannelVisibility {
@@ -596,28 +571,20 @@ impl SessionManager {
     }
 
     async fn set_output_channel_visibility(
-        &self,
-        channel: &str,
-        visible: bool,
+        &self, channel: &str, visible: bool,
     ) -> Result<(), String> {
         let mut new_channel = false;
         {
             let mut map = self.output_channels.write().await;
             let entry = map.entry(channel.to_string()).or_insert_with(|| {
                 new_channel = true;
-                OutputChannelEntry {
-                    name: channel.to_string(),
-                    lines: Vec::new(),
-                    visible: false,
-                }
+                OutputChannelEntry { name: channel.to_string(), lines: Vec::new(), visible: false }
             });
             entry.visible = visible;
         }
 
         if new_channel {
-            self.emit_event(SessionEvent::OutputChannelRegistered {
-                channel: channel.to_string(),
-            });
+            self.emit_event(SessionEvent::OutputChannelRegistered { channel: channel.to_string() });
         }
 
         if visible {
@@ -679,9 +646,7 @@ impl SessionManager {
             builder.add(glob);
         }
 
-        let set = builder
-            .build()
-            .map_err(|e| format!("Failed to build glob set: {}", e))?;
+        let set = builder.build().map_err(|e| format!("Failed to build glob set: {}", e))?;
         Ok(Some(set))
     }
 
@@ -707,10 +672,7 @@ impl SessionManager {
     }
 
     async fn find_workspace_files(
-        &self,
-        include_patterns: &[String],
-        exclude_patterns: &[String],
-        max_results: usize,
+        &self, include_patterns: &[String], exclude_patterns: &[String], max_results: usize,
     ) -> Result<Vec<String>, String> {
         let include_glob = Self::build_glob_set(include_patterns)?;
         let exclude_glob = Self::build_glob_set(exclude_patterns)?;
@@ -776,11 +738,7 @@ impl SessionManager {
     }
 
     async fn register_file_system_watcher(
-        &self,
-        watcher_id: &str,
-        pattern: &str,
-        ignore_create: bool,
-        ignore_change: bool,
+        &self, watcher_id: &str, pattern: &str, ignore_create: bool, ignore_change: bool,
         ignore_delete: bool,
     ) -> Result<(), String> {
         let include_patterns = Self::split_patterns(pattern, pattern);
@@ -864,14 +822,14 @@ impl SessionManager {
                 .map_err(|e| format!("Failed to watch {:?}: {}", root, e))?;
         }
 
-        let mut map = self.extension_watchers.lock().unwrap();
+        let mut map = self.extension_watchers.lock().await;
         map.insert(watcher_id.to_string(), watcher);
 
         Ok(())
     }
 
-    fn unregister_file_system_watcher(&self, watcher_id: &str) {
-        let mut map = self.extension_watchers.lock().unwrap();
+    async fn unregister_file_system_watcher(&self, watcher_id: &str) {
+        let mut map = self.extension_watchers.lock().await;
         map.remove(watcher_id);
     }
 
@@ -882,15 +840,8 @@ impl SessionManager {
             "path": path,
         });
 
-        if let Err(err) = self
-            .nng_manager
-            .request("main", "fsWatcher:event", payload)
-            .await
-        {
-            eprintln!(
-                "[SessionManager] Failed to forward fs watcher event: {}",
-                err
-            );
+        if let Err(err) = self.ipc_manager.request("main", "fsWatcher:event", payload).await {
+            eprintln!("[SessionManager] Failed to forward fs watcher event: {}", err);
         }
     }
 
@@ -901,10 +852,7 @@ impl SessionManager {
     async fn status_bar_items_snapshot(&self) -> Vec<StatusBarItemState> {
         let entries: Vec<StatusBarEntry> = {
             let map = self.status_bar_items.read().await;
-            map.values()
-                .filter(|entry| entry.visible)
-                .cloned()
-                .collect()
+            map.values().filter(|entry| entry.visible).cloned().collect()
         };
 
         let mut entries = entries;
@@ -934,9 +882,7 @@ impl SessionManager {
     }
 
     pub async fn resolve_window_message(
-        &self,
-        request_id: &str,
-        action: Option<String>,
+        &self, request_id: &str, action: Option<String>,
     ) -> Result<(), String> {
         let sender = {
             let mut pending = self.pending_message_requests.write().await;
@@ -951,9 +897,7 @@ impl SessionManager {
     }
 
     pub async fn resolve_quick_pick(
-        &self,
-        request_id: &str,
-        selection: Option<Value>,
+        &self, request_id: &str, selection: Option<Value>,
     ) -> Result<(), String> {
         let sender = {
             let mut pending = self.pending_quick_pick_requests.write().await;
@@ -968,9 +912,7 @@ impl SessionManager {
     }
 
     pub async fn resolve_input_box(
-        &self,
-        request_id: &str,
-        value: Option<String>,
+        &self, request_id: &str, value: Option<String>,
     ) -> Result<(), String> {
         let sender = {
             let mut pending = self.pending_input_requests.write().await;
@@ -984,11 +926,23 @@ impl SessionManager {
         Ok(())
     }
 
+    pub async fn resolve_execute_command(
+        &self, request_id: &str, result: Option<Value>,
+    ) -> Result<(), String> {
+        let sender = {
+            let mut pending = self.pending_quick_pick_requests.write().await;
+            pending.remove(request_id)
+        };
+
+        if let Some(sender) = sender {
+            let _ = sender.send(result);
+        }
+
+        Ok(())
+    }
+
     async fn upsert_status_bar_item(
-        &self,
-        id: &str,
-        owner: &str,
-        payload: &Value,
+        &self, id: &str, owner: &str, payload: &Value,
     ) -> Result<(), String> {
         {
             let mut map = self.status_bar_items.write().await;
@@ -1007,10 +961,9 @@ impl SessionManager {
             if let Some(tooltip) = payload.get("tooltip") {
                 entry.tooltip = match tooltip {
                     Value::String(text) => Some(text.clone()),
-                    Value::Object(map) => map
-                        .get("value")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                    Value::Object(map) => {
+                        map.get("value").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    }
                     _ => entry.tooltip.clone(),
                 };
             }
@@ -1035,10 +988,7 @@ impl SessionManager {
                 entry.priority = None;
             }
 
-            entry.visible = payload
-                .get("visible")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(true);
+            entry.visible = payload.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
         }
 
         self.publish_status_bar_items().await;
@@ -1084,15 +1034,10 @@ impl SessionManager {
 
     fn parse_status_bar_command(value: &Value) -> Option<StatusBarCommand> {
         match value {
-            Value::String(id) => Some(StatusBarCommand {
-                id: id.clone(),
-                arguments: None,
-            }),
+            Value::String(id) => Some(StatusBarCommand { id: id.clone(), arguments: None }),
             Value::Object(obj) => {
                 let id = obj.get("command")?.as_str()?.to_string();
-                let arguments = obj
-                    .get("arguments")
-                    .and_then(|args| args.as_array().cloned());
+                let arguments = obj.get("arguments").and_then(|args| args.as_array().cloned());
                 Some(StatusBarCommand { id, arguments })
             }
             _ => None,
@@ -1131,8 +1076,8 @@ impl SessionManager {
     }
 
     /// Get reference to NNG manager
-    pub fn nng_manager(&self) -> &Arc<NngIpcManager> {
-        &self.nng_manager
+    pub fn ipc_manager(&self) -> &Arc<IpcManager> {
+        &self.ipc_manager
     }
 
     /// Get reference to LSP pool

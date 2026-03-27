@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use grep_matcher::Matcher;
 use grep_regex::{RegexMatcher, RegexMatcherBuilder};
 use grep_searcher::sinks::UTF8;
 use grep_searcher::Searcher;
-use grep_matcher::Matcher;
 use ignore::WalkBuilder;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
@@ -29,21 +29,15 @@ pub struct SearchOptions {
 
 #[tauri::command]
 pub async fn search_in_files(
-    root_path: String,
-    options: SearchOptions,
+    root_path: String, options: SearchOptions,
 ) -> Result<Vec<SearchResult>, String> {
     // Move the blocking search operation to a background thread
-    tokio::task::spawn_blocking(move || {
-        perform_search(root_path, options)
-    })
-    .await
-    .map_err(|e| format!("Search task failed: {}", e))?
+    tokio::task::spawn_blocking(move || perform_search(root_path, options))
+        .await
+        .map_err(|e| format!("Search task failed: {}", e))?
 }
 
-fn perform_search(
-    root_path: String,
-    options: SearchOptions,
-) -> Result<Vec<SearchResult>, String> {
+fn perform_search(root_path: String, options: SearchOptions) -> Result<Vec<SearchResult>, String> {
     let root = PathBuf::from(&root_path);
 
     if !root.exists() {
@@ -131,20 +125,13 @@ fn perform_search(
 }
 
 fn search_file(
-    matcher: &RegexMatcher,
-    path: &Path,
-    root: &Path,
-    max_matches: usize,
+    matcher: &RegexMatcher, path: &Path, root: &Path, max_matches: usize,
 ) -> Result<Vec<SearchResult>, String> {
     let mut results = Vec::new();
     let mut searcher = Searcher::new();
 
     // Get relative path
-    let relative_path = path
-        .strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .to_string();
+    let relative_path = path.strip_prefix(root).unwrap_or(path).to_string_lossy().to_string();
 
     searcher
         .search_path(
@@ -194,10 +181,7 @@ fn search_file(
 
 #[tauri::command]
 pub async fn replace_in_files(
-    root_path: String,
-    _search_query: String,
-    replace_text: String,
-    options: SearchOptions,
+    root_path: String, _search_query: String, replace_text: String, options: SearchOptions,
 ) -> Result<usize, String> {
     let root = PathBuf::from(&root_path);
 
@@ -210,7 +194,8 @@ pub async fn replace_in_files(
 
     // Group by file
     let mut files_modified = 0;
-    let mut file_map: std::collections::HashMap<String, Vec<SearchResult>> = std::collections::HashMap::new();
+    let mut file_map: std::collections::HashMap<String, Vec<SearchResult>> =
+        std::collections::HashMap::new();
 
     for result in search_results {
         file_map.entry(result.path.clone()).or_insert_with(Vec::new).push(result);

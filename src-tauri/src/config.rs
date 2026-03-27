@@ -20,15 +20,9 @@ impl AppDirectories {
             .or_else(|| user_paths.extensions.clone())
             .unwrap_or_else(default_extensions_dir);
 
-        let storage_pref = user_paths
-            .storage
-            .clone()
-            .unwrap_or_else(default_storage_dir);
+        let storage_pref = user_paths.storage.clone().unwrap_or_else(default_storage_dir);
 
-        let logs_pref = user_paths
-            .logs
-            .clone()
-            .unwrap_or_else(default_logs_dir);
+        let logs_pref = user_paths.logs.clone().unwrap_or_else(default_logs_dir);
 
         let extensions_dir = normalize_path(extensions_pref)?;
         let storage_dir = normalize_path(storage_pref)?;
@@ -55,7 +49,8 @@ fn resolve_user_config_dirs() -> UserConfiguredPaths {
         let config_path = base.home_dir().join(".dscode").join("config.json");
         if let Ok(contents) = std::fs::read_to_string(config_path) {
             if let Ok(value) = serde_json::from_str::<Value>(&contents) {
-                let extensions = extract_path(&value, &["extensionsDir", "extensions_dir"], Some("paths"));
+                let extensions =
+                    extract_path(&value, &["extensionsDir", "extensions_dir"], Some("paths"));
                 let storage = extract_path(&value, &["storageDir", "storage_dir"], Some("paths"));
                 let logs = extract_path(&value, &["logsDir", "logs_dir"], Some("paths"));
                 return UserConfiguredPaths { extensions, storage, logs };

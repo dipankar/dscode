@@ -159,7 +159,7 @@
     top: 8px;
     right: 8px;
     background-color: var(--color-accent);
-    color: white;
+    color: var(--color-text-on-accent);
     font-size: 10px;
     font-weight: bold;
     min-width: 16px;
@@ -169,7 +169,7 @@
     align-items: center;
     justify-content: center;
     padding: 0 4px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-md);
   }
 
   .spacer {

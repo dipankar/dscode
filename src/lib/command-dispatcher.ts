@@ -2,7 +2,7 @@ import { get } from 'svelte/store';
 import { activeActivity } from './activity-store';
 import { editorStore } from '../stores/editor';
 import { workspaceStore } from '../stores/workspace';
-import { showConfirmPrompt } from '../stores/windowPrompt';
+import { showConfirmPrompt, showLocalInputBox } from '../stores/windowPrompt';
 import { extensionCommands, systemCommands } from './contracts/commands';
 import { WindowEventName, dispatchWindowEvent } from './contracts/events';
 
@@ -113,7 +113,7 @@ async function createExplorerFile(args: any[] = []) {
     return;
   }
 
-  const fileName = window.prompt('Enter file name:');
+  const fileName = await showLocalInputBox('Enter file name:', { placeholder: 'filename.ts' });
   if (!fileName?.trim()) {
     return;
   }
@@ -129,7 +129,7 @@ async function createExplorerFolder(args: any[] = []) {
     return;
   }
 
-  const folderName = window.prompt('Enter folder name:');
+  const folderName = await showLocalInputBox('Enter folder name:', { placeholder: 'folder-name' });
   if (!folderName?.trim()) {
     return;
   }
@@ -146,7 +146,7 @@ async function renameExplorerPath(args: any[] = []) {
   }
 
   const currentName = basename(path);
-  const nextName = window.prompt('Enter new name:', currentName);
+  const nextName = await showLocalInputBox('Enter new name:', { value: currentName });
   if (!nextName?.trim() || nextName.trim() === currentName) {
     return;
   }
@@ -240,8 +240,10 @@ const builtinCommandHandlers: Record<string, CommandHandler> = {
   'workbench.view.extensions': () => dispatchWindowEvent(WindowEventName.openExtensions),
   'workbench.action.openSettings': () => dispatchWindowEvent(WindowEventName.openSettings),
   'workbench.action.reloadWindow': () => window.location.reload(),
-  'workbench.action.navigateBack': () => window.history.back(),
-  'workbench.action.navigateForward': () => window.history.forward(),
+  'workbench.action.navigateBack': () => {},
+  'workbench.action.navigateForward': () => {},
+  'workbench.action.terminal.toggleTerminal': () =>
+    dispatchWindowEvent(WindowEventName.togglePanel),
   'dscode.toggleResourceMetrics': () => dispatchWindowEvent(WindowEventName.toggleResourceMetrics),
 };
 

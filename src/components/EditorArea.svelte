@@ -14,8 +14,9 @@
   import { showAlertPrompt, showConfirmPrompt } from '../stores/windowPrompt';
 
   let editorContainer: HTMLDivElement;
-  let editor: any = null; // Will be monaco.editor.IStandaloneCodeEditor
-  let monaco: any = null; // Loaded dynamically
+  let editorTabsContainer: HTMLDivElement;
+  let editor: any = null;
+  let monaco: any = null;
   let fileWatchUnlisten: (() => void) | null = null;
   let isProgrammaticChange = false;
   let autoSaveTimeout: number | null = null;
@@ -27,6 +28,10 @@
   let lastActivePath: string | null = null;
   let settingsUnsubscribe: (() => void) | null = null;
   let debugUnsubscribe: (() => void) | null = null;
+  let watchedFiles = new Set<string>();
+  const modelCache = new Map<string, any>();
+  const viewStates = new Map<string, any>();
+  const documentVersions: Record<string, number> = {};
 
   // Context menu state
   let contextMenuVisible = false;
@@ -40,18 +45,30 @@
   $: activeFile = activeTab ? $editorStore.openFiles.get(activeTab.path) : null;
   $: breadcrumbs = activeTab ? activeTab.path.split('/').filter(Boolean) : [];
 
-  // Update editor when active file changes
-  $: if (editor && activeFile) {
-    isProgrammaticChange = true;
-    editor.setValue(activeFile.content);
-    const model = editor.getModel();
-    if (model) {
-      monaco.editor.setModelLanguage(model, activeFile.language);
+  function getOrCreateModel(path: string, content: string, language: string): any {
+    const uri = monaco.Uri.parse(`file://${path}`);
+    let model = monaco.editor.getModel(uri);
+    if (!model) {
+      model = monaco.editor.createModel(content, language, uri);
     }
-    // Reset flag after a short delay to allow the change event to process
-    setTimeout(() => {
-      isProgrammaticChange = false;
-    }, 10);
+    return model;
+  }
+
+  // Update editor when active file changes
+  $: if (editor && monaco && activeFile && activeTab) {
+    const model = getOrCreateModel(activeTab.path, activeFile.content, activeFile.language);
+    const currentModel = editor.getModel();
+    if (currentModel !== model) {
+      const savedViewState = editor.saveViewState();
+      if (currentModel) {
+        viewStates.set(currentModel.uri.toString(), savedViewState);
+      }
+      editor.setModel(model);
+      const cached = viewStates.get(model.uri.toString());
+      if (cached) {
+        editor.restoreViewState(cached);
+      }
+    }
   }
 
   onMount(async () => {
@@ -272,25 +289,46 @@
     });
 
     // Listen for content changes
-    editor.onDidChangeModelContent((_e: any) => {
-      // Ignore programmatic changes (like when opening/switching files)
-      if (isProgrammaticChange) {
-        return;
-      }
-
+    editor.onDidChangeModelContent((e: any) => {
       if (activeTab) {
         const content = editor.getValue();
         editorStore.updateContent(activeTab.path, content);
         editorStore.markDirty(activeTab.path);
 
-        // Auto-save logic
+        if (!isProgrammaticChange) {
+          const changes = e.changes.map((change: any) => ({
+            range: change.range
+              ? {
+                  start: {
+                    line: change.range.startLineNumber - 1,
+                    character: change.range.startColumn - 1,
+                  },
+                  end: {
+                    line: change.range.endLineNumber - 1,
+                    character: change.range.endColumn - 1,
+                  },
+                }
+              : null,
+            rangeOffset: change.rangeOffset,
+            rangeLength: change.rangeLength,
+            text: change.text,
+          }));
+          const version = documentVersions[activeTab.path] || 0;
+          const newVersion = version + 1;
+          documentVersions[activeTab.path] = newVersion;
+          invoke('update_text_document', {
+            uri: activeTab.path,
+            version: newVersion,
+            contentChanges: changes,
+          }).catch((err: any) => {
+            console.warn('[Editor] Failed to sync document change:', err);
+          });
+        }
+
         if ($editorStore.autoSaveEnabled) {
-          // Clear previous timeout
           if (autoSaveTimeout !== null) {
             clearTimeout(autoSaveTimeout);
           }
-
-          // Set new timeout for auto-save
           autoSaveTimeout = window.setTimeout(() => {
             saveCurrentFile();
           }, $editorStore.autoSaveDelay);
@@ -349,49 +387,44 @@
   });
 
   async function handleFileChanged(changedPath: string) {
-    // Check if this file is open
     const openFile = $editorStore.openFiles.get(changedPath);
     if (!openFile) return;
 
-    // Skip if file has unsaved changes
-    if (openFile.isDirty) {
-      console.log('File changed externally but has unsaved changes:', changedPath);
-      return;
-    }
+    if (openFile.isDirty) return;
 
     try {
-      // Reload file content
       const content = await invoke<string>('read_file', { path: changedPath });
-
-      // Update content in store
       editorStore.updateContent(changedPath, content);
 
-      // If this is the active tab, update Monaco editor
-      if (activeTab && activeTab.path === changedPath) {
-        const currentPosition = editor.getPosition();
-        editor.setValue(content);
-        if (currentPosition) {
-          editor.setPosition(currentPosition);
-        }
+      const uri = monaco.Uri.parse(`file://${changedPath}`);
+      const model = monaco.editor.getModel(uri);
+      if (model) {
+        model.setValue(content);
       }
-
-      console.log('File reloaded from external change:', changedPath);
     } catch (error) {
       console.error('Failed to reload file:', error);
     }
   }
 
-  // Watch files when tabs change
+  // Watch files when tabs change (only new files)
   $: {
-    if (tabs.length > 0) {
-      tabs.forEach(async (tab) => {
-        try {
-          await invoke('start_watching_file', { path: tab.path });
-        } catch (error) {
-          console.error('Failed to watch file:', tab.path, error);
-        }
-      });
+    const currentPaths = new Set(tabs.map((t) => t.path));
+    for (const path of currentPaths) {
+      if (!watchedFiles.has(path)) {
+        watchedFiles.add(path);
+        invoke('start_watching_file', { path }).catch((err: any) => {
+          console.error('Failed to watch file:', path, err);
+        });
+      }
     }
+    for (const path of watchedFiles) {
+      if (!currentPaths.has(path)) {
+        invoke('stop_watching_file', { path }).catch((err: any) => {
+          console.error('Failed to stop watching file:', path, err);
+        });
+      }
+    }
+    watchedFiles = currentPaths;
   }
 
   $: if (editor) {
@@ -405,9 +438,21 @@
     }
   }
 
+  $: if (activeTabId && editorTabsContainer) {
+    requestAnimationFrame(() => {
+      const activeEl = editorTabsContainer.querySelector('.tab.active');
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    });
+  }
+
   onDestroy(() => {
-    // Dispose Monaco editor
     if (editor) {
+      const currentModel = editor.getModel();
+      if (currentModel) {
+        viewStates.set(currentModel.uri.toString(), editor.saveViewState());
+      }
       editor.dispose();
     }
 
@@ -421,28 +466,26 @@
 
     clearAllDecorations();
 
-    // Clean up file watch listener
     if (fileWatchUnlisten) {
       fileWatchUnlisten();
     }
 
-    // Clean up store subscriptions
     if (settingsUnsubscribe) settingsUnsubscribe();
     if (debugUnsubscribe) debugUnsubscribe();
 
-    // Clean up auto-save timeout
     if (autoSaveTimeout !== null) {
       clearTimeout(autoSaveTimeout);
     }
 
-    // Stop watching all files
-    tabs.forEach(async (tab) => {
-      try {
-        await invoke('stop_watching_file', { path: tab.path });
-      } catch (error) {
-        console.error('Failed to stop watching file:', tab.path, error);
-      }
+    for (const path of watchedFiles) {
+      invoke('stop_watching_file', { path }).catch(() => {});
+    }
+
+    modelCache.forEach((model: any) => {
+      if (model && model.dispose) model.dispose();
     });
+    modelCache.clear();
+    viewStates.clear();
   });
 
   async function saveCurrentFile() {
@@ -451,11 +494,9 @@
     try {
       const content = editor.getValue();
       await systemCommands.writeFile(activeTab.path, content);
-
       editorStore.markClean(activeTab.path);
-      console.log('File saved:', activeTab.path);
     } catch (error) {
-      console.error('Failed to save file:', error);
+      await showAlertPrompt(`Failed to save file: ${error}`, { level: 'error' });
     }
   }
 
@@ -473,37 +514,42 @@
   async function handleTabClose(e: MouseEvent | null, tabId: string) {
     if (e) e.stopPropagation();
 
-    // Find the tab
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
 
-    // Check if tab has unsaved changes
     if (tab.isDirty) {
       const filename = tab.label;
-      const response = await showConfirmPrompt(
-        `Do you want to save the changes you made to ${filename}?\n\n` +
-          `Your changes will be lost if you don't save them.`,
+      const action = await showConfirmPrompt(
+        `Do you want to save the changes you made to ${filename}?\n\nYour changes will be lost if you don't save them.`,
         { level: 'warning', confirmLabel: 'Save', cancelLabel: "Don't Save" }
       );
 
-      if (response === true) {
-        // User wants to save
+      if (action === true) {
         const file = $editorStore.openFiles.get(tab.path);
         if (file) {
           try {
             await systemCommands.writeFile(tab.path, file.content);
             editorStore.markClean(tab.path);
           } catch (error) {
-            console.error('Failed to save file:', error);
             await showAlertPrompt(`Failed to save file: ${error}`, { level: 'error' });
             return;
           }
         }
+      } else if (action === false) {
+        // "Don't Save" — proceed to close without saving
+      } else {
+        // Cancelled (undefined) — don't close
+        return;
       }
-      // If response is false, proceed to close without saving
     }
 
-    // Close the tab
+    if (editor) {
+      const currentModel = editor.getModel();
+      if (currentModel) {
+        viewStates.set(currentModel.uri.toString(), editor.saveViewState());
+      }
+    }
+
     editorStore.closeTab(tabId, true);
   }
 
@@ -636,17 +682,22 @@
 </script>
 
 <div class="editor-area">
-  <div class="editor-tabs">
+  <div class="editor-tabs" bind:this={editorTabsContainer}>
     {#if tabs.length === 0}
       <div class="empty-tabs">
         <span class="empty-message">Open a file to start editing</span>
       </div>
     {:else}
       {#each tabs as tab}
-        <button
+        <div
           class="tab"
           class:active={tab.id === activeTabId}
+          role="tab"
+          tabindex="0"
           on:click={() => handleTabClick(tab.id)}
+          on:keydown={(e) => {
+            if (e.key === 'Enter') handleTabClick(tab.id);
+          }}
         >
           <span class="tab-icon">
             {#if tab.label.endsWith('.rs')}
@@ -667,16 +718,16 @@
           </span>
           <span class="tab-label">{tab.label}</span>
           {#if tab.isDirty}
-            <span class="dirty-indicator">●</span>
+            <span class="dirty-indicator">&#9679;</span>
           {/if}
           <button
             class="tab-close"
-            on:click={(e) => handleTabClose(e, tab.id)}
+            on:click|stopPropagation={(e) => handleTabClose(e, tab.id)}
             title="Close (Ctrl+W)"
           >
-            ×
+            &times;
           </button>
-        </button>
+        </div>
       {/each}
     {/if}
   </div>
@@ -760,6 +811,12 @@
     user-select: none;
     min-width: 120px;
     max-width: 200px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+
+  .tab:hover .tab-close {
+    opacity: 1;
   }
 
   .tab.active {
@@ -816,7 +873,7 @@
 
   .tab-close:hover {
     color: var(--color-text);
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--color-surface-hover);
     border-radius: 3px;
   }
 
@@ -837,7 +894,7 @@
     bottom: 8px;
     right: 8px;
     background-color: var(--color-accent);
-    color: white;
+    color: var(--color-text-on-accent);
     padding: 6px 12px;
     border-radius: 4px;
     font-size: 12px;
@@ -914,7 +971,7 @@
 
   /* Breakpoint glyph margin styles */
   :global(.breakpoint-glyph) {
-    background: #e51400;
+    background: var(--color-badge-error);
     width: 10px !important;
     height: 10px !important;
     border-radius: 50%;
@@ -923,7 +980,7 @@
   }
 
   :global(.breakpoint-glyph-disabled) {
-    background: #888;
+    background: var(--color-badge-muted);
     width: 10px !important;
     height: 10px !important;
     border-radius: 50%;

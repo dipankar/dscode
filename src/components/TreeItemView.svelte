@@ -72,12 +72,12 @@
   }
 
   .tree-item:hover {
-    background-color: var(--color-hover);
+    background-color: var(--color-bg-tertiary, var(--color-surface-hover));
   }
 
   .tree-item.selected {
-    background-color: var(--color-selection, rgba(255, 255, 255, 0.08));
-    color: var(--color-selection-foreground, var(--color-text));
+    background-color: var(--color-bg-tertiary, var(--color-surface-focus));
+    color: var(--color-text, inherit);
   }
 
   .icon {

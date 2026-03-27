@@ -1,23 +1,24 @@
 <script lang="ts">
-import { tick } from 'svelte';
-import {
+  import { tick } from 'svelte';
+  import {
     outputChannelList,
     activeOutputChannel,
     setActiveOutputChannel,
     clearOutputChannel,
-} from '../stores/outputChannels';
+  } from '../stores/outputChannels';
 
-export let visible = false;
+  export let visible = false;
 
-let outputContainer: HTMLDivElement | null = null;
-let selectedChannelId = '';
+  let outputContainer: HTMLDivElement | null = null;
 
-$: channels = $outputChannelList;
-$: activeChannelId = $activeOutputChannel ?? (channels[0]?.id ?? null);
-$: currentChannel = channels.find((channel) => channel.id === activeChannelId) ?? null;
-$: selectedChannelId = activeChannelId ?? '';
+  $: channels = $outputChannelList;
+  $: activeChannelId = $activeOutputChannel ?? channels[0]?.id ?? null;
+  $: currentChannel = channels.find((channel) => channel.id === activeChannelId) ?? null;
 
-  $: if (channels.length > 0 && (!activeChannelId || !channels.some((channel) => channel.id === activeChannelId))) {
+  $: if (
+    channels.length > 0 &&
+    (!activeChannelId || !channels.some((channel) => channel.id === activeChannelId))
+  ) {
     setActiveOutputChannel(channels[0].id);
   }
 
@@ -29,9 +30,9 @@ $: selectedChannelId = activeChannelId ?? '';
     });
   }
 
-function handleChannelChange(event: Event) {
+  function handleChannelChange(event: Event) {
     const value = (event.target as HTMLSelectElement).value;
-    if (value) {
+    if (value && value !== activeChannelId) {
       setActiveOutputChannel(value);
     }
   }
@@ -45,16 +46,23 @@ function handleChannelChange(event: Event) {
 
 <div class="output-panel" class:visible>
   <div class="output-header">
-    <select class="channel-select" bind:value={selectedChannelId} on:change={handleChannelChange}>
+    <select class="channel-select" value={activeChannelId ?? ''} on:change={handleChannelChange}>
       {#each channels as channel}
         <option value={channel.id}>{channel.id}</option>
       {/each}
     </select>
 
     <div class="output-actions">
-      <button class="output-action" on:click={handleClear} title="Clear Output" disabled={!currentChannel}>
+      <button
+        class="output-action"
+        on:click={handleClear}
+        title="Clear Output"
+        disabled={!currentChannel}
+      >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+          <path
+            d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"
+          />
         </svg>
       </button>
     </div>

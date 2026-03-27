@@ -4,15 +4,29 @@
  * Prevents DOS attacks by limiting the rate of requests from extensions.
  * Uses token bucket algorithm via the governor crate.
  */
-
-use governor::{Quota, RateLimiter as GovernorRateLimiter, state::InMemoryState, clock::DefaultClock};
+use governor::{
+    clock::DefaultClock, state::InMemoryState, Quota, RateLimiter as GovernorRateLimiter,
+};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::num::NonZeroU32;
+use std::sync::{Arc, Mutex};
 
 pub struct RateLimiter {
     /// Per-extension rate limiters
-    limiters: Arc<Mutex<HashMap<String, Arc<GovernorRateLimiter<governor::state::direct::NotKeyed, InMemoryState, DefaultClock>>>>>,
+    limiters: Arc<
+        Mutex<
+            HashMap<
+                String,
+                Arc<
+                    GovernorRateLimiter<
+                        governor::state::direct::NotKeyed,
+                        InMemoryState,
+                        DefaultClock,
+                    >,
+                >,
+            >,
+        >,
+    >,
 
     /// Default quota: 100 requests per second per extension
     default_quota: Quota,
@@ -21,23 +35,18 @@ pub struct RateLimiter {
 impl RateLimiter {
     pub fn new() -> Self {
         // Default: 100 requests per second
-        let quota = Quota::per_second(NonZeroU32::new(100).unwrap());
+        let quota = Quota::per_second(NonZeroU32::new(100).expect("100 is nonzero"));
 
-        Self {
-            limiters: Arc::new(Mutex::new(HashMap::new())),
-            default_quota: quota,
-        }
+        Self { limiters: Arc::new(Mutex::new(HashMap::new())), default_quota: quota }
     }
 
     pub fn with_quota(requests_per_second: u32) -> Self {
         let quota = Quota::per_second(
-            NonZeroU32::new(requests_per_second).unwrap_or(NonZeroU32::new(100).unwrap())
+            NonZeroU32::new(requests_per_second)
+                .unwrap_or(NonZeroU32::new(100).expect("100 is nonzero")),
         );
 
-        Self {
-            limiters: Arc::new(Mutex::new(HashMap::new())),
-            default_quota: quota,
-        }
+        Self { limiters: Arc::new(Mutex::new(HashMap::new())), default_quota: quota }
     }
 
     /// Check if a request should be allowed
@@ -54,19 +63,21 @@ impl RateLimiter {
     }
 
     /// Get or create a rate limiter for an extension
-    fn get_or_create_limiter(&self, extension_id: &str) -> Arc<GovernorRateLimiter<governor::state::direct::NotKeyed, InMemoryState, DefaultClock>> {
-        let mut limiters = self.limiters.lock().unwrap();
+    fn get_or_create_limiter(
+        &self, extension_id: &str,
+    ) -> Arc<GovernorRateLimiter<governor::state::direct::NotKeyed, InMemoryState, DefaultClock>>
+    {
+        let mut limiters = self.limiters.lock().expect("rate_limiter lock poisoned");
 
-        limiters.entry(extension_id.to_string())
-            .or_insert_with(|| {
-                Arc::new(GovernorRateLimiter::direct(self.default_quota))
-            })
+        limiters
+            .entry(extension_id.to_string())
+            .or_insert_with(|| Arc::new(GovernorRateLimiter::direct(self.default_quota)))
             .clone()
     }
 
     /// Remove rate limiter for an extension (called when extension unloads)
     pub fn remove_limiter(&self, extension_id: &str) {
-        let mut limiters = self.limiters.lock().unwrap();
+        let mut limiters = self.limiters.lock().expect("rate_limiter lock poisoned");
         limiters.remove(extension_id);
     }
 }

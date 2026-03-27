@@ -12,8 +12,11 @@
   import WindowPromptModal from './components/WindowPromptModal.svelte';
   import QuickPickModal from './components/QuickPickModal.svelte';
   import InputBoxModal from './components/InputBoxModal.svelte';
+  import LocalInputBoxModal from './components/LocalInputBoxModal.svelte';
+  import DiffViewerOverlay from './components/DiffViewerOverlay.svelte';
   import ErrorOverlay from './components/ErrorOverlay.svelte';
-  import { windowPromptStore } from './stores/windowPrompt';
+  import { windowPromptStore, localInputBoxStore } from './stores/windowPrompt';
+  import { diffStore } from './stores/diffViewer';
   import { quickPickStore } from './stores/quickPick';
   import { inputBoxStore } from './stores/inputBox';
   import { appErrorStore, setAppError } from './stores/appError';
@@ -110,6 +113,14 @@
 
   {#if $inputBoxStore}
     <InputBoxModal request={$inputBoxStore} />
+  {/if}
+
+  {#if $localInputBoxStore}
+    <LocalInputBoxModal request={$localInputBoxStore} />
+  {/if}
+
+  {#if $diffStore}
+    <DiffViewerOverlay />
   {/if}
 
   {#if $appErrorStore}

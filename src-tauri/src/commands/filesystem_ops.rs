@@ -47,14 +47,14 @@ pub async fn fs_stat(uri: String) -> Result<FileStat, String> {
         .created()
         .unwrap_or(SystemTime::UNIX_EPOCH)
         .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs();
 
     let mtime = metadata
         .modified()
         .unwrap_or(SystemTime::UNIX_EPOCH)
         .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs();
 
     let size = metadata.len();
@@ -68,14 +68,7 @@ pub async fn fs_stat(uri: String) -> Result<FileStat, String> {
     #[cfg(not(unix))]
     let permissions = None;
 
-    Ok(FileStat {
-        uri,
-        file_type,
-        ctime,
-        mtime,
-        size,
-        permissions,
-    })
+    Ok(FileStat { uri, file_type, ctime, mtime, size, permissions })
 }
 
 /// Read directory contents
@@ -83,16 +76,14 @@ pub async fn fs_stat(uri: String) -> Result<FileStat, String> {
 pub async fn fs_read_directory(uri: String) -> Result<Vec<DirectoryEntry>, String> {
     let path = uri_to_path(&uri)?;
 
-    let entries = fs::read_dir(&path)
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries = fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
 
     let mut result = Vec::new();
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let metadata = entry
-            .metadata()
-            .map_err(|e| format!("Failed to get entry metadata: {}", e))?;
+        let metadata =
+            entry.metadata().map_err(|e| format!("Failed to get entry metadata: {}", e))?;
 
         let file_type = if metadata.is_dir() {
             FileType::Directory
@@ -129,7 +120,8 @@ pub async fn fs_create_directory(uri: String) -> Result<(), String> {
 pub async fn fs_delete(uri: String, recursive: bool) -> Result<(), String> {
     let path = uri_to_path(&uri)?;
 
-    let metadata = fs::metadata(&path).map_err(|e| format!("Failed to get file metadata: {}", e))?;
+    let metadata =
+        fs::metadata(&path).map_err(|e| format!("Failed to get file metadata: {}", e))?;
 
     if metadata.is_dir() {
         if recursive {
@@ -163,7 +155,8 @@ pub async fn fs_copy(source_uri: String, destination_uri: String) -> Result<(), 
     let source = uri_to_path(&source_uri)?;
     let destination = uri_to_path(&destination_uri)?;
 
-    let metadata = fs::metadata(&source).map_err(|e| format!("Failed to get source metadata: {}", e))?;
+    let metadata =
+        fs::metadata(&source).map_err(|e| format!("Failed to get source metadata: {}", e))?;
 
     if metadata.is_dir() {
         copy_dir_recursive(&source, &destination)
@@ -174,8 +167,7 @@ pub async fn fs_copy(source_uri: String, destination_uri: String) -> Result<(), 
                 .map_err(|e| format!("Failed to create parent directory: {}", e))?;
         }
 
-        fs::copy(&source, &destination)
-            .map_err(|e| format!("Failed to copy file: {}", e))?;
+        fs::copy(&source, &destination).map_err(|e| format!("Failed to copy file: {}", e))?;
         Ok(())
     }
 }
@@ -183,8 +175,7 @@ pub async fn fs_copy(source_uri: String, destination_uri: String) -> Result<(), 
 /// Register file system provider
 #[tauri::command]
 pub async fn register_file_system_provider(
-    provider: FileSystemProvider,
-    registry: State<'_, FileSystemRegistry>,
+    provider: FileSystemProvider, registry: State<'_, FileSystemRegistry>,
 ) -> Result<String, String> {
     registry.register_file_system_provider(provider)
 }
@@ -192,8 +183,7 @@ pub async fn register_file_system_provider(
 /// Unregister file system provider
 #[tauri::command]
 pub async fn unregister_file_system_provider(
-    scheme: String,
-    registry: State<'_, FileSystemRegistry>,
+    scheme: String, registry: State<'_, FileSystemRegistry>,
 ) -> Result<(), String> {
     registry.unregister_file_system_provider(&scheme)
 }
@@ -201,8 +191,7 @@ pub async fn unregister_file_system_provider(
 /// Get file system provider
 #[tauri::command]
 pub async fn get_file_system_provider(
-    scheme: String,
-    registry: State<'_, FileSystemRegistry>,
+    scheme: String, registry: State<'_, FileSystemRegistry>,
 ) -> Result<FileSystemProvider, String> {
     registry.get_file_system_provider(&scheme)
 }
@@ -218,8 +207,7 @@ pub async fn get_all_file_system_providers(
 /// Create file watcher
 #[tauri::command]
 pub async fn create_file_watcher(
-    watcher: FileWatcher,
-    registry: State<'_, FileSystemRegistry>,
+    watcher: FileWatcher, registry: State<'_, FileSystemRegistry>,
 ) -> Result<String, String> {
     registry.create_file_watcher(watcher)
 }
@@ -227,8 +215,7 @@ pub async fn create_file_watcher(
 /// Dispose file watcher
 #[tauri::command]
 pub async fn dispose_file_watcher(
-    watcher_id: String,
-    registry: State<'_, FileSystemRegistry>,
+    watcher_id: String, registry: State<'_, FileSystemRegistry>,
 ) -> Result<(), String> {
     registry.dispose_file_watcher(&watcher_id)
 }
@@ -236,8 +223,7 @@ pub async fn dispose_file_watcher(
 /// Get file watcher
 #[tauri::command]
 pub async fn get_file_watcher(
-    watcher_id: String,
-    registry: State<'_, FileSystemRegistry>,
+    watcher_id: String, registry: State<'_, FileSystemRegistry>,
 ) -> Result<FileWatcher, String> {
     registry.get_file_watcher(&watcher_id)
 }
@@ -253,8 +239,7 @@ pub async fn get_all_file_watchers(
 /// Apply workspace edit
 #[tauri::command]
 pub async fn apply_workspace_edit(
-    edit: WorkspaceEdit,
-    registry: State<'_, FileSystemRegistry>,
+    edit: WorkspaceEdit, registry: State<'_, FileSystemRegistry>,
 ) -> Result<(), String> {
     for file_edit in edit.edits {
         match file_edit {
@@ -326,11 +311,7 @@ pub async fn apply_workspace_edit(
                     change_type: FileChangeType::Deleted,
                 })?;
             }
-            FileEdit::RenameFile {
-                old_uri,
-                new_uri,
-                options,
-            } => {
+            FileEdit::RenameFile { old_uri, new_uri, options } => {
                 let old_path = uri_to_path(&old_uri)?;
                 let new_path = uri_to_path(&new_uri)?;
 
@@ -367,11 +348,7 @@ pub async fn apply_workspace_edit(
             FileEdit::TextEdit { uri, edits } => {
                 // Text edits are applied through the frontend (Monaco editor)
                 // This is just logged here for tracking purposes
-                println!(
-                    "[FileSystem] Text edit requested for {}: {} edit(s)",
-                    uri,
-                    edits.len()
-                );
+                println!("[FileSystem] Text edit requested for {}: {} edit(s)", uri, edits.len());
 
                 // Emit change event
                 registry.emit_file_change_event(FileChangeEvent {
@@ -388,8 +365,7 @@ pub async fn apply_workspace_edit(
 /// Clear file system data for owner
 #[tauri::command]
 pub async fn clear_filesystem_data(
-    owner: String,
-    registry: State<'_, FileSystemRegistry>,
+    owner: String, registry: State<'_, FileSystemRegistry>,
 ) -> Result<(), String> {
     registry.clear_filesystem_data(&owner);
     Ok(())
@@ -403,7 +379,10 @@ fn uri_to_path(uri: &str) -> Result<PathBuf, String> {
 
     // Handle Windows paths (C:/ instead of /C:/)
     #[cfg(windows)]
-    let path_str = if path_str.starts_with('/') && path_str.len() > 2 && path_str.chars().nth(2) == Some(':') {
+    let path_str = if path_str.starts_with('/')
+        && path_str.len() > 2
+        && path_str.chars().nth(2) == Some(':')
+    {
         &path_str[1..]
     } else {
         path_str
@@ -419,14 +398,15 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), String> {
         .map_err(|e| format!("Failed to create destination directory: {}", e))?;
 
     // Copy all entries
-    for entry in fs::read_dir(source).map_err(|e| format!("Failed to read source directory: {}", e))? {
+    for entry in
+        fs::read_dir(source).map_err(|e| format!("Failed to read source directory: {}", e))?
+    {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let source_path = entry.path();
         let dest_path = destination.join(entry.file_name());
 
-        let metadata = entry
-            .metadata()
-            .map_err(|e| format!("Failed to get entry metadata: {}", e))?;
+        let metadata =
+            entry.metadata().map_err(|e| format!("Failed to get entry metadata: {}", e))?;
 
         if metadata.is_dir() {
             copy_dir_recursive(&source_path, &dest_path)?;

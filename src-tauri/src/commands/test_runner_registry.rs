@@ -66,11 +66,7 @@ impl TestRunnerRegistry {
     // ===== Test Execution =====
 
     /// Start test run
-    pub async fn start_test_run(
-        &self,
-        suite_id: &str,
-        run_id: String,
-    ) -> Result<(), String> {
+    pub async fn start_test_run(&self, suite_id: &str, run_id: String) -> Result<(), String> {
         let suite = self.get_test_suite(suite_id).await?;
 
         let result = TestRunResult {
@@ -104,9 +100,7 @@ impl TestRunnerRegistry {
 
     /// Update test result
     pub async fn update_test_result(
-        &self,
-        run_id: &str,
-        test_result: TestResult,
+        &self, run_id: &str, test_result: TestResult,
     ) -> Result<(), String> {
         let mut results = self.test_results.write().await;
 
@@ -132,19 +126,12 @@ impl TestRunnerRegistry {
     }
 
     /// Complete test run
-    pub async fn complete_test_run(
-        &self,
-        run_id: &str,
-        duration_ms: u64,
-    ) -> Result<(), String> {
+    pub async fn complete_test_run(&self, run_id: &str, duration_ms: u64) -> Result<(), String> {
         let mut results = self.test_results.write().await;
 
         if let Some(run_result) = results.get_mut(run_id) {
-            run_result.status = if run_result.summary.failed > 0 {
-                TestStatus::Failed
-            } else {
-                TestStatus::Passed
-            };
+            run_result.status =
+                if run_result.summary.failed > 0 { TestStatus::Failed } else { TestStatus::Passed };
             run_result.summary.duration_ms = duration_ms;
             run_result.completed_at = Some(chrono::Utc::now().to_rfc3339());
 
@@ -191,9 +178,7 @@ impl TestRunnerRegistry {
 
     /// Update coverage data
     pub async fn update_coverage(
-        &self,
-        extension_id: String,
-        coverage: CoverageData,
+        &self, extension_id: String, coverage: CoverageData,
     ) -> Result<(), String> {
         let mut coverage_data = self.coverage_data.write().await;
         coverage_data.insert(extension_id.clone(), coverage);
@@ -237,28 +222,27 @@ impl TestRunnerRegistry {
                 issues.push(ValidationIssue {
                     severity: Severity::Error,
                     message: format!("Required API not implemented: {}", required),
-                    suggestion: Some(format!("Implement {} for {} extensions", required, validation.extension_type)),
+                    suggestion: Some(format!(
+                        "Implement {} for {} extensions",
+                        required, validation.extension_type
+                    )),
                 });
             }
         }
 
-        ValidationResult {
-            valid: issues.iter().all(|i| i.severity != Severity::Error),
-            issues,
-        }
+        ValidationResult { valid: issues.iter().all(|i| i.severity != Severity::Error), issues }
     }
 
     fn is_deprecated_api(&self, api: &str) -> bool {
-        matches!(
-            api,
-            "workspace.rootPath" | "window.onDidChangeActiveEditor"
-        )
+        matches!(api, "workspace.rootPath" | "window.onDidChangeActiveEditor")
     }
 
     fn get_api_replacement(&self, api: &str) -> Option<String> {
         match api {
             "workspace.rootPath" => Some("workspace.workspaceFolders".to_string()),
-            "window.onDidChangeActiveEditor" => Some("window.onDidChangeActiveTextEditor".to_string()),
+            "window.onDidChangeActiveEditor" => {
+                Some("window.onDidChangeActiveTextEditor".to_string())
+            }
             _ => None,
         }
     }

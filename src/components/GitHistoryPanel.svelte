@@ -352,7 +352,7 @@
   .load-more-btn {
     padding: 8px 16px;
     background: var(--color-accent);
-    color: white;
+    color: var(--color-text-on-accent);
     border: none;
     border-radius: 3px;
     font-size: 12px;

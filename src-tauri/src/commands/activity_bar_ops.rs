@@ -1,16 +1,11 @@
+use crate::commands::{ActivityBarItem, ActivityBarRegistry};
 use tauri::State;
-use crate::commands::{ActivityBarRegistry, ActivityBarItem};
 
 /// Register a new activity bar item
 #[tauri::command]
 pub async fn register_activity_bar_item(
-    owner: String,
-    id: String,
-    title: String,
-    icon: Option<String>,
-    icon_path: Option<String>,
-    priority: Option<i32>,
-    registry: State<'_, ActivityBarRegistry>,
+    owner: String, id: String, title: String, icon: Option<String>, icon_path: Option<String>,
+    priority: Option<i32>, registry: State<'_, ActivityBarRegistry>,
 ) -> Result<String, String> {
     registry.register_item(owner, id, title, icon, icon_path, priority)
 }
@@ -18,9 +13,7 @@ pub async fn register_activity_bar_item(
 /// Update an activity bar item's badge
 #[tauri::command]
 pub async fn update_activity_bar_badge(
-    key: String,
-    badge_count: Option<i32>,
-    badge_text: Option<String>,
+    key: String, badge_count: Option<i32>, badge_text: Option<String>,
     registry: State<'_, ActivityBarRegistry>,
 ) -> Result<(), String> {
     registry.update_badge(key, badge_count, badge_text)
@@ -29,8 +22,7 @@ pub async fn update_activity_bar_badge(
 /// Show an activity bar item
 #[tauri::command]
 pub async fn show_activity_bar_item(
-    key: String,
-    registry: State<'_, ActivityBarRegistry>,
+    key: String, registry: State<'_, ActivityBarRegistry>,
 ) -> Result<(), String> {
     registry.show_item(key)
 }
@@ -38,8 +30,7 @@ pub async fn show_activity_bar_item(
 /// Hide an activity bar item
 #[tauri::command]
 pub async fn hide_activity_bar_item(
-    key: String,
-    registry: State<'_, ActivityBarRegistry>,
+    key: String, registry: State<'_, ActivityBarRegistry>,
 ) -> Result<(), String> {
     registry.hide_item(key)
 }
@@ -47,8 +38,7 @@ pub async fn hide_activity_bar_item(
 /// Dispose (remove) an activity bar item
 #[tauri::command]
 pub async fn dispose_activity_bar_item(
-    key: String,
-    registry: State<'_, ActivityBarRegistry>,
+    key: String, registry: State<'_, ActivityBarRegistry>,
 ) -> Result<(), String> {
     registry.dispose_item(key)
 }
@@ -64,8 +54,7 @@ pub async fn get_activity_bar_items(
 /// Clear all activity bar items from a specific owner
 #[tauri::command]
 pub async fn clear_activity_bar_items(
-    owner: String,
-    registry: State<'_, ActivityBarRegistry>,
+    owner: String, registry: State<'_, ActivityBarRegistry>,
 ) -> Result<(), String> {
     registry.clear_owner_items(&owner)
 }

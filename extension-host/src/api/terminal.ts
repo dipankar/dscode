@@ -6,6 +6,8 @@
 
 import { ExtensionHostBridge } from '../bridge';
 import { Event, EventEmitter, Disposable } from './events';
+import { Uri } from './uri';
+import { ThemeIcon } from './common';
 
 // Terminal Options
 export interface TerminalOptions {
@@ -17,15 +19,15 @@ export interface TerminalOptions {
   strictEnv?: boolean;
   hideFromUser?: boolean;
   message?: string;
-  iconPath?: any;
-  color?: any;
+  iconPath?: Uri | { light: Uri; dark: Uri } | ThemeIcon;
+  color?: ThemeIcon;
 }
 
 export interface ExtensionTerminalOptions {
   name: string;
   pty: Pseudoterminal;
-  iconPath?: any;
-  color?: any;
+  iconPath?: Uri | { light: Uri; dark: Uri } | ThemeIcon;
+  color?: ThemeIcon;
 }
 
 export class Pseudoterminal {
@@ -54,15 +56,19 @@ export enum TerminalExitReason {
   Shutdown = 1,
   Process = 2,
   User = 3,
-  Extension = 4
+  Extension = 4,
 }
 
 // Export Terminal as a class (not interface) so extensions can reference it at runtime
 export class Terminal {
   readonly name!: string;
-  get processId(): Promise<number | undefined> { return Promise.resolve(undefined); }
+  get processId(): Promise<number | undefined> {
+    return Promise.resolve(undefined);
+  }
   readonly creationOptions!: Readonly<TerminalOptions | ExtensionTerminalOptions>;
-  get exitStatus(): TerminalExitStatus | undefined { return undefined; }
+  get exitStatus(): TerminalExitStatus | undefined {
+    return undefined;
+  }
   sendText(text: string, shouldExecute?: boolean): void {}
   show(preserveFocus?: boolean): void {}
   hide(): void {}
@@ -72,6 +78,8 @@ export class Terminal {
 class TerminalImpl extends Terminal {
   private _exitStatus?: TerminalExitStatus;
   private _processId: Promise<number | undefined>;
+  readonly name: string;
+  readonly creationOptions: Readonly<TerminalOptions | ExtensionTerminalOptions>;
 
   constructor(
     private bridge: ExtensionHostBridge,
@@ -80,16 +88,16 @@ class TerminalImpl extends Terminal {
     creationOptions: Readonly<TerminalOptions | ExtensionTerminalOptions>
   ) {
     super();
-    (this as any).name = name;
-    (this as any).creationOptions = creationOptions;
+    this.name = name;
+    this.creationOptions = creationOptions;
     this._processId = this.getProcessId();
   }
 
   private async getProcessId(): Promise<number | undefined> {
     try {
-      const result = await this.bridge.request('getTerminalProcessId', {
-        terminalId: this.terminalId
-      }) as { processId?: number };
+      const result = (await this.bridge.request('getTerminalProcessId', {
+        terminalId: this.terminalId,
+      })) as { processId?: number };
       return result.processId;
     } catch {
       return undefined;
@@ -108,26 +116,26 @@ class TerminalImpl extends Terminal {
     this.bridge.send('terminalSendText', {
       terminalId: this.terminalId,
       text,
-      shouldExecute
+      shouldExecute,
     });
   }
 
   show(preserveFocus?: boolean): void {
     this.bridge.send('terminalShow', {
       terminalId: this.terminalId,
-      preserveFocus
+      preserveFocus,
     });
   }
 
   hide(): void {
     this.bridge.send('terminalHide', {
-      terminalId: this.terminalId
+      terminalId: this.terminalId,
     });
   }
 
   dispose(): void {
     this.bridge.send('terminalDispose', {
-      terminalId: this.terminalId
+      terminalId: this.terminalId,
     });
   }
 }
@@ -137,6 +145,7 @@ export class TerminalAPI {
   private _onDidCloseTerminal = new EventEmitter<Terminal>();
   private _onDidChangeActiveTerminal = new EventEmitter<Terminal | undefined>();
   private _terminals: Terminal[] = [];
+  private _terminalIds = new Map<Terminal, string>();
   private _activeTerminal?: Terminal;
 
   readonly onDidOpenTerminal = this._onDidOpenTerminal.event;
@@ -148,16 +157,20 @@ export class TerminalAPI {
   }
 
   private setupListeners(): void {
-    this.bridge.on('terminalOpened', (data: any) => {
-      const terminal = new TerminalImpl(this.bridge, data.terminalId, data.name, data.options);
-      this._terminals.push(terminal);
-      this._onDidOpenTerminal.fire(terminal);
-    });
+    this.bridge.on(
+      'terminalOpened',
+      (data: { terminalId: string; name: string; options: TerminalOptions }) => {
+        const terminal = new TerminalImpl(this.bridge, data.terminalId, data.name, data.options);
+        this._terminalIds.set(terminal, data.terminalId);
+        this._terminals.push(terminal);
+        this._onDidOpenTerminal.fire(terminal);
+      }
+    );
 
-    this.bridge.on('terminalClosed', (data: any) => {
-      const terminal = this._terminals.find(t => (t as any).terminalId === data.terminalId);
+    this.bridge.on('terminalClosed', (data: { terminalId: string }) => {
+      const terminal = this._terminals.find((t) => this._terminalIds.get(t) === data.terminalId);
       if (terminal) {
-        this._terminals = this._terminals.filter(t => t !== terminal);
+        this._terminals = this._terminals.filter((t) => t !== terminal);
         this._onDidCloseTerminal.fire(terminal);
       }
     });
@@ -187,19 +200,15 @@ export class TerminalAPI {
       options = nameOrOptions || {};
     }
 
-    const terminal = new TerminalImpl(
-      this.bridge,
-      terminalId,
-      options.name || 'Terminal',
-      options
-    );
+    const terminal = new TerminalImpl(this.bridge, terminalId, options.name || 'Terminal', options);
 
     this.bridge.send('createTerminal', {
       terminalId,
-      options
+      options,
     });
 
     this._terminals.push(terminal);
+    this._terminalIds.set(terminal, terminalId);
     this._onDidOpenTerminal.fire(terminal);
 
     return terminal;
@@ -213,10 +222,11 @@ export class TerminalAPI {
 
     this.bridge.send('createTerminal', {
       terminalId,
-      options
+      options,
     });
 
     this._terminals.push(terminal);
+    this._terminalIds.set(terminal, terminalId);
     this._onDidOpenTerminal.fire(terminal);
 
     return terminal;

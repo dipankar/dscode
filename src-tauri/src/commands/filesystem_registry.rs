@@ -83,26 +83,13 @@ pub struct WorkspaceEdit {
 #[serde(tag = "type")]
 pub enum FileEdit {
     #[serde(rename = "create")]
-    CreateFile {
-        uri: String,
-        options: Option<CreateFileOptions>,
-    },
+    CreateFile { uri: String, options: Option<CreateFileOptions> },
     #[serde(rename = "delete")]
-    DeleteFile {
-        uri: String,
-        options: Option<DeleteFileOptions>,
-    },
+    DeleteFile { uri: String, options: Option<DeleteFileOptions> },
     #[serde(rename = "rename")]
-    RenameFile {
-        old_uri: String,
-        new_uri: String,
-        options: Option<RenameFileOptions>,
-    },
+    RenameFile { old_uri: String, new_uri: String, options: Option<RenameFileOptions> },
     #[serde(rename = "text")]
-    TextEdit {
-        uri: String,
-        edits: Vec<TextEditItem>,
-    },
+    TextEdit { uri: String, edits: Vec<TextEditItem> },
 }
 
 /// Text edit item for workspace edits
@@ -165,8 +152,7 @@ impl FileSystemRegistry {
 
     /// Register a file system provider
     pub fn register_file_system_provider(
-        &self,
-        provider: FileSystemProvider,
+        &self, provider: FileSystemProvider,
     ) -> Result<String, String> {
         let mut providers = self.providers.write().map_err(|e| e.to_string())?;
 
@@ -181,16 +167,10 @@ impl FileSystemRegistry {
         let id = provider.id.clone();
         providers.push(provider.clone());
 
-        println!(
-            "[FileSystem] Registered provider: {} (scheme: {})",
-            id, provider.scheme
-        );
+        println!("[FileSystem] Registered provider: {} (scheme: {})", id, provider.scheme);
 
         // Emit event
-        if let Err(e) = self
-            .app_handle
-            .emit("filesystem-provider-registered", &provider)
-        {
+        if let Err(e) = self.app_handle.emit("filesystem-provider-registered", &provider) {
             eprintln!("[FileSystem] Failed to emit provider registered event: {}", e);
         }
 
@@ -205,23 +185,14 @@ impl FileSystemRegistry {
         providers.retain(|p| p.scheme != scheme);
 
         if providers.len() == initial_len {
-            return Err(format!(
-                "No file system provider found for scheme '{}'",
-                scheme
-            ));
+            return Err(format!("No file system provider found for scheme '{}'", scheme));
         }
 
         println!("[FileSystem] Unregistered provider for scheme: {}", scheme);
 
         // Emit event
-        if let Err(e) = self
-            .app_handle
-            .emit("filesystem-provider-unregistered", scheme)
-        {
-            eprintln!(
-                "[FileSystem] Failed to emit provider unregistered event: {}",
-                e
-            );
+        if let Err(e) = self.app_handle.emit("filesystem-provider-unregistered", scheme) {
+            eprintln!("[FileSystem] Failed to emit provider unregistered event: {}", e);
         }
 
         Ok(())
@@ -240,7 +211,7 @@ impl FileSystemRegistry {
 
     /// Get all file system providers
     pub fn get_all_file_system_providers(&self) -> Vec<FileSystemProvider> {
-        self.providers.read().unwrap().clone()
+        self.providers.read().expect("filesystem_providers read lock poisoned").clone()
     }
 
     /// Create a file watcher
@@ -250,10 +221,7 @@ impl FileSystemRegistry {
         let id = watcher.id.clone();
         watchers.insert(id.clone(), watcher.clone());
 
-        println!(
-            "[FileSystem] Created watcher: {} (pattern: {})",
-            id, watcher.glob_pattern
-        );
+        println!("[FileSystem] Created watcher: {} (pattern: {})", id, watcher.glob_pattern);
 
         // Emit event
         if let Err(e) = self.app_handle.emit("file-watcher-created", &watcher) {
@@ -274,10 +242,7 @@ impl FileSystemRegistry {
         println!("[FileSystem] Disposed watcher: {}", watcher_id);
 
         // Emit event
-        if let Err(e) = self
-            .app_handle
-            .emit("file-watcher-disposed", watcher_id)
-        {
+        if let Err(e) = self.app_handle.emit("file-watcher-disposed", watcher_id) {
             eprintln!("[FileSystem] Failed to emit watcher disposed event: {}", e);
         }
 
@@ -296,7 +261,12 @@ impl FileSystemRegistry {
 
     /// Get all file watchers
     pub fn get_all_file_watchers(&self) -> Vec<FileWatcher> {
-        self.watchers.read().unwrap().values().cloned().collect()
+        self.watchers
+            .read()
+            .expect("filesystem_watchers read lock poisoned")
+            .values()
+            .cloned()
+            .collect()
     }
 
     /// Emit file change event
@@ -319,10 +289,9 @@ impl FileSystemRegistry {
             // Check if URI matches glob pattern
             if self.matches_glob_pattern(&event.uri, &watcher.glob_pattern) {
                 // Emit event for this watcher
-                if let Err(e) = self.app_handle.emit(
-                    &format!("file-watcher-event:{}", watcher.id),
-                    &event,
-                ) {
+                if let Err(e) =
+                    self.app_handle.emit(&format!("file-watcher-event:{}", watcher.id), &event)
+                {
                     eprintln!("[FileSystem] Failed to emit file change event: {}", e);
                 }
             }
@@ -353,29 +322,25 @@ impl FileSystemRegistry {
     pub fn clear_filesystem_data(&self, owner: &str) {
         // Clear providers
         {
-            let mut providers = self.providers.write().unwrap();
+            let mut providers =
+                self.providers.write().expect("filesystem_providers write lock poisoned");
             let before = providers.len();
             providers.retain(|p| p.owner != owner);
             let removed = before - providers.len();
             if removed > 0 {
-                println!(
-                    "[FileSystem] Cleared {} provider(s) for owner: {}",
-                    removed, owner
-                );
+                println!("[FileSystem] Cleared {} provider(s) for owner: {}", removed, owner);
             }
         }
 
         // Clear watchers
         {
-            let mut watchers = self.watchers.write().unwrap();
+            let mut watchers =
+                self.watchers.write().expect("filesystem_watchers write lock poisoned");
             let before = watchers.len();
             watchers.retain(|_, w| w.owner != owner);
             let removed = before - watchers.len();
             if removed > 0 {
-                println!(
-                    "[FileSystem] Cleared {} watcher(s) for owner: {}",
-                    removed, owner
-                );
+                println!("[FileSystem] Cleared {} watcher(s) for owner: {}", removed, owner);
             }
         }
     }

@@ -60,8 +60,15 @@
         >
       {/each}
       {#if prompt.showCancelButton !== false}
-        <button class="secondary" on:click={() => choose(undefined)} aria-label="Cancel prompt"
-          >{prompt.cancelLabel || 'Cancel'}</button
+        <button
+          class="secondary"
+          on:click={() => choose(prompt.cancelLabel)}
+          aria-label="Cancel prompt">{prompt.cancelLabel || 'Cancel'}</button
+        >
+      {/if}
+      {#if prompt.secondaryLabel}
+        <button class="tertiary" on:click={() => choose(undefined)} aria-label="Cancel"
+          >{prompt.secondaryLabel}</button
         >
       {/if}
     </footer>
@@ -72,7 +79,7 @@
   .prompt-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: var(--color-modal-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -84,7 +91,7 @@
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border);
     border-radius: 6px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -96,15 +103,15 @@
   }
 
   header.level-info {
-    background: rgba(45, 132, 255, 0.15);
+    background: var(--color-btn-primary-bg);
   }
 
   header.level-warning {
-    background: rgba(255, 196, 0, 0.18);
+    background: var(--color-btn-secondary-bg);
   }
 
   header.level-error {
-    background: rgba(255, 70, 66, 0.18);
+    background: var(--color-btn-danger-bg);
   }
 
   header h2 {
@@ -137,7 +144,7 @@
 
   button.action {
     background-color: var(--color-accent);
-    color: #fff;
+    color: var(--color-text-on-accent);
   }
 
   button.secondary {
@@ -146,7 +153,17 @@
   }
 
   button.secondary:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--color-surface-hover);
+  }
+
+  button.tertiary {
+    background: transparent;
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border);
+  }
+
+  button.tertiary:hover {
+    background: var(--color-surface-hover);
   }
 
   button.action:hover {

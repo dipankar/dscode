@@ -1,0 +1,64 @@
+name: Bug Report
+description: Report a bug in DSCode
+labels: [bug]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Title
+      description: A short summary of the bug
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the bug in detail
+      value: |
+        <!-- Provide a clear description of the bug -->
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce the bug?
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: Which OS are you running DSCode on?
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: DSCode Version
+      description: The version of DSCode you are using
+      placeholder: e.g. 0.1.0
+    validations:
+      required: true

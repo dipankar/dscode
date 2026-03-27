@@ -85,6 +85,7 @@ pub struct LaunchRequestArguments {
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub enum DebugState {
     Stopped,
+    Initialized,
     Running,
     Paused,
     Terminated,

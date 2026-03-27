@@ -232,7 +232,7 @@
   }
 
   .btn.stop:not(:disabled) {
-    color: #f48771;
+    color: var(--color-error);
   }
 
   .separator {
@@ -258,12 +258,12 @@
   }
 
   .status-dot.running {
-    background: #89d185;
+    background: var(--color-success);
     animation: pulse 1.5s ease-in-out infinite;
   }
 
   .status-dot.paused {
-    background: #f9c74f;
+    background: var(--color-warning);
   }
 
   @keyframes pulse {

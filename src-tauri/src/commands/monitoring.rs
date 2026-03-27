@@ -1,5 +1,5 @@
+use crate::monitoring::{ResourceMetrics, ResourceMonitor};
 use tauri::State;
-use crate::monitoring::{ResourceMonitor, ResourceMetrics};
 
 #[tauri::command]
 pub fn get_resource_metrics(monitor: State<ResourceMonitor>) -> Result<ResourceMetrics, String> {

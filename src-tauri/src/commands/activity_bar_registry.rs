@@ -28,10 +28,7 @@ pub struct ActivityBarRegistry {
 
 impl ActivityBarRegistry {
     pub fn new(app_handle: AppHandle) -> Self {
-        let registry = Self {
-            items: Arc::new(RwLock::new(HashMap::new())),
-            app_handle,
-        };
+        let registry = Self { items: Arc::new(RwLock::new(HashMap::new())), app_handle };
 
         // Register built-in activity bar items
         registry.register_built_in_items();
@@ -99,7 +96,7 @@ impl ActivityBarRegistry {
             },
         ];
 
-        let mut items = self.items.write().unwrap();
+        let mut items = self.items.write().expect("activity_bar_registry write lock poisoned");
         for item in built_in_items {
             items.insert(item.id.clone(), item);
         }
@@ -112,13 +109,8 @@ impl ActivityBarRegistry {
 
     /// Register a new activity bar item
     pub fn register_item(
-        &self,
-        owner: String,
-        id: String,
-        title: String,
-        icon: Option<String>,
-        icon_path: Option<String>,
-        priority: Option<i32>,
+        &self, owner: String, id: String, title: String, icon: Option<String>,
+        icon_path: Option<String>, priority: Option<i32>,
     ) -> Result<String, String> {
         let key = Self::item_key(&owner, &id);
 
@@ -146,10 +138,7 @@ impl ActivityBarRegistry {
 
     /// Update an activity bar item's badge
     pub fn update_badge(
-        &self,
-        key: String,
-        badge_count: Option<i32>,
-        badge_text: Option<String>,
+        &self, key: String, badge_count: Option<i32>, badge_text: Option<String>,
     ) -> Result<(), String> {
         let is_visible = {
             let mut items = self.items.write().map_err(|e| e.to_string())?;
@@ -175,9 +164,8 @@ impl ActivityBarRegistry {
     pub fn show_item(&self, key: String) -> Result<(), String> {
         let mut items = self.items.write().map_err(|e| e.to_string())?;
 
-        let item = items
-            .get_mut(&key)
-            .ok_or_else(|| format!("Activity bar item not found: {}", key))?;
+        let item =
+            items.get_mut(&key).ok_or_else(|| format!("Activity bar item not found: {}", key))?;
 
         if !item.visible {
             item.visible = true;
@@ -192,9 +180,8 @@ impl ActivityBarRegistry {
     pub fn hide_item(&self, key: String) -> Result<(), String> {
         let mut items = self.items.write().map_err(|e| e.to_string())?;
 
-        let item = items
-            .get_mut(&key)
-            .ok_or_else(|| format!("Activity bar item not found: {}", key))?;
+        let item =
+            items.get_mut(&key).ok_or_else(|| format!("Activity bar item not found: {}", key))?;
 
         if item.visible {
             item.visible = false;
@@ -209,9 +196,8 @@ impl ActivityBarRegistry {
     pub fn dispose_item(&self, key: String) -> Result<(), String> {
         let mut items = self.items.write().map_err(|e| e.to_string())?;
 
-        let item = items
-            .remove(&key)
-            .ok_or_else(|| format!("Activity bar item not found: {}", key))?;
+        let item =
+            items.remove(&key).ok_or_else(|| format!("Activity bar item not found: {}", key))?;
 
         drop(items); // Release lock before emitting
 
@@ -225,13 +211,10 @@ impl ActivityBarRegistry {
 
     /// Get all visible activity bar items sorted by priority
     pub fn get_visible_items(&self) -> Vec<ActivityBarItem> {
-        let items = self.items.read().unwrap();
+        let items = self.items.read().expect("activity_bar_registry read lock poisoned");
 
-        let mut visible_items: Vec<ActivityBarItem> = items
-            .values()
-            .filter(|item| item.visible)
-            .cloned()
-            .collect();
+        let mut visible_items: Vec<ActivityBarItem> =
+            items.values().filter(|item| item.visible).cloned().collect();
 
         // Sort by priority (higher priority first)
         visible_items.sort_by(|a, b| b.priority.cmp(&a.priority));
@@ -241,7 +224,7 @@ impl ActivityBarRegistry {
 
     /// Get a specific activity bar item
     pub fn get_item(&self, key: &str) -> Option<ActivityBarItem> {
-        let items = self.items.read().unwrap();
+        let items = self.items.read().expect("activity_bar_registry read lock poisoned");
         items.get(key).cloned()
     }
 
@@ -255,9 +238,8 @@ impl ActivityBarRegistry {
             .map(|(key, _)| key.clone())
             .collect();
 
-        let had_visible = keys_to_remove
-            .iter()
-            .any(|key| items.get(key).map(|i| i.visible).unwrap_or(false));
+        let had_visible =
+            keys_to_remove.iter().any(|key| items.get(key).map(|i| i.visible).unwrap_or(false));
 
         for key in keys_to_remove {
             items.remove(&key);
@@ -277,10 +259,7 @@ impl ActivityBarRegistry {
     fn emit_items_changed(&self) {
         let visible_items = self.get_visible_items();
 
-        if let Err(e) = self
-            .app_handle
-            .emit("activity-bar-items-changed", &visible_items)
-        {
+        if let Err(e) = self.app_handle.emit("activity-bar-items-changed", &visible_items) {
             eprintln!("[ActivityBarRegistry] Failed to emit event: {}", e);
         }
     }

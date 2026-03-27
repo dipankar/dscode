@@ -23,10 +23,7 @@ impl TaskRegistry {
     // ===== Task Provider Management =====
 
     /// Register a task provider
-    pub fn register_task_provider(
-        &self,
-        provider: TaskProvider,
-    ) -> Result<String, String> {
+    pub fn register_task_provider(&self, provider: TaskProvider) -> Result<String, String> {
         let provider_id = provider.id.clone();
         let mut providers = self.providers.blocking_write();
 
@@ -37,10 +34,7 @@ impl TaskRegistry {
 
         providers.push(provider.clone());
 
-        println!(
-            "[Task] Registered task provider: {} (type: {})",
-            provider.id, provider.task_type
-        );
+        println!("[Task] Registered task provider: {} (type: {})", provider.id, provider.task_type);
 
         Ok(provider_id)
     }
@@ -86,10 +80,7 @@ impl TaskRegistry {
     // ===== Task Execution Management =====
 
     /// Start a task execution
-    pub fn start_task_execution(
-        &self,
-        execution: TaskExecution,
-    ) -> Result<String, String> {
+    pub fn start_task_execution(&self, execution: TaskExecution) -> Result<String, String> {
         let execution_id = execution.id.clone();
         let mut executions = self.task_executions.blocking_write();
 
@@ -107,10 +98,7 @@ impl TaskRegistry {
 
     /// Update task execution
     pub fn update_task_execution(
-        &self,
-        execution_id: &str,
-        state: TaskExecutionState,
-        exit_code: Option<i32>,
+        &self, execution_id: &str, state: TaskExecutionState, exit_code: Option<i32>,
     ) -> Result<(), String> {
         let mut executions = self.task_executions.blocking_write();
 
@@ -123,10 +111,7 @@ impl TaskRegistry {
                 eprintln!("[Task] Failed to emit task updated event: {}", e);
             }
 
-            println!(
-                "[Task] Updated task execution: {} (state: {:?})",
-                execution_id, state
-            );
+            println!("[Task] Updated task execution: {} (state: {:?})", execution_id, state);
 
             Ok(())
         } else {
@@ -135,11 +120,7 @@ impl TaskRegistry {
     }
 
     /// End task execution
-    pub fn end_task_execution(
-        &self,
-        execution_id: &str,
-        exit_code: i32,
-    ) -> Result<(), String> {
+    pub fn end_task_execution(&self, execution_id: &str, exit_code: i32) -> Result<(), String> {
         let mut executions = self.task_executions.blocking_write();
 
         if let Some(execution) = executions.get_mut(execution_id) {
@@ -155,10 +136,7 @@ impl TaskRegistry {
                 eprintln!("[Task] Failed to emit task ended event: {}", e);
             }
 
-            println!(
-                "[Task] Ended task execution: {} (exit code: {})",
-                execution_id, exit_code
-            );
+            println!("[Task] Ended task execution: {} (exit code: {})", execution_id, exit_code);
 
             Ok(())
         } else {
@@ -177,11 +155,7 @@ impl TaskRegistry {
 
     /// Get all task executions
     pub fn get_all_task_executions(&self) -> Vec<TaskExecution> {
-        self.task_executions
-            .blocking_read()
-            .values()
-            .cloned()
-            .collect()
+        self.task_executions.blocking_read().values().cloned().collect()
     }
 
     /// Clear task executions

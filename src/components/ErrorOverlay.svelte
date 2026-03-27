@@ -26,7 +26,7 @@
   .error-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.82);
+    background: var(--modal-overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -42,7 +42,7 @@
     border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 20px;
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-xl);
   }
 
   h2 {
@@ -80,7 +80,7 @@
 
   button.primary {
     background: var(--color-accent);
-    color: #fff;
+    color: var(--color-text-on-accent);
     border-color: var(--color-accent);
   }
 </style>

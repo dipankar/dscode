@@ -9,8 +9,12 @@
   import { invoke } from '@tauri-apps/api/core';
   import { Plus, X } from 'lucide-svelte';
   import { outputChannelReveal } from '../stores/outputChannels';
+  import { WindowEventName, dispatchWindowEvent } from '../lib/contracts/events';
+  import { problemCountsStore } from '../stores/problems';
 
   let activePanel = 'terminal';
+
+  $: problemCounts = $problemCountsStore;
 
   const panels = [
     { id: 'problems', label: 'Problems', icon: '⚠️' },
@@ -39,17 +43,25 @@
       terminals = [...terminals, { id: terminalId, name: `Terminal ${terminals.length + 1}` }];
       activeTerminalId = terminalId;
       activePanel = 'terminal';
-      console.log(`Terminal created: ${terminalId}, total terminals: ${terminals.length}`);
     } catch (error) {
       console.error('Failed to create terminal:', error);
     }
   }
 
   function closeTerminal(terminalId: string) {
+    invoke('close_terminal', { terminalId }).catch(() => {});
     terminals = terminals.filter((t) => t.id !== terminalId);
     if (activeTerminalId === terminalId) {
       activeTerminalId = terminals.length > 0 ? terminals[0].id : null;
     }
+  }
+
+  function maximizePanel() {
+    dispatchWindowEvent(WindowEventName.togglePanel);
+  }
+
+  function closePanel() {
+    dispatchWindowEvent(WindowEventName.togglePanel);
   }
 
   onMount(() => {
@@ -72,35 +84,54 @@
       >
         <span class="panel-icon">{panel.icon}</span>
         <span class="panel-label">{panel.label}</span>
+        {#if panel.id === 'problems' && (problemCounts.errors > 0 || problemCounts.warnings > 0)}
+          <span class="problem-badge">
+            {#if problemCounts.errors > 0}
+              <span class="error-count">{problemCounts.errors}</span>
+            {/if}
+            {#if problemCounts.warnings > 0}
+              <span class="warning-count">{problemCounts.warnings}</span>
+            {/if}
+          </span>
+        {/if}
       </button>
     {/each}
 
     <div class="panel-actions">
-      <button class="panel-action" title="Maximize Panel">⬆️</button>
-      <button class="panel-action" title="Close Panel">×</button>
+      <button class="panel-action" title="Maximize Panel" on:click={maximizePanel}
+        >&#11014;&#65039;</button
+      >
+      <button class="panel-action" title="Close Panel" on:click={closePanel}>&times;</button>
     </div>
   </div>
 
   <div class="panel-content">
-    {#if activePanel === 'problems'}
+    <div class="panel-view" class:hidden={activePanel !== 'problems'}>
       <ProblemsPanel visible={activePanel === 'problems'} editor={$editorStore.monacoInstance} />
-    {:else if activePanel === 'output'}
+    </div>
+    <div class="panel-view" class:hidden={activePanel !== 'output'}>
       <OutputPanel visible={activePanel === 'output'} />
-    {:else if activePanel === 'debug'}
+    </div>
+    <div class="panel-view" class:hidden={activePanel !== 'debug'}>
       <DebugConsole visible={activePanel === 'debug'} />
-    {:else if activePanel === 'git-history'}
+    </div>
+    <div class="panel-view" class:hidden={activePanel !== 'git-history'}>
       <GitHistoryPanel />
-    {:else if activePanel === 'terminal'}
+    </div>
+    <div class="panel-view" class:hidden={activePanel !== 'terminal'}>
       <div class="terminal-panel">
-        <!-- Terminal tabs -->
         {#if terminals.length > 0}
           <div class="terminal-tabs">
             {#each terminals as terminal (terminal.id)}
-              <button
+              <div
                 class="terminal-tab"
                 class:active={activeTerminalId === terminal.id}
-                type="button"
+                role="tab"
+                tabindex="0"
                 on:click={() => (activeTerminalId = terminal.id)}
+                on:keydown={(e) => {
+                  if (e.key === 'Enter') activeTerminalId = terminal.id;
+                }}
               >
                 <span class="terminal-tab-name">{terminal.name}</span>
                 <button
@@ -110,7 +141,7 @@
                 >
                   <X size={14} />
                 </button>
-              </button>
+              </div>
             {/each}
             <button class="terminal-tab-new" on:click={createNewTerminal} title="New Terminal">
               <Plus size={14} />
@@ -118,13 +149,12 @@
           </div>
         {/if}
 
-        <!-- Terminal content -->
         <div class="terminal-content">
           {#each terminals as terminal (terminal.id)}
             <div class="terminal-instance" class:hidden={activeTerminalId !== terminal.id}>
               <Terminal
                 terminalId={terminal.id}
-                visible={activeTerminalId === terminal.id}
+                visible={activePanel === 'terminal' && activeTerminalId === terminal.id}
                 onClose={() => closeTerminal(terminal.id)}
               />
             </div>
@@ -138,7 +168,7 @@
           {/if}
         </div>
       </div>
-    {/if}
+    </div>
   </div>
 </div>
 
@@ -186,6 +216,34 @@
     font-size: 14px;
   }
 
+  .problem-badge {
+    display: flex;
+    gap: 4px;
+    margin-left: 4px;
+  }
+
+  .error-count {
+    background: var(--color-error);
+    color: var(--color-text-on-accent);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 8px;
+    min-width: 16px;
+    text-align: center;
+  }
+
+  .warning-count {
+    background: var(--color-warning);
+    color: var(--color-text-on-accent);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 8px;
+    min-width: 16px;
+    text-align: center;
+  }
+
   .panel-actions {
     margin-left: auto;
     display: flex;
@@ -211,6 +269,18 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+  }
+
+  .panel-view {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-view.hidden {
+    display: none;
   }
 
   .terminal-panel {
@@ -325,7 +395,7 @@
   .empty-state button {
     padding: 8px 16px;
     background-color: var(--color-accent);
-    color: white;
+    color: var(--color-text-on-accent);
     border: none;
     border-radius: 4px;
     cursor: pointer;

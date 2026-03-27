@@ -1,9 +1,13 @@
 # Dependencies
 node_modules/
+extension-host/node_modules/
 
 # Build output
 dist/
 dist-ssr/
+extension-host/dist/
+extension-host/build/
+extension-host/lib/
 
 # Logs
 *.log
@@ -20,13 +24,19 @@ pnpm-debug.log*
 # Tauri
 /src-tauri/target/
 /src-tauri/Cargo.lock
+/src-tauri/gen/
+
+# Monaco WASM build cache
+monaco-wasm/target/
+monaco-wasm/Cargo.lock
 
 # Extension data (user-installed extensions, not the extension-host source)
 extensions/
 !/extension-host/
 
-# Monaco WASM build cache
-monaco-wasm/target/
+# Bundled Node.js binaries
+resources/node/
+bin/node-*
 
 # OS files
 .DS_Store
@@ -47,3 +57,13 @@ Thumbs.db
 
 # Vite
 node_modules/.vite-cache/
+
+# AI assistant configs
+.claude/
+
+# Documentation build output
+documentation/site/
+
+# Package locks (optional - uncomment if you want to track them)
+# package-lock.json
+# extension-host/package-lock.json

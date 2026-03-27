@@ -159,10 +159,7 @@ impl TextDocumentRegistry {
         println!("[TextDocument] Registered document: {}", uri);
 
         // Emit event
-        if let Err(e) = self
-            .app_handle
-            .emit("text-document-opened", &document)
-        {
+        if let Err(e) = self.app_handle.emit("text-document-opened", &document) {
             eprintln!("[TextDocument] Failed to emit document opened event: {}", e);
         }
 
@@ -173,17 +170,13 @@ impl TextDocumentRegistry {
     pub fn unregister_text_document(&self, uri: &str) -> Result<(), String> {
         let mut documents = self.documents.write().map_err(|e| e.to_string())?;
 
-        let document = documents.remove(uri).ok_or_else(|| {
-            format!("Text document not found: {}", uri)
-        })?;
+        let document =
+            documents.remove(uri).ok_or_else(|| format!("Text document not found: {}", uri))?;
 
         println!("[TextDocument] Unregistered document: {}", uri);
 
         // Emit event
-        if let Err(e) = self
-            .app_handle
-            .emit("text-document-closed", &document)
-        {
+        if let Err(e) = self.app_handle.emit("text-document-closed", &document) {
             eprintln!("[TextDocument] Failed to emit document closed event: {}", e);
         }
 
@@ -192,30 +185,20 @@ impl TextDocumentRegistry {
 
     /// Update text document
     pub fn update_text_document(
-        &self,
-        uri: &str,
-        version: u64,
-        content_changes: Vec<TextDocumentContentChange>,
+        &self, uri: &str, version: u64, content_changes: Vec<TextDocumentContentChange>,
     ) -> Result<(), String> {
         let mut documents = self.documents.write().map_err(|e| e.to_string())?;
 
-        let document = documents.get_mut(uri).ok_or_else(|| {
-            format!("Text document not found: {}", uri)
-        })?;
+        let document =
+            documents.get_mut(uri).ok_or_else(|| format!("Text document not found: {}", uri))?;
 
         // Update version
         document.version = version;
 
-        let event = TextDocumentChangeEvent {
-            document: document.clone(),
-            content_changes,
-        };
+        let event = TextDocumentChangeEvent { document: document.clone(), content_changes };
 
         // Emit event
-        if let Err(e) = self
-            .app_handle
-            .emit("text-document-changed", &event)
-        {
+        if let Err(e) = self.app_handle.emit("text-document-changed", &event) {
             eprintln!("[TextDocument] Failed to emit document changed event: {}", e);
         }
 
@@ -226,17 +209,13 @@ impl TextDocumentRegistry {
     pub fn mark_document_saved(&self, uri: &str) -> Result<(), String> {
         let mut documents = self.documents.write().map_err(|e| e.to_string())?;
 
-        let document = documents.get_mut(uri).ok_or_else(|| {
-            format!("Text document not found: {}", uri)
-        })?;
+        let document =
+            documents.get_mut(uri).ok_or_else(|| format!("Text document not found: {}", uri))?;
 
         document.is_dirty = false;
 
         // Emit event
-        if let Err(e) = self
-            .app_handle
-            .emit("text-document-saved", &document.clone())
-        {
+        if let Err(e) = self.app_handle.emit("text-document-saved", &document.clone()) {
             eprintln!("[TextDocument] Failed to emit document saved event: {}", e);
         }
 
@@ -247,15 +226,12 @@ impl TextDocumentRegistry {
     pub fn get_text_document(&self, uri: &str) -> Result<TextDocument, String> {
         let documents = self.documents.read().map_err(|e| e.to_string())?;
 
-        documents
-            .get(uri)
-            .cloned()
-            .ok_or_else(|| format!("Text document not found: {}", uri))
+        documents.get(uri).cloned().ok_or_else(|| format!("Text document not found: {}", uri))
     }
 
     /// Get all text documents
     pub fn get_all_text_documents(&self) -> Vec<TextDocument> {
-        self.documents.read().unwrap().values().cloned().collect()
+        self.documents.read().expect("documents read lock poisoned").values().cloned().collect()
     }
 
     /// Register text editor
@@ -268,10 +244,7 @@ impl TextDocumentRegistry {
         println!("[TextDocument] Registered editor: {}", id);
 
         // Emit event
-        if let Err(e) = self
-            .app_handle
-            .emit("text-editor-opened", &editor)
-        {
+        if let Err(e) = self.app_handle.emit("text-editor-opened", &editor) {
             eprintln!("[TextDocument] Failed to emit editor opened event: {}", e);
         }
 
@@ -282,9 +255,7 @@ impl TextDocumentRegistry {
     pub fn unregister_text_editor(&self, editor_id: &str) -> Result<(), String> {
         let mut editors = self.editors.write().map_err(|e| e.to_string())?;
 
-        editors.remove(editor_id).ok_or_else(|| {
-            format!("Text editor not found: {}", editor_id)
-        })?;
+        editors.remove(editor_id).ok_or_else(|| format!("Text editor not found: {}", editor_id))?;
 
         println!("[TextDocument] Unregistered editor: {}", editor_id);
 
@@ -293,23 +264,18 @@ impl TextDocumentRegistry {
 
     /// Update editor selections
     pub fn update_editor_selections(
-        &self,
-        editor_id: &str,
-        selections: Vec<Selection>,
+        &self, editor_id: &str, selections: Vec<Selection>,
     ) -> Result<(), String> {
         let mut editors = self.editors.write().map_err(|e| e.to_string())?;
 
-        let editor = editors.get_mut(editor_id).ok_or_else(|| {
-            format!("Text editor not found: {}", editor_id)
-        })?;
+        let editor = editors
+            .get_mut(editor_id)
+            .ok_or_else(|| format!("Text editor not found: {}", editor_id))?;
 
         editor.selections = selections;
 
         // Emit event
-        if let Err(e) = self
-            .app_handle
-            .emit("text-editor-selection-changed", &editor.clone())
-        {
+        if let Err(e) = self.app_handle.emit("text-editor-selection-changed", &editor.clone()) {
             eprintln!("[TextDocument] Failed to emit selection changed event: {}", e);
         }
 
@@ -318,22 +284,18 @@ impl TextDocumentRegistry {
 
     /// Update editor visible ranges
     pub fn update_editor_visible_ranges(
-        &self,
-        editor_id: &str,
-        visible_ranges: Vec<Range>,
+        &self, editor_id: &str, visible_ranges: Vec<Range>,
     ) -> Result<(), String> {
         let mut editors = self.editors.write().map_err(|e| e.to_string())?;
 
-        let editor = editors.get_mut(editor_id).ok_or_else(|| {
-            format!("Text editor not found: {}", editor_id)
-        })?;
+        let editor = editors
+            .get_mut(editor_id)
+            .ok_or_else(|| format!("Text editor not found: {}", editor_id))?;
 
         editor.visible_ranges = visible_ranges;
 
         // Emit event
-        if let Err(e) = self
-            .app_handle
-            .emit("text-editor-visible-ranges-changed", &editor.clone())
+        if let Err(e) = self.app_handle.emit("text-editor-visible-ranges-changed", &editor.clone())
         {
             eprintln!("[TextDocument] Failed to emit visible ranges changed event: {}", e);
         }
@@ -353,11 +315,13 @@ impl TextDocumentRegistry {
 
     /// Get all text editors
     pub fn get_all_text_editors(&self) -> Vec<TextEditor> {
-        self.editors.read().unwrap().values().cloned().collect()
+        self.editors.read().expect("editors read lock poisoned").values().cloned().collect()
     }
 
     /// Create decoration type
-    pub fn create_decoration_type(&self, decoration_type: DecorationType) -> Result<String, String> {
+    pub fn create_decoration_type(
+        &self, decoration_type: DecorationType,
+    ) -> Result<String, String> {
         let mut decoration_types = self.decoration_types.write().map_err(|e| e.to_string())?;
 
         let id = decoration_type.id.clone();
@@ -372,9 +336,9 @@ impl TextDocumentRegistry {
     pub fn dispose_decoration_type(&self, decoration_type_id: &str) -> Result<(), String> {
         let mut decoration_types = self.decoration_types.write().map_err(|e| e.to_string())?;
 
-        decoration_types.remove(decoration_type_id).ok_or_else(|| {
-            format!("Decoration type not found: {}", decoration_type_id)
-        })?;
+        decoration_types
+            .remove(decoration_type_id)
+            .ok_or_else(|| format!("Decoration type not found: {}", decoration_type_id))?;
 
         // Also remove all decorations of this type
         let mut decorations = self.decorations.write().map_err(|e| e.to_string())?;
@@ -389,11 +353,7 @@ impl TextDocumentRegistry {
 
     /// Set editor decorations
     pub fn set_editor_decorations(
-        &self,
-        editor_id: &str,
-        decoration_type_id: &str,
-        ranges: Vec<Range>,
-        owner: &str,
+        &self, editor_id: &str, decoration_type_id: &str, ranges: Vec<Range>, owner: &str,
     ) -> Result<(), String> {
         let mut decorations = self.decorations.write().map_err(|e| e.to_string())?;
 
@@ -413,10 +373,9 @@ impl TextDocumentRegistry {
         }
 
         // Emit event
-        if let Err(e) = self.app_handle.emit(
-            &format!("editor-decorations-changed:{}", editor_id),
-            &editor_id,
-        ) {
+        if let Err(e) =
+            self.app_handle.emit(&format!("editor-decorations-changed:{}", editor_id), &editor_id)
+        {
             eprintln!("[TextDocument] Failed to emit decorations changed event: {}", e);
         }
 
@@ -425,18 +384,16 @@ impl TextDocumentRegistry {
 
     /// Get editor decorations
     pub fn get_editor_decorations(&self, editor_id: &str) -> Vec<TextEditorDecoration> {
-        let decorations = self.decorations.read().unwrap();
-        decorations
-            .get(editor_id)
-            .cloned()
-            .unwrap_or_default()
+        let decorations = self.decorations.read().expect("decorations read lock poisoned");
+        decorations.get(editor_id).cloned().unwrap_or_default()
     }
 
     /// Clear all text document data for an owner
     pub fn clear_textdocument_data(&self, owner: &str) {
         // Clear decoration types
         {
-            let mut decoration_types = self.decoration_types.write().unwrap();
+            let mut decoration_types =
+                self.decoration_types.write().expect("decoration_types write lock poisoned");
             let before = decoration_types.len();
             decoration_types.retain(|_, dt| dt.owner != owner);
             let removed = before - decoration_types.len();
@@ -450,7 +407,8 @@ impl TextDocumentRegistry {
 
         // Clear decorations
         {
-            let mut decorations = self.decorations.write().unwrap();
+            let mut decorations =
+                self.decorations.write().expect("decorations write lock poisoned");
             let mut total_removed = 0;
             for decoration_list in decorations.values_mut() {
                 let before = decoration_list.len();

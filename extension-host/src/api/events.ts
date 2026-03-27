@@ -4,6 +4,18 @@
  * VS Code compatible event emitter and event handling
  */
 
+import type { TextDocument, Range } from './textDocument';
+import type { Selection, TextEditorOptions } from './textEditor';
+import type { Uri } from './uri';
+
+export interface TextEditorEventInfo {
+  document: TextDocument;
+  selections: Selection[];
+  visibleRanges: Range[];
+  options: TextEditorOptions;
+  viewColumn?: number;
+}
+
 export interface Event<T> {
   (listener: (e: T) => any, thisArgs?: any, disposables?: Disposable[]): Disposable;
 }
@@ -42,7 +54,7 @@ export class EventEmitter<T> {
           if (index !== -1) {
             this.listeners.splice(index, 1);
           }
-        }
+        },
       };
 
       if (disposables) {
@@ -70,9 +82,9 @@ export class EventEmitter<T> {
 
 // Common event types
 export interface TextDocumentChangeEvent {
-  document: any; // TextDocument
+  document: TextDocument;
   contentChanges: Array<{
-    range: any; // Range
+    range: Range;
     rangeOffset: number;
     rangeLength: number;
     text: string;
@@ -80,34 +92,34 @@ export interface TextDocumentChangeEvent {
 }
 
 export interface TextDocumentWillSaveEvent {
-  document: any; // TextDocument
+  document: TextDocument;
   reason: number; // SaveReason
-  waitUntil(thenable: Promise<any>): void;
+  waitUntil(thenable: Promise<unknown>): void;
 }
 
 export interface TextEditorSelectionChangeEvent {
-  textEditor: any; // TextEditor
-  selections: any[]; // Selection[]
+  textEditor: TextEditorEventInfo;
+  selections: Selection[];
   kind?: number; // TextEditorSelectionChangeKind
 }
 
 export interface TextEditorVisibleRangesChangeEvent {
-  textEditor: any; // TextEditor
-  visibleRanges: any[]; // Range[]
+  textEditor: TextEditorEventInfo;
+  visibleRanges: Range[];
 }
 
 export interface TextEditorOptionsChangeEvent {
-  textEditor: any; // TextEditor
-  options: any; // TextEditorOptions
+  textEditor: TextEditorEventInfo;
+  options: TextEditorOptions;
 }
 
 export interface TextEditorViewColumnChangeEvent {
-  textEditor: any; // TextEditor
+  textEditor: TextEditorEventInfo;
   viewColumn: number;
 }
 
 export interface ConfigurationChangeEvent {
-  affectsConfiguration(section: string, scope?: any): boolean;
+  affectsConfiguration(section: string, scope?: unknown): boolean;
 }
 
 export interface FileSystemWatcherEvent {
@@ -115,44 +127,44 @@ export interface FileSystemWatcherEvent {
 }
 
 export interface WorkspaceFoldersChangeEvent {
-  added: any[]; // WorkspaceFolder[]
-  removed: any[]; // WorkspaceFolder[]
+  added: Array<{ uri: { fsPath: string; scheme: string }; name: string; index: number }>;
+  removed: Array<{ uri: { fsPath: string; scheme: string }; name: string; index: number }>;
 }
 
 export interface FileWillCreateEvent {
-  files: any[]; // Uri[]
-  waitUntil(thenable: Promise<any>): void;
+  files: Uri[];
+  waitUntil(thenable: Promise<unknown>): void;
 }
 
 export interface FileWillDeleteEvent {
-  files: any[]; // Uri[]
-  waitUntil(thenable: Promise<any>): void;
+  files: Uri[];
+  waitUntil(thenable: Promise<unknown>): void;
 }
 
 export interface FileWillRenameEvent {
-  files: Array<{ oldUri: any; newUri: any }>; // { oldUri: Uri; newUri: Uri }[]
-  waitUntil(thenable: Promise<any>): void;
+  files: Array<{ oldUri: Uri; newUri: Uri }>;
+  waitUntil(thenable: Promise<unknown>): void;
 }
 
 export interface TerminalCloseEvent {
-  terminal: any; // Terminal
+  terminal: { name: string; processId: Promise<number | undefined> };
 }
 
 export interface DebugSessionCustomEvent {
-  session: any; // DebugSession
+  session: { id: string; type: string; name: string };
   event: string;
-  body?: any;
+  body?: unknown;
 }
 
 // Enums
 export enum SaveReason {
   Manual = 1,
   AfterDelay = 2,
-  FocusOut = 3
+  FocusOut = 3,
 }
 
 export enum TextEditorSelectionChangeKind {
   Keyboard = 1,
   Mouse = 2,
-  Command = 3
+  Command = 3,
 }

@@ -54,11 +54,7 @@ pub struct PathValidator {
 
 impl PathValidator {
     pub fn new() -> Self {
-        Self {
-            allowed_roots: Vec::new(),
-            extensions_dir: None,
-            temp_dir: None,
-        }
+        Self { allowed_roots: Vec::new(), extensions_dir: None, temp_dir: None }
     }
 
     pub fn add_workspace_folder(&mut self, path: PathBuf) {
@@ -81,12 +77,9 @@ impl PathValidator {
 
     /// Validate and normalize a path from a URI
     pub fn validate_path(&self, uri: &str) -> Result<PathBuf, String> {
-        // Parse file:// URI with proper handling of host component
         let path_str = if uri.starts_with("file:///") {
-            // file:///C:/..., file:///home/... — standard absolute URI
             &uri[7..]
         } else if uri.starts_with("file://") {
-            // file://host/path — authority form, strip the authority
             let after_slashes = &uri[7..];
             if let Some(slash_pos) = after_slashes.find('/') {
                 &after_slashes[slash_pos..]
@@ -94,28 +87,24 @@ impl PathValidator {
                 after_slashes
             }
         } else if uri.starts_with("file:/") {
-            // file:/path — non-standard but seen
             &uri[5..]
         } else {
             uri
         };
 
-        // Percent-decode the path
         let decoded = percent_decode_str(path_str);
+        self.validate_file_path(&decoded)
+    }
 
-        let path = Path::new(&decoded);
+    pub fn validate_file_path(&self, path_str: &str) -> Result<PathBuf, String> {
+        let path = Path::new(path_str);
 
-        // Resolve to canonical path (follows symlinks, resolves ..)
-        // For paths that don't exist yet, canonicalize the parent and join
         let canonical = if path.exists() {
             fs::canonicalize(path)
                 .map_err(|e| Self::sanitize_error(&format!("Invalid path: {}", e)))?
         } else {
-            // Path doesn't exist yet (e.g., for write operations)
-            // Canonicalize the parent directory and append the filename
             if let Some(parent) = path.parent() {
                 if parent.as_os_str().is_empty() {
-                    // Relative path with no parent — use current dir
                     fs::canonicalize(".")
                         .map_err(|e| Self::sanitize_error(&format!("{}", e)))?
                         .join(path)
@@ -123,12 +112,9 @@ impl PathValidator {
                     let canonical_parent = fs::canonicalize(parent)
                         .map_err(|e| Self::sanitize_error(&format!("{}", e)))?;
                     let joined = canonical_parent.join(path.file_name().unwrap_or_default());
-                    // Verify the joined path is still within allowed directories
                     if self.is_path_allowed(&joined) {
                         joined
                     } else {
-                        // The canonicalized parent is fine, but the final path may escape
-                        // Re-canonicalize if it exists (e.g., for renames)
                         path.to_path_buf()
                     }
                 } else {
@@ -139,7 +125,6 @@ impl PathValidator {
             }
         };
 
-        // Check if path is within allowed directories
         if self.is_path_allowed(&canonical) {
             Ok(canonical)
         } else {

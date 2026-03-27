@@ -42,24 +42,16 @@ fn apply_linux_sandbox(command: &mut Command, config: &SandboxConfig) -> Result<
 
 #[cfg(target_os = "linux")]
 fn apply_bubblewrap_sandbox(
-    original_command: &mut Command,
-    config: &SandboxConfig,
+    original_command: &mut Command, config: &SandboxConfig,
 ) -> Result<(), String> {
     let program = original_command.get_program().to_string_lossy().to_string();
-    let args: Vec<String> = original_command
-        .get_args()
-        .map(|s| s.to_string_lossy().to_string())
-        .collect();
+    let args: Vec<String> =
+        original_command.get_args().map(|s| s.to_string_lossy().to_string()).collect();
 
     let envs: Vec<(String, String)> = original_command
         .get_envs()
         .filter_map(|(k, v)| {
-            v.map(|val| {
-                (
-                    k.to_string_lossy().to_string(),
-                    val.to_string_lossy().to_string(),
-                )
-            })
+            v.map(|val| (k.to_string_lossy().to_string(), val.to_string_lossy().to_string()))
         })
         .collect();
 
@@ -108,8 +100,7 @@ fn apply_bubblewrap_sandbox(
 
 #[cfg(target_os = "linux")]
 fn apply_linux_resource_limits(
-    command: &mut Command,
-    config: &SandboxConfig,
+    command: &mut Command, config: &SandboxConfig,
 ) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
 
@@ -119,10 +110,7 @@ fn apply_linux_resource_limits(
         command.pre_exec(move || {
             if let Some(max_mb) = max_memory_mb {
                 let max_bytes = max_mb * 1024 * 1024;
-                let limit = libc::rlimit {
-                    rlim_cur: max_bytes,
-                    rlim_max: max_bytes,
-                };
+                let limit = libc::rlimit { rlim_cur: max_bytes, rlim_max: max_bytes };
                 libc::setrlimit(libc::RLIMIT_AS, &limit);
             }
             Ok(())
@@ -141,8 +129,7 @@ fn apply_macos_sandbox(command: &mut Command, config: &SandboxConfig) -> Result<
 
 #[cfg(target_os = "macos")]
 fn apply_macos_resource_limits(
-    command: &mut Command,
-    config: &SandboxConfig,
+    command: &mut Command, config: &SandboxConfig,
 ) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
 
@@ -152,10 +139,7 @@ fn apply_macos_resource_limits(
         command.pre_exec(move || {
             if let Some(max_mb) = max_memory_mb {
                 let max_bytes = max_mb * 1024 * 1024;
-                let limit = libc::rlimit {
-                    rlim_cur: max_bytes,
-                    rlim_max: libc::RLIM_INFINITY,
-                };
+                let limit = libc::rlimit { rlim_cur: max_bytes, rlim_max: libc::RLIM_INFINITY };
                 let _ = libc::setrlimit(libc::RLIMIT_AS, &limit);
             }
             Ok(())
