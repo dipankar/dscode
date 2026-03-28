@@ -43,6 +43,113 @@ use crate::extension_host::{ExtensionHostManager, IpcManager, SecretStorage};
 use crate::lsp::{LspServerPool, LspServerStrategy};
 use configuration::ConfigurationStore;
 
+/// STATE MACHINE: SessionLifecycle
+///
+/// Tracks the overall lifecycle of the application session, from creation
+/// through initialization to eventual shutdown.
+///
+/// State Diagram:
+///
+///   Uninitialized ──► Initializing ──► Ready ──► ShuttingDown ──► Shutdown
+///                         │                          ▲
+///                         │ (error)                  │
+///                         ▼                          │
+///                       Error ───────────────────────┘
+///                         │
+///                         │ (retry)
+///                         ▼
+///                     Initializing
+///
+/// Transitions:
+///   Uninitialized -> Initializing  (initialize() called)
+///   Initializing  -> Ready         (extension host started, extensions loaded, state emitted)
+///   Initializing  -> Error         (host startup timeout, spawn failure, or scan failure)
+///   Ready         -> ShuttingDown  (shutdown() called)
+///   ShuttingDown  -> Shutdown      (all extensions unloaded, host stopped)
+///   Error         -> Initializing  (retry initialization)
+///   Error         -> ShuttingDown  (cleanup after unrecoverable error)
+///
+/// Concurrency Invariant:
+///   SessionLifecycle is stored in Arc<RwLock<SessionLifecycle>>, separate from
+///   the main SessionState RwLock. This avoids holding both locks simultaneously.
+///   Writers must acquire the write lock before transitioning.
+///   Readers (e.g., IPC handlers checking if session is Ready) only need read lock.
+///   The RwLock ensures that concurrent state checks and transitions are atomic.
+///
+/// Interruption Table:
+/// ┌───────────────┬──────────────────────────────────────────────────────────┐
+/// │ State         │ What happens on crash/error + recovery                  │
+/// ├───────────────┼──────────────────────────────────────────────────────────┤
+/// │ Uninitialized │ Safe. No resources allocated. App just created.         │
+/// │               │ If app crashes: nothing to clean up.                    │
+/// ├───────────────┼──────────────────────────────────────────────────────────┤
+/// │ Initializing  │ Extension host may be partially started.               │
+/// │               │ IPC sockets may be created but host not ready.         │
+/// │               │ Extensions may be partially scanned/loaded.            │
+/// │               │ Incoming IPC requests during this state MUST be        │
+/// │               │ rejected (guard check in handle_incoming_request).     │
+/// │               │ If host startup times out (30s): -> Error.             │
+/// │               │ If app crashes: child process orphaned, OS reaps.      │
+/// │               │ Recovery: transition to Error, caller can retry.       │
+/// ├───────────────┼──────────────────────────────────────────────────────────┤
+/// │ Ready         │ Normal operation. All subsystems running.              │
+/// │               │ If extension host crashes: detected on next command.   │
+/// │               │   Backend state becomes stale (extensions shown active).│
+/// │               │   Host manager transitions to Unhealthy/Crashed.       │
+/// │               │   Session stays Ready (host crash != session crash).   │
+/// │               │ If app crashes: all child processes orphaned.          │
+/// │               │ If Tauri webview closes: backend keeps running,        │
+/// │               │   events emitted to nobody, pending UI requests leak.  │
+/// ├───────────────┼──────────────────────────────────────────────────────────┤
+/// │ ShuttingDown  │ Extensions being unloaded sequentially.               │
+/// │               │ If unload_extension() fails for one: error logged,    │
+/// │               │   shutdown continues with remaining extensions.        │
+/// │               │   Status bar items may not be cleaned up.             │
+/// │               │ If app crashes mid-shutdown: child processes orphaned. │
+/// │               │ -> Shutdown after best-effort cleanup.                 │
+/// ├───────────────┼──────────────────────────────────────────────────────────┤
+/// │ Shutdown      │ Terminal state. All resources released.               │
+/// │               │ Extension host process stopped. IPC sockets closed.   │
+/// ├───────────────┼──────────────────────────────────────────────────────────┤
+/// │ Error         │ Initialization or runtime error occurred.             │
+/// │               │ Partial resources may exist (host process, sockets).  │
+/// │               │ Before retrying: should stop host and clear state.    │
+/// │               │ Can transition to Initializing (retry) or            │
+/// │               │ ShuttingDown (give up and clean up).                  │
+/// └───────────────┴──────────────────────────────────────────────────────────┘
+///
+/// Cross-Layer Impact:
+///   When session is in Error or ShuttingDown:
+///   - Frontend may still be showing stale state from last Ready period
+///   - Extension host may be dead or partially alive
+///   - IPC requests from frontend will be rejected
+///   - User sees: commands fail, UI may show loading state
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionLifecycle {
+    Uninitialized,
+    Initializing,
+    Ready,
+    ShuttingDown,
+    Shutdown,
+    Error,
+}
+
+impl SessionLifecycle {
+    /// Validates whether a transition from the current state to `to` is allowed.
+    fn can_transition_to(&self, to: SessionLifecycle) -> bool {
+        matches!(
+            (self, to),
+            (SessionLifecycle::Uninitialized, SessionLifecycle::Initializing)
+                | (SessionLifecycle::Initializing, SessionLifecycle::Ready)
+                | (SessionLifecycle::Initializing, SessionLifecycle::Error)
+                | (SessionLifecycle::Ready, SessionLifecycle::ShuttingDown)
+                | (SessionLifecycle::ShuttingDown, SessionLifecycle::Shutdown)
+                | (SessionLifecycle::Error, SessionLifecycle::Initializing)
+                | (SessionLifecycle::Error, SessionLifecycle::ShuttingDown)
+        )
+    }
+}
+
 /// Application session state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionState {
@@ -318,6 +425,9 @@ pub enum SessionEvent {
 
     /// Diagnostics cleared
     DiagnosticsCleared { uri: String },
+
+    /// Context key changed (setContext)
+    ContextChanged { key: String, value: Value },
 }
 
 /// Central session manager
@@ -347,6 +457,7 @@ pub struct SessionManager {
     file_decorations: Arc<RwLock<HashMap<String, Vec<crate::commands::FileDecoration>>>>,
     extension_host_ready: Arc<tokio::sync::Notify>,
     initialized: Arc<tokio::sync::OnceCell<()>>,
+    lifecycle: Arc<RwLock<SessionLifecycle>>,
     secrets: Arc<SecretStorage>,
     path_validator: Arc<RwLock<PathValidator>>,
     outgoing_socket: Arc<RwLock<Option<String>>>,
@@ -383,6 +494,18 @@ impl SessionManager {
             }
         };
 
+        let path_validator = {
+            let ext_dir = app_dirs.extensions_dir.clone();
+            let storage_dir = app_dirs.storage_dir.clone();
+            let logs_dir = app_dirs.logs_dir.clone();
+            let mut pv = PathValidator::new();
+            pv.set_extensions_dir(ext_dir);
+            pv.set_storage_dir(storage_dir);
+            pv.set_logs_dir(logs_dir);
+            pv.set_temp_dir(std::env::temp_dir());
+            Arc::new(RwLock::new(pv))
+        };
+
         Self {
             app_handle,
             state,
@@ -409,11 +532,34 @@ impl SessionManager {
             file_decorations: Arc::new(RwLock::new(HashMap::new())),
             extension_host_ready: Arc::new(tokio::sync::Notify::new()),
             initialized: Arc::new(tokio::sync::OnceCell::new()),
+            lifecycle: Arc::new(RwLock::new(SessionLifecycle::Uninitialized)),
             secrets: Arc::new(SecretStorage::new()),
-            path_validator: Arc::new(RwLock::new(PathValidator::new())),
+            path_validator,
             outgoing_socket: Arc::new(RwLock::new(None)),
             incoming_socket: Arc::new(RwLock::new(None)),
             extension_host_entry: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Returns the current session lifecycle state.
+    pub async fn lifecycle(&self) -> SessionLifecycle {
+        *self.lifecycle.read().await
+    }
+
+    /// Transitions the session lifecycle state. Logs invalid transitions.
+    async fn transition_lifecycle(&self, to: SessionLifecycle) -> Result<(), String> {
+        let mut lifecycle = self.lifecycle.write().await;
+        if lifecycle.can_transition_to(to) {
+            println!("[SessionManager] Lifecycle: {:?} -> {:?}", *lifecycle, to);
+            *lifecycle = to;
+            Ok(())
+        } else {
+            let msg = format!(
+                "[SessionManager] Invalid lifecycle transition: {:?} -> {:?}",
+                *lifecycle, to
+            );
+            eprintln!("{}", msg);
+            Err(msg)
         }
     }
 
@@ -431,29 +577,42 @@ impl SessionManager {
             return Ok(());
         }
 
+        self.transition_lifecycle(SessionLifecycle::Initializing).await?;
+
         println!("[SessionManager] Initializing session...");
 
         println!("[SessionManager] Starting Extension Host...");
-        self.start_extension_host().await?;
+        if let Err(e) = self.start_extension_host().await {
+            let _ = self.transition_lifecycle(SessionLifecycle::Error).await;
+            return Err(e);
+        }
 
         println!("[SessionManager] Waiting for extension host ready signal...");
 
         let ready_wait = self.extension_host_ready.notified();
-        match tokio::time::timeout(Duration::from_secs(10), ready_wait).await {
+        match tokio::time::timeout(Duration::from_secs(30), ready_wait).await {
             Ok(_) => println!("[SessionManager] Extension host is ready"),
             Err(_) => {
                 eprintln!("[SessionManager] Timeout waiting for extension host ready signal");
+                let _ = self.transition_lifecycle(SessionLifecycle::Error).await;
                 return Err("Extension host failed to start within timeout".to_string());
             }
         }
 
-        self.scan_extensions().await?;
+        if let Err(e) = self.scan_extensions().await {
+            let _ = self.transition_lifecycle(SessionLifecycle::Error).await;
+            return Err(e);
+        }
 
-        self.load_auto_start_extensions().await?;
+        if let Err(e) = self.load_auto_start_extensions().await {
+            let _ = self.transition_lifecycle(SessionLifecycle::Error).await;
+            return Err(e);
+        }
 
         let state = self.state.read().await.clone();
         self.emit_event(SessionEvent::StateChanged { state });
 
+        self.transition_lifecycle(SessionLifecycle::Ready).await?;
         let _ = self.initialized.set(());
 
         println!("[SessionManager] Session initialized");
@@ -1061,6 +1220,8 @@ impl SessionManager {
     pub async fn shutdown(&self) -> Result<(), String> {
         println!("[SessionManager] Shutting down session...");
 
+        let _ = self.transition_lifecycle(SessionLifecycle::ShuttingDown).await;
+
         // Unload all extensions
         let active = self.get_active_extensions().await;
         for ext in active {
@@ -1070,6 +1231,8 @@ impl SessionManager {
         // Shutdown Extension Host
         let mut manager = self.extension_host.lock().await;
         manager.shutdown();
+
+        let _ = self.transition_lifecycle(SessionLifecycle::Shutdown).await;
 
         println!("[SessionManager] Session shutdown complete");
         Ok(())

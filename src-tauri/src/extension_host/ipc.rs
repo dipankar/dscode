@@ -109,6 +109,14 @@ impl ExtensionIpc {
                     }
                 }
             }
+            // When the read loop breaks (socket EOF or read error):
+            // 1. alive flag set to false (Relaxed ordering is sufficient —
+            //    eventual consistency is fine for a "dead connection" signal)
+            // 2. All pending requests are cleared by dropping their Senders,
+            //    which causes each Receiver to get RecvError
+            // 3. Any future request() calls will fail the alive check
+            // 4. The IpcManager still holds a reference to this ExtensionIpc —
+            //    it must be explicitly removed or replaced on reconnection
             alive_clone.store(false, std::sync::atomic::Ordering::Relaxed);
             let mut pending = pending_clone.lock().await;
             pending.clear();
@@ -122,6 +130,13 @@ impl ExtensionIpc {
     }
 
     pub async fn request(&self, msg_type: &str, payload: Value) -> Result<Value, String> {
+        // Check connection liveness before sending. This is a best-effort check —
+        // the connection could die between this check and the actual write.
+        // The timeout below protects against that race.
+        if !self.alive.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err("IPC connection is not alive".to_string());
+        }
+
         let id = {
             let mut message_id = self.message_id.lock().await;
             *message_id += 1;
@@ -141,12 +156,35 @@ impl ExtensionIpc {
             write_message(&mut *writer, &message).await?;
         }
 
-        match rx.await {
-            Ok(result) => result,
-            Err(_) => {
+        // Request timeout: 30 seconds.
+        // Three possible outcomes for a pending request:
+        //   1. Response received: resolved normally via oneshot channel
+        //   2. Connection closed: oneshot Sender dropped, Receiver gets RecvError
+        //   3. Timeout: tokio::time::timeout fires, request cleaned up
+        //
+        // Without this timeout, if the extension host becomes unresponsive
+        // (infinite loop, deadlock) but the connection stays alive, the caller
+        // blocks forever. Connection close (outcome 2) only helps when the
+        // process actually crashes or the socket breaks.
+        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => {
+                // Sender dropped — connection closed while request was in flight.
+                // The read loop (spawned task) detected socket EOF and cleared
+                // pending requests by dropping all Senders.
                 let mut pending = self.pending_requests.lock().await;
                 pending.remove(&id);
-                Err("Request channel closed".to_string())
+                Err("IPC connection closed while awaiting response".to_string())
+            }
+            Err(_) => {
+                // Timeout — extension host did not respond within 30 seconds.
+                // This can happen if the host is in an infinite loop, deadlocked,
+                // or simply overwhelmed. The request is removed from pending to
+                // prevent memory leaks. If a response arrives later (after timeout),
+                // it will be silently dropped (no matching pending entry).
+                let mut pending = self.pending_requests.lock().await;
+                pending.remove(&id);
+                Err(format!("IPC request '{}' timed out after 30s", msg_type))
             }
         }
     }
@@ -173,6 +211,7 @@ pub struct IncomingIpc {
     listener: Arc<tokio::net::UnixListener>,
     handler: Option<IncomingRequestHandler>,
     running: Arc<Mutex<bool>>,
+    shutdown: Arc<tokio::sync::Notify>,
 }
 
 impl IncomingIpc {
@@ -194,6 +233,7 @@ impl IncomingIpc {
             listener: Arc::new(listener),
             handler: None,
             running: Arc::new(Mutex::new(false)),
+            shutdown: Arc::new(tokio::sync::Notify::new()),
         })
     }
 
@@ -213,49 +253,44 @@ impl IncomingIpc {
         *running = true;
         drop(running);
 
-        let running_flag = Arc::clone(&self.running);
-
         let handler = self
             .handler
             .clone()
             .ok_or_else(|| "No handler set for incoming requests".to_string())?;
         let running_flag = Arc::clone(&self.running);
         let listener = Arc::clone(&self.listener);
+        let shutdown = Arc::clone(&self.shutdown);
 
         tokio::spawn(async move {
             loop {
-                {
-                    let running = running_flag.lock().await;
-                    if !*running {
+                tokio::select! {
+                    accept_result = listener.accept() => {
+                        match accept_result {
+                            Ok((stream, _)) => {
+                                let handler = handler.clone();
+                                let running_flag = Arc::clone(&running_flag);
+                                tokio::spawn(async move {
+                                    if let Err(e) =
+                                        handle_incoming_connection(stream, handler, running_flag).await
+                                    {
+                                        eprintln!("[IPC Incoming] Connection handler error: {}", e);
+                                    }
+                                });
+                            }
+                            Err(e) => {
+                                eprintln!("[IPC Incoming] Accept error: {}", e);
+                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            }
+                        }
+                    }
+                    _ = shutdown.notified() => {
                         break;
                     }
                 }
-
-                match tokio::time::timeout(
-                    tokio::time::Duration::from_millis(500),
-                    listener.accept(),
-                )
-                .await
-                {
-                    Ok(Ok((stream, _))) => {
-                        let handler = handler.clone();
-                        let running_flag = Arc::clone(&running_flag);
-                        tokio::spawn(async move {
-                            if let Err(e) =
-                                handle_incoming_connection(stream, handler, running_flag).await
-                            {
-                                eprintln!("[IPC Incoming] Connection handler error: {}", e);
-                            }
-                        });
-                    }
-                    Ok(Err(e)) => {
-                        eprintln!("[IPC Incoming] Accept error: {}", e);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    }
-                    Err(_) => {}
-                }
             }
 
+            let mut running = running_flag.lock().await;
+            *running = false;
             println!("[IPC Incoming] Stopped listening");
         });
 
@@ -265,6 +300,8 @@ impl IncomingIpc {
     pub async fn stop(&self) {
         let mut running = self.running.lock().await;
         *running = false;
+        drop(running);
+        self.shutdown.notify_waiters();
     }
 }
 

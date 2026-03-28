@@ -8,6 +8,6 @@ pub mod client;
 pub mod manager;
 pub mod pool;
 
-pub use client::LspClient;
+pub use client::{LspClient, LspClientState};
 pub use manager::LspManager;
 pub use pool::{LspPoolStats, LspServerPool, LspServerStrategy};

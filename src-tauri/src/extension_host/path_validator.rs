@@ -48,13 +48,23 @@ pub struct PathValidator {
     allowed_roots: Vec<PathBuf>,
     /// Extensions directory
     extensions_dir: Option<PathBuf>,
+    /// Storage directory
+    storage_dir: Option<PathBuf>,
+    /// Logs directory
+    logs_dir: Option<PathBuf>,
     /// Temp directory for this workspace
     temp_dir: Option<PathBuf>,
 }
 
 impl PathValidator {
     pub fn new() -> Self {
-        Self { allowed_roots: Vec::new(), extensions_dir: None, temp_dir: None }
+        Self {
+            allowed_roots: Vec::new(),
+            extensions_dir: None,
+            storage_dir: None,
+            logs_dir: None,
+            temp_dir: None,
+        }
     }
 
     pub fn add_workspace_folder(&mut self, path: PathBuf) {
@@ -66,6 +76,18 @@ impl PathValidator {
     pub fn set_extensions_dir(&mut self, path: PathBuf) {
         if let Ok(canonical) = fs::canonicalize(&path) {
             self.extensions_dir = Some(canonical);
+        }
+    }
+
+    pub fn set_storage_dir(&mut self, path: PathBuf) {
+        if let Ok(canonical) = fs::canonicalize(&path) {
+            self.storage_dir = Some(canonical);
+        }
+    }
+
+    pub fn set_logs_dir(&mut self, path: PathBuf) {
+        if let Ok(canonical) = fs::canonicalize(&path) {
+            self.logs_dir = Some(canonical);
         }
     }
 
@@ -134,21 +156,30 @@ impl PathValidator {
 
     /// Check if a canonical path is within allowed directories
     fn is_path_allowed(&self, canonical_path: &Path) -> bool {
-        // Check workspace folders
         for root in &self.allowed_roots {
             if canonical_path.starts_with(root) {
                 return true;
             }
         }
 
-        // Check extensions directory
         if let Some(ext_dir) = &self.extensions_dir {
             if canonical_path.starts_with(ext_dir) {
                 return true;
             }
         }
 
-        // Check temp directory
+        if let Some(storage) = &self.storage_dir {
+            if canonical_path.starts_with(storage) {
+                return true;
+            }
+        }
+
+        if let Some(logs) = &self.logs_dir {
+            if canonical_path.starts_with(logs) {
+                return true;
+            }
+        }
+
         if let Some(temp) = &self.temp_dir {
             if canonical_path.starts_with(temp) {
                 return true;

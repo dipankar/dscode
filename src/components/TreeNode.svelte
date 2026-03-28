@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FileNode } from '../stores/workspace';
+  import { isNodeExpanded as checkNodeExpanded, type FileNode } from '../stores/workspace';
   import {
     Folder,
     FolderOpen,
@@ -19,7 +19,7 @@
   export let depth: number;
 
   $: isSelected = selectedFile === node.path;
-  $: isExpanded = node.isExpanded ?? false;
+  $: isExpanded = checkNodeExpanded(node);
   $: hasChildren = node.children && node.children.length > 0;
 
   let contextMenuVisible = false;

@@ -82,7 +82,7 @@ class ExtensionHost {
         publisher: ext.manifest.publisher,
         description: ext.manifest.description || null,
         path: ext.extensionPath,
-        isActive: ext.isActive,
+        isActive: ext.state === 'Active',
         activationEvents: ext.manifest.activationEvents || [],
         contributes: ext.manifest.contributes || {},
       }));
@@ -255,6 +255,14 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
   await host.shutdown();
   process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[Extension Host] Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Extension Host] Unhandled rejection:', reason);
 });
 
 // Start the extension host

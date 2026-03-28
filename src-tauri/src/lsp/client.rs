@@ -9,8 +9,96 @@ use tokio::sync::{oneshot, Mutex};
 
 static REQUEST_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+/// STATE MACHINE: LspClient
+///
+/// Tracks the lifecycle of a Language Server Protocol client connected to
+/// an external language server process (e.g., rust-analyzer, pyright).
+///
+/// State Diagram:
+///
+///   Stopped ──► Starting ──► Initializing ──► Ready
+///     ▲             │              │             │
+///     │  (spawn     │  (init       │   (stop()   │
+///     │   fail)     │   fail)      │   called)   │
+///     │             ▼              ▼             ▼
+///     │          Crashed ◄──── Crashed      ShuttingDown
+///     │             ▲                            │
+///     │             │ (process exit,             │
+///     │             │  read loop EOF)            │
+///     │             └────────── Ready ───────────┘
+///     │                                          │
+///     └──────────────────────────────────────────┘
+///
+/// Transitions:
+///   Stopped      -> Starting      (start() called, spawning process)
+///   Starting     -> Initializing  (process spawned, read loop started)
+///   Starting     -> Crashed       (Command::spawn() failed)
+///   Initializing -> Ready         (LSP initialize handshake completed)
+///   Initializing -> Crashed       (initialize request failed or timed out)
+///   Ready        -> ShuttingDown  (stop() called, sending shutdown request)
+///   Ready        -> Crashed       (process exited unexpectedly, read loop EOF)
+///   ShuttingDown -> Stopped       (exit notification sent, process exited)
+///   Crashed      -> Starting      (explicit restart attempt)
+///
+/// Concurrency Invariant:
+///   State is stored in Arc<Mutex<LspClientState>>. All state reads and
+///   transitions acquire the mutex. The process and writer fields use
+///   separate Arc<Mutex<Option<T>>> which can be locked independently.
+///   IMPORTANT: Never hold the state lock while also holding process/writer
+///   locks to avoid deadlock. Lock ordering: state -> process -> writer.
+///
+/// Interruption Table:
+/// ┌──────────────┬────────────────────────────────────────────────────────────┐
+/// │ State        │ What happens + impact on pending requests                 │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Stopped      │ Safe. No process, no resources, no pending requests.      │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Starting     │ If spawn fails: -> Crashed. No pending requests yet.      │
+/// │              │ If Tauri crashes: child process orphaned, OS reaps.       │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Initializing │ Initialize request is pending. If process exits:          │
+/// │              │ -> Crashed. Initialize caller gets timeout error (NEW).   │
+/// │              │ Previously: caller would hang FOREVER (no timeout).       │
+/// │              │ No language features available until Ready.               │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Ready        │ If process exits unexpectedly: -> Crashed.               │
+/// │              │ ALL pending requests (hover, completion, etc.) were       │
+/// │              │ hanging FOREVER (BUG). After fix: rejected after 30s.    │
+/// │              │ User sees: language features stop responding for 30s,     │
+/// │              │ then errors. No auto-restart (TODO).                      │
+/// │              │ Impact: hover shows nothing, completions empty,           │
+/// │              │ diagnostics stale, go-to-definition fails.               │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ ShuttingDown │ Shutdown request sent. If process ignores it: exit        │
+/// │              │ notification sent anyway, process may need force kill.    │
+/// │              │ Pending requests drained and rejected.                    │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Crashed      │ All pending requests rejected (via timeout). Pool should  │
+/// │              │ detect this and remove client from active pool.           │
+/// │              │ TODO: Implement auto-restart with exponential backoff.    │
+/// │              │ Until then: language features dead for this language.     │
+/// └──────────────┴────────────────────────────────────────────────────────────┘
+///
+/// Cross-Layer Impact:
+///   LSP is an internal subsystem — frontend doesn't directly know about
+///   individual LSP server states. When LSP crashes:
+///   - Diagnostics stop updating (frontend shows stale diagnostics)
+///   - Hover/completion requests return empty/error
+///   - User experience: editor feels "broken" for that language
+///   - No notification to user about LSP failure (TODO)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LspClientState {
+    Stopped,
+    Starting,
+    Initializing,
+    Ready,
+    ShuttingDown,
+    Crashed,
+}
+
 #[derive(Debug)]
 pub struct LspClient {
+    state: Arc<Mutex<LspClientState>>,
     process: Arc<Mutex<Option<TokioChild>>>,
     writer: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
     pending_responses: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<serde_json::Value, String>>>>>,
@@ -22,6 +110,7 @@ pub struct LspClient {
 impl LspClient {
     pub fn new(language_id: String, server_command: String, server_args: Vec<String>) -> Self {
         Self {
+            state: Arc::new(Mutex::new(LspClientState::Stopped)),
             process: Arc::new(Mutex::new(None)),
             writer: Arc::new(Mutex::new(None)),
             pending_responses: Arc::new(Mutex::new(HashMap::new())),
@@ -31,7 +120,46 @@ impl LspClient {
         }
     }
 
+    /// Validates and performs a state transition for the LSP client.
+    async fn transition(&self, to: LspClientState) -> Result<(), String> {
+        let mut state = self.state.lock().await;
+        let valid = match *state {
+            LspClientState::Stopped => matches!(to, LspClientState::Starting),
+            LspClientState::Starting => {
+                matches!(to, LspClientState::Initializing | LspClientState::Crashed)
+            }
+            LspClientState::Initializing => {
+                matches!(to, LspClientState::Ready | LspClientState::Crashed)
+            }
+            LspClientState::Ready => {
+                matches!(to, LspClientState::ShuttingDown | LspClientState::Crashed)
+            }
+            LspClientState::ShuttingDown => matches!(to, LspClientState::Stopped),
+            LspClientState::Crashed => matches!(to, LspClientState::Starting),
+        };
+
+        if valid {
+            println!("[LSP:{}] State: {:?} -> {:?}", self.language_id, *state, to);
+            *state = to;
+            Ok(())
+        } else {
+            let msg = format!(
+                "[LSP:{}] Invalid state transition: {:?} -> {:?}",
+                self.language_id, *state, to
+            );
+            eprintln!("{}", msg);
+            Err(msg)
+        }
+    }
+
+    /// Returns the current state.
+    pub async fn get_state(&self) -> LspClientState {
+        *self.state.lock().await
+    }
+
     pub async fn start(&self) -> Result<(), String> {
+        self.transition(LspClientState::Starting).await?;
+
         let mut process_guard = self.process.lock().await;
 
         if process_guard.is_some() {
@@ -44,9 +172,16 @@ impl LspClient {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("Failed to start language server {}: {}", self.language_id, e))?;
+        let mut child = match cmd.spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                let _ = self.transition(LspClientState::Crashed).await;
+                return Err(format!(
+                    "Failed to start language server {}: {}",
+                    self.language_id, e
+                ));
+            }
+        };
 
         let stdin = child.stdin.take().ok_or("Failed to get stdin")?;
         let stdout = child.stdout.take().ok_or("Failed to get stdout")?;
@@ -64,20 +199,26 @@ impl LspClient {
 
         *self.writer.lock().await = Some(stdin);
         *process_guard = Some(child);
+        // Release process lock before transitioning state (lock ordering: state -> process)
+        drop(process_guard);
 
         println!("[LSP] Started {} language server ({})", self.language_id, self.server_command);
 
-        let pending = Arc::clone(&self.pending_responses);
+        let pending_clone = Arc::clone(&self.pending_responses);
+        let state_clone = Arc::clone(&self.state);
+        let language_id_clone = self.language_id.clone();
         tokio::spawn(async move {
             let mut reader = BufReader::new(stdout);
             let mut header_buf = String::new();
 
             loop {
                 header_buf.clear();
+                let mut read_err = false;
                 loop {
                     let mut byte = [0u8; 1];
                     if reader.read_exact(&mut byte).await.is_err() {
-                        return;
+                        read_err = true;
+                        break;
                     }
                     header_buf.push(byte[0] as char);
 
@@ -87,8 +228,13 @@ impl LspClient {
 
                     if header_buf.len() > 4096 {
                         eprintln!("[LSP] Header too long, disconnecting");
-                        return;
+                        read_err = true;
+                        break;
                     }
+                }
+
+                if read_err {
+                    break;
                 }
 
                 let mut content_length: usize = 0;
@@ -104,7 +250,7 @@ impl LspClient {
 
                 let mut body = vec![0u8; content_length];
                 if reader.read_exact(&mut body).await.is_err() {
-                    return;
+                    break;
                 }
 
                 let response: serde_json::Value = match serde_json::from_slice(&body) {
@@ -116,7 +262,7 @@ impl LspClient {
                 };
 
                 if let Some(id) = response.get("id").and_then(|v| v.as_u64()) {
-                    let mut pending_guard = pending.lock().await;
+                    let mut pending_guard = pending_clone.lock().await;
                     if let Some(sender) = pending_guard.remove(&id) {
                         if let Some(error) = response.get("error") {
                             let _ = sender.send(Err(format!("LSP error: {}", error)));
@@ -126,12 +272,33 @@ impl LspClient {
                     }
                 }
             }
+
+            // Read loop ended — transition to Crashed if still active
+            {
+                let mut state = state_clone.lock().await;
+                if *state == LspClientState::Ready || *state == LspClientState::Initializing {
+                    println!(
+                        "[LSP:{}] Read loop ended, state -> Crashed",
+                        language_id_clone
+                    );
+                    *state = LspClientState::Crashed;
+                }
+            }
+            // Reject all pending requests when read loop ends
+            let mut pending = pending_clone.lock().await;
+            for (_, sender) in pending.drain() {
+                let _ = sender.send(Err("LSP server connection closed".to_string()));
+            }
         });
+
+        self.transition(LspClientState::Initializing).await?;
 
         Ok(())
     }
 
     pub async fn stop(&self) -> Result<(), String> {
+        let _ = self.transition(LspClientState::ShuttingDown).await;
+
         let mut process_guard = self.process.lock().await;
 
         if let Some(mut child) = process_guard.take() {
@@ -141,20 +308,14 @@ impl LspClient {
 
         *self.writer.lock().await = None;
 
+        let _ = self.transition(LspClientState::Stopped).await;
+
         Ok(())
     }
 
     pub async fn is_running(&self) -> bool {
-        let mut process_guard = self.process.lock().await;
-        if let Some(child) = process_guard.as_mut() {
-            match child.try_wait() {
-                Ok(None) => true,
-                Ok(Some(_)) => false,
-                Err(_) => false,
-            }
-        } else {
-            false
-        }
+        let state = self.state.lock().await;
+        matches!(*state, LspClientState::Initializing | LspClientState::Ready)
     }
 
     fn next_request_id(&self) -> u64 {
@@ -190,7 +351,16 @@ impl LspClient {
             ..Default::default()
         };
 
-        self.send_request("initialize", params).await
+        let result = self.send_request("initialize", params).await;
+        match &result {
+            Ok(_) => {
+                self.transition(LspClientState::Ready).await?;
+            }
+            Err(_) => {
+                let _ = self.transition(LspClientState::Crashed).await;
+            }
+        }
+        result
     }
 
     pub async fn did_open(
@@ -272,8 +442,8 @@ impl LspClient {
                 .map_err(|e| format!("Failed to write LSP body: {}", e))?;
         }
 
-        match rx.await {
-            Ok(Ok(response)) => {
+        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+            Ok(Ok(Ok(response))) => {
                 if let Some(result) = response.get("result") {
                     serde_json::from_value(result.clone())
                         .map_err(|e| format!("Failed to parse LSP response: {}", e))
@@ -283,11 +453,18 @@ impl LspClient {
                     Err("Invalid LSP response".to_string())
                 }
             }
-            Ok(Err(e)) => Err(e),
-            Err(_) => {
+            Ok(Ok(Err(e))) => Err(e),
+            Ok(Err(_)) => {
+                // Channel closed -- server crashed or connection lost
                 let mut pending = self.pending_responses.lock().await;
                 pending.remove(&id);
-                Err("LSP request channel closed".to_string())
+                Err("LSP request channel closed (server may have crashed)".to_string())
+            }
+            Err(_) => {
+                // Timeout -- server did not respond within 30 seconds
+                let mut pending = self.pending_responses.lock().await;
+                pending.remove(&id);
+                Err("LSP request timed out after 30s".to_string())
             }
         }
     }

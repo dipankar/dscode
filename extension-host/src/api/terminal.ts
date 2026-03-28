@@ -144,6 +144,8 @@ export class TerminalAPI {
   private _onDidOpenTerminal = new EventEmitter<Terminal>();
   private _onDidCloseTerminal = new EventEmitter<Terminal>();
   private _onDidChangeActiveTerminal = new EventEmitter<Terminal | undefined>();
+  private _onDidStartTerminalShellExecution = new EventEmitter<TerminalShellExecution>();
+  private _onDidEndTerminalShellExecution = new EventEmitter<TerminalShellExecution>();
   private _terminals: Terminal[] = [];
   private _terminalIds = new Map<Terminal, string>();
   private _activeTerminal?: Terminal;
@@ -151,6 +153,8 @@ export class TerminalAPI {
   readonly onDidOpenTerminal = this._onDidOpenTerminal.event;
   readonly onDidCloseTerminal = this._onDidCloseTerminal.event;
   readonly onDidChangeActiveTerminal = this._onDidChangeActiveTerminal.event;
+  readonly onDidStartTerminalShellExecution = this._onDidStartTerminalShellExecution.event;
+  readonly onDidEndTerminalShellExecution = this._onDidEndTerminalShellExecution.event;
 
   constructor(private bridge: ExtensionHostBridge) {
     this.setupListeners();
@@ -231,4 +235,11 @@ export class TerminalAPI {
 
     return terminal;
   }
+}
+
+export interface TerminalShellExecution {
+  readonly terminal: Terminal;
+  readonly commandLine: { value: string; isTrusted: boolean };
+  readonly cwd: Uri | undefined;
+  readonly executionId: string;
 }

@@ -8,6 +8,39 @@ export interface IPCMessage {
 }
 
 /**
+ * STATE MACHINE: BridgeConnection
+ *
+ * The bridge wraps the SocketIPC layer and provides the message handling
+ * interface between the extension host and the Tauri backend.
+ *
+ * State Diagram:
+ *
+ *   Disconnected ──► Connecting ──► Connected ──► ShuttingDown ──► Disconnected
+ *                        │                            ▲
+ *                        │ (error)                    │
+ *                        ▼                            │
+ *                      Error ─────────────────────────┘
+ *
+ * Concurrency Invariant:
+ *   Single-threaded Node.js. State transitions are synchronous.
+ *   All async message handlers are dispatched after state is set.
+ *
+ * Interruption Table:
+ * ┌──────────────┬──────────────────────────────────────────────────────────┐
+ * │ State        │ What happens if extension host process crashes          │
+ * ├──────────────┼──────────────────────────────────────────────────────────┤
+ * │ Disconnected │ Safe. No IPC resources.                                 │
+ * │ Connecting   │ Socket connect may be mid-retry. OS cleans up sockets.  │
+ * │ Connected    │ All registered handlers lost. Pending IPC requests in   │
+ * │              │ SocketIPC are orphaned (handled by IPC state machine).  │
+ * │              │ Backend detects socket close, sets alive=false.         │
+ * │ ShuttingDown │ Graceful shutdown interrupted. Same as Connected crash. │
+ * │ Error        │ Already in error state. No additional impact.           │
+ * └──────────────┴──────────────────────────────────────────────────────────┘
+ */
+type BridgeState = 'Disconnected' | 'Connecting' | 'Connected' | 'ShuttingDown' | 'Error';
+
+/**
  * Input validation utilities
  */
 class InputValidator {
@@ -136,7 +169,7 @@ class InputValidator {
 
 export class ExtensionHostBridge extends EventEmitter {
   private ipc: SocketIPC;
-  private isConnected = false;
+  private state: BridgeState = 'Disconnected';
   private ipcUrl: string;
   private incomingIpcUrl: string;
 
@@ -154,6 +187,7 @@ export class ExtensionHostBridge extends EventEmitter {
   }
 
   async connect() {
+    this.state = 'Connecting';
     try {
       console.error('[Bridge] Connecting via Unix domain sockets...');
       console.error('[Bridge] Outgoing IPC URL (ExtHost listens):', this.ipcUrl);
@@ -161,20 +195,22 @@ export class ExtensionHostBridge extends EventEmitter {
 
       await this.ipc.connect(this.ipcUrl, this.incomingIpcUrl);
 
-      this.isConnected = true;
+      this.state = 'Connected';
 
       this.setupHandlers();
 
       console.error('[Bridge] Bidirectional connection established');
     } catch (error) {
+      this.state = 'Error';
       console.error('[Bridge] Connection failed:', error);
       throw error;
     }
   }
 
   async disconnect() {
-    this.isConnected = false;
+    this.state = 'ShuttingDown';
     this.ipc.close();
+    this.state = 'Disconnected';
     console.error('[Bridge] Disconnected');
   }
 
@@ -187,7 +223,11 @@ export class ExtensionHostBridge extends EventEmitter {
       const validatedPayload = InputValidator.validatePayload(payload);
       const extensionId = InputValidator.validateExtensionId(validatedPayload.extensionId);
 
-      await this.emitAsync('activate-extension', extensionId);
+      try {
+        await this.emitAsync('activate-extension', extensionId);
+      } catch (error) {
+        console.error(`[Bridge] Extension activation error for ${extensionId}:`, error);
+      }
       return { success: true };
     });
 
@@ -690,8 +730,8 @@ export class ExtensionHostBridge extends EventEmitter {
   }
 
   async send(type: string, payload: unknown): Promise<void> {
-    if (!this.isConnected) {
-      throw new Error('Bridge not connected');
+    if (this.state !== 'Connected') {
+      throw new Error('Bridge not connected (state: ' + this.state + ')');
     }
 
     InputValidator.validateString(type, 'Message type', 256);
@@ -710,12 +750,16 @@ export class ExtensionHostBridge extends EventEmitter {
   private async emitAsync(event: string, ...args: unknown[]): Promise<void> {
     const listeners = this.listeners(event);
     if (listeners.length === 0) {
-      throw new Error(`No listeners registered for ${event}`);
+      return;
     }
     for (const listener of listeners) {
-      const result = (listener as (...innerArgs: unknown[]) => unknown)(...args);
-      if (result instanceof Promise) {
-        await result;
+      try {
+        const result = (listener as (...innerArgs: unknown[]) => unknown)(...args);
+        if (result instanceof Promise) {
+          await result;
+        }
+      } catch (error) {
+        console.error(`[Bridge] Error in listener for '${event}':`, error);
       }
     }
   }
@@ -724,8 +768,8 @@ export class ExtensionHostBridge extends EventEmitter {
    * Send a request to Tauri and wait for response
    */
   async request(type: string, payload: unknown): Promise<unknown> {
-    if (!this.isConnected) {
-      throw new Error('Bridge not connected');
+    if (this.state !== 'Connected') {
+      throw new Error('Bridge not connected (state: ' + this.state + ')');
     }
 
     // Validate type

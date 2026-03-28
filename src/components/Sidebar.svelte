@@ -8,7 +8,7 @@
   import VirtualList from './VirtualList.svelte';
   import type { VirtualListOptions } from './VirtualList.svelte';
   import type { VirtualTreeRow } from '../lib/composables/useVirtualTree';
-  import type { FileNode } from '../stores/workspace';
+  import { isNodeLoaded, isNodeLoading, type FileNode } from '../stores/workspace';
   import {
     Folder,
     FolderOpen,
@@ -155,7 +155,7 @@
       workspaceStore.setFileTree(
         tree.map((node) => ({
           ...node,
-          isLoaded: node.node_type === 'directory' ? false : undefined,
+          dirState: node.node_type === 'directory' ? 'Collapsed' : undefined,
         }))
       );
     } catch (error) {
@@ -191,7 +191,7 @@
     expandedPaths.add(path);
     expandedPaths = expandedPaths;
 
-    if (!node.isLoaded && !node.isLoading) {
+    if (!isNodeLoaded(node) && !isNodeLoading(node)) {
       workspaceStore.expandDirectory(path);
     }
   }
@@ -273,7 +273,7 @@
           >
             {#if row.node.node_type === 'directory'}
               <span class="tree-toggle">
-                {#if row.node.isLoading}
+                {#if isNodeLoading(row.node)}
                   <Loader size={14} class="spinning" />
                 {:else if expandedPaths.has(row.node.path)}
                   <ChevronDown size={14} />

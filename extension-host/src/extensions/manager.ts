@@ -13,6 +13,88 @@ import { PersistentMemento } from './storage';
 import { ActivationEventManager, ParsedActivationEvent } from './activation';
 import { SecretStorageImpl } from '../api/authentication';
 
+/**
+ * STATE MACHINE: ExtensionLifecycle
+ *
+ * Tracks the lifecycle of an individual extension from registration through
+ * activation to eventual deactivation or failure.
+ *
+ * State Diagram:
+ *
+ *   Registered ──────► Activating ──────► Active
+ *       ▲                  │                │
+ *       │                  │ (error)        │
+ *       │                  ▼                ▼
+ *   Inactive ◄────── Failed          Deactivating
+ *       ▲                ▲                │
+ *       │                │ (error)        │
+ *       │                └────────────────┘
+ *       │                                 │
+ *       └─────────────────────────────────┘
+ *
+ * Transitions:
+ *   Registered   -> Activating    (activateExtension() called)
+ *   Activating   -> Active        (activate() resolved successfully)
+ *   Activating   -> Failed        (activate() threw, dependency failed, or module load error)
+ *   Active       -> Deactivating  (deactivateExtension() called)
+ *   Deactivating -> Inactive      (deactivate() + dispose() completed)
+ *   Deactivating -> Failed        (deactivate() or dispose() threw)
+ *   Failed       -> Activating    (retry activation)
+ *   Inactive     -> Activating    (re-activation after deactivation)
+ *
+ * Concurrency Invariant:
+ *   Node.js is single-threaded, but `await` yields the event loop. The state
+ *   field itself acts as the concurrency guard: we transition to 'Activating'
+ *   SYNCHRONOUSLY (before any await), so a re-entrant call sees 'Activating'
+ *   and returns early. This replaces the old `activating` Set + `isActive`
+ *   boolean pattern which had a TOCTOU window between checking isActive and
+ *   adding to the activating Set.
+ *
+ * Interruption Table:
+ * ┌──────────────┬─────────────────────────────────────────────────────────────┐
+ * │ State        │ What happens if extension host process crashes             │
+ * ├──────────────┼─────────────────────────────────────────────────────────────┤
+ * │ Registered   │ Safe. No resources allocated. Backend unaware of this      │
+ * │              │ extension. On host restart, extension re-registers.        │
+ * ├──────────────┼─────────────────────────────────────────────────────────────┤
+ * │ Activating   │ DANGER: activate() may have partially executed. Resources  │
+ * │              │ (event listeners, file handles) may be allocated but not   │
+ * │              │ tracked in subscriptions[]. Backend IPC request will       │
+ * │              │ timeout after 30s → backend marks extension as inactive.   │
+ * │              │ Frontend shows extension as inactive. On host restart,     │
+ * │              │ extension re-registers as Registered. Partial resources    │
+ * │              │ from the crashed process are freed by OS process cleanup.  │
+ * ├──────────────┼─────────────────────────────────────────────────────────────┤
+ * │ Active       │ All subscriptions and registered commands are lost.        │
+ * │              │ Backend still thinks extension is active (no notification).│
+ * │              │ Frontend still shows extension as active (stale state).    │
+ * │              │ User commands targeting this extension will fail silently. │
+ * │              │ On host restart, extension re-activates from scratch.      │
+ * │              │ Recovery: backend should detect host crash and mark all    │
+ * │              │ extensions inactive, then re-activate after restart.       │
+ * ├──────────────┼─────────────────────────────────────────────────────────────┤
+ * │ Deactivating │ dispose() may have partially run. Some subscriptions freed,│
+ * │              │ others leaked (freed by OS on process exit). Backend       │
+ * │              │ unload IPC request will timeout → extension stays marked   │
+ * │              │ active in backend. Status bar items from this extension    │
+ * │              │ are NOT cleaned up. Frontend shows stale items.            │
+ * ├──────────────┼─────────────────────────────────────────────────────────────┤
+ * │ Inactive     │ Safe. No resources held. Backend should already know.      │
+ * ├──────────────┼─────────────────────────────────────────────────────────────┤
+ * │ Failed       │ Safe. No resources held. May need manual retry.            │
+ * └──────────────┴─────────────────────────────────────────────────────────────┘
+ *
+ * Cross-Layer Impact:
+ *   Backend (Rust): Tracks extension.active in SessionState. Updated only
+ *     AFTER successful IPC response from extension host. If host crashes,
+ *     backend state becomes stale until manually reconciled.
+ *   Frontend (Svelte): Receives SessionEvent::ExtensionLoaded/Unloaded.
+ *     Shows whatever backend tells it. If backend is stale, frontend is stale.
+ *   Recovery: On host restart, backend should call scan_extensions() +
+ *     load_auto_start_extensions() which re-synchronizes all three layers.
+ */
+type ExtensionState = 'Registered' | 'Activating' | 'Active' | 'Deactivating' | 'Inactive' | 'Failed';
+
 export interface ExtensionManifest {
   name: string;
   displayName?: string;
@@ -37,7 +119,7 @@ export interface LoadedExtension {
   id: string;
   manifest: ExtensionManifest;
   extensionPath: string;
-  isActive: boolean;
+  state: ExtensionState;
   context?: any;
   exports?: any;
 }
@@ -45,7 +127,6 @@ export interface LoadedExtension {
 export class ExtensionManager {
   private extensions = new Map<string, LoadedExtension>();
   private bridge: ExtensionHostBridge;
-  private activating = new Set<string>();
   private activationManager: ActivationEventManager;
   private startupComplete = false;
 
@@ -74,9 +155,12 @@ export class ExtensionManager {
         // Wrap in Proxy to catch undefined property access
         return new Proxy(vscodeAPI, {
           get(target: any, prop: string | symbol) {
+            if (prop === Symbol.unscopables) {
+              return undefined;
+            }
             const value = target[prop];
             if (value === undefined && typeof prop === 'string' && !prop.startsWith('_')) {
-              console.error(`[vscode API] Accessing undefined property: ${prop}`);
+              console.warn(`[vscode API] Accessing undefined property: ${String(prop)}`);
             }
             return value;
           },
@@ -247,6 +331,40 @@ export class ExtensionManager {
   }
 
   /**
+   * Validates and performs a state transition for an extension.
+   * Invalid transitions are logged but do not throw - graceful degradation.
+   */
+  private transitionExtension(id: string, to: ExtensionState): boolean {
+    const extension = this.extensions.get(id);
+    if (!extension) {
+      console.error(`[ExtensionManager] Cannot transition unknown extension '${id}' to '${to}'`);
+      return false;
+    }
+
+    const validTransitions: Record<ExtensionState, ExtensionState[]> = {
+      'Registered': ['Activating'],
+      'Activating': ['Active', 'Failed'],
+      'Active': ['Deactivating'],
+      'Deactivating': ['Inactive', 'Failed'],
+      'Inactive': ['Activating'],
+      'Failed': ['Activating'],
+    };
+
+    const allowed = validTransitions[extension.state];
+    if (!allowed || !allowed.includes(to)) {
+      console.error(
+        `[ExtensionManager] Invalid state transition for '${id}': ${extension.state} -> ${to}. ` +
+        `Allowed transitions from '${extension.state}': [${allowed?.join(', ') || 'none'}]`
+      );
+      return false;
+    }
+
+    console.log(`[ExtensionManager] ${id}: ${extension.state} -> ${to}`);
+    extension.state = to;
+    return true;
+  }
+
+  /**
    * Load a single extension
    */
   private async loadExtension(extensionPath: string) {
@@ -264,7 +382,7 @@ export class ExtensionManager {
       id: extensionId,
       manifest,
       extensionPath,
-      isActive: false,
+      state: 'Registered',
     });
 
     // Register with ExtensionsAPI so vscode.extensions.getExtension() can find it
@@ -301,17 +419,14 @@ export class ExtensionManager {
       throw new Error(`Extension not found: ${extensionId}`);
     }
 
-    if (extension.isActive) {
-      console.error(`[ExtensionManager] Extension already active: ${extensionId}`);
+    if (extension.state === 'Active' || extension.state === 'Activating') {
+      console.error(`[ExtensionManager] Extension already ${extension.state}: ${extensionId}`);
       return;
     }
 
-    if (this.activating.has(extensionId)) {
-      console.warn(`[ExtensionManager] Circular activation request detected for ${extensionId}`);
+    if (!this.transitionExtension(extensionId, 'Activating')) {
       return;
     }
-
-    this.activating.add(extensionId);
 
     console.error(`[ExtensionManager] Activating: ${extensionId}`);
 
@@ -319,12 +434,19 @@ export class ExtensionManager {
       const dependencies = extension.manifest.extensionDependencies || [];
       for (const dependencyId of dependencies) {
         if (!this.extensions.has(dependencyId)) {
-          console.error(
+          console.warn(
             `[ExtensionManager] Missing dependency ${dependencyId} required by ${extensionId}`
           );
           continue;
         }
-        await this.activateExtension(dependencyId);
+        try {
+          await this.activateExtension(dependencyId);
+        } catch (depError) {
+          console.warn(
+            `[ExtensionManager] Failed to activate dependency ${dependencyId} for ${extensionId}:`,
+            depError
+          );
+        }
       }
 
       // Load the extension's main file
@@ -370,6 +492,7 @@ export class ExtensionManager {
             }
             return resolved;
           },
+          environmentVariableCollection: new vscodeAPI.EnvironmentVariableCollection(),
           storageUri: vscodeAPI.Uri.file(storagePaths.workspace),
           globalStorageUri: vscodeAPI.Uri.file(storagePaths.global),
           logUri: vscodeAPI.Uri.file(storagePaths.logs),
@@ -434,7 +557,7 @@ export class ExtensionManager {
           if (typeof extensionModule.activate === 'function') {
             extension.exports = await extensionModule.activate(context);
             extension.context = context;
-            extension.isActive = true;
+            this.transitionExtension(extensionId, 'Active');
 
             // Update ExtensionsAPI with the activated state and exports
             vscodeAPI.updateExtensionActivation(extensionId, extension.exports);
@@ -450,9 +573,8 @@ export class ExtensionManager {
       if (error.stack) {
         console.error(`[ExtensionManager] Stack trace:\n${error.stack}`);
       }
-      throw error;
-    } finally {
-      this.activating.delete(extensionId);
+      this.transitionExtension(extensionId, 'Failed');
+      (vscodeAPI as any)._updateExtensionExports(extensionId, extension.exports || {});
     }
   }
 
@@ -462,7 +584,11 @@ export class ExtensionManager {
   async deactivateExtension(extensionId: string) {
     const extension = this.extensions.get(extensionId);
 
-    if (!extension || !extension.isActive) {
+    if (!extension || extension.state !== 'Active') {
+      return;
+    }
+
+    if (!this.transitionExtension(extensionId, 'Deactivating')) {
       return;
     }
 
@@ -486,10 +612,11 @@ export class ExtensionManager {
         }
       }
 
-      extension.isActive = false;
+      this.transitionExtension(extensionId, 'Inactive');
       console.error(`[ExtensionManager] Deactivated: ${extensionId}`);
     } catch (error) {
       console.error(`[ExtensionManager] Failed to deactivate ${extensionId}:`, error);
+      this.transitionExtension(extensionId, 'Failed');
     }
   }
 
@@ -497,7 +624,7 @@ export class ExtensionManager {
    * Deactivate all extensions
    */
   async deactivateAll() {
-    const activeExtensions = Array.from(this.extensions.values()).filter((ext) => ext.isActive);
+    const activeExtensions = Array.from(this.extensions.values()).filter((ext) => ext.state === 'Active');
 
     for (const extension of activeExtensions) {
       await this.deactivateExtension(extension.id);
@@ -536,7 +663,7 @@ export class ExtensionManager {
     }
 
     // Deactivate if active
-    if (extension.isActive) {
+    if (extension.state === 'Active') {
       await this.deactivateExtension(extensionId);
     }
 

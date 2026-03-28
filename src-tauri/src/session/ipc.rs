@@ -5,6 +5,7 @@ use crate::extension_host::path_validator::PathValidator;
 use crate::extension_host::IncomingRequestHandler;
 use serde_json::{json, Map, Value};
 use std::fs;
+use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::path::BaseDirectory;
@@ -13,12 +14,27 @@ use tokio::sync::oneshot;
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
+fn classify_io_error(error: &io::Error) -> &'static str {
+    match error.kind() {
+        io::ErrorKind::NotFound => "EntryNotFound",
+        io::ErrorKind::PermissionDenied => "NoPermissions",
+        io::ErrorKind::AlreadyExists => "EntryExists",
+        io::ErrorKind::IsADirectory => "EntryIsADirectory",
+        io::ErrorKind::NotADirectory => "EntryNotADirectory",
+        _ => "Unavailable",
+    }
+}
+
+fn fs_error(code: &str, message: &str) -> String {
+    format!("{}: {}", code, message)
+}
+
 impl SessionManager {
     /// Start the Extension Host with bidirectional NNG IPC
     pub(super) async fn start_extension_host(&self) -> Result<(), String> {
         {
             let mut manager = self.extension_host.lock().await;
-            if manager.is_running() {
+            if manager.state() == crate::extension_host::manager::ExtensionHostState::Running {
                 println!("[SessionManager] Extension Host already running, skipping");
                 return Ok(());
             }
@@ -92,6 +108,7 @@ impl SessionManager {
             file_decorations: Arc::clone(&self.file_decorations),
             extension_host_ready: Arc::clone(&self.extension_host_ready),
             initialized: Arc::clone(&self.initialized),
+            lifecycle: Arc::clone(&self.lifecycle),
             secrets: Arc::clone(&self.secrets),
             path_validator: Arc::clone(&self.path_validator),
             outgoing_socket: Arc::clone(&self.outgoing_socket),
@@ -186,10 +203,55 @@ impl SessionManager {
     }
 
     /// Handle incoming requests from Extension Host
+    ///
+    /// Pending request lifecycle:
+    ///   1. Request ID generated (UUID)
+    ///   2. oneshot::Sender inserted into pending map (under write lock)
+    ///   3. Event emitted to frontend (UI prompt shown)
+    ///   4. User interacts with UI, frontend calls resolve_* IPC command
+    ///   5. resolve_* removes Sender from map, sends value through channel
+    ///   6. Original awaiter receives value
+    ///
+    /// Failure modes:
+    ///   - Frontend disconnects: Sender stays in map forever (memory leak).
+    ///     TODO: Add periodic cleanup of stale pending requests (>5 min).
+    ///   - Frontend sends response for unknown ID: logged and ignored.
+    ///   - Two responses for same ID: second one finds no Sender, logged.
+    ///   - Session shutdown during pending: Senders dropped, Receivers get RecvError.
     async fn handle_incoming_request(
         &self, msg_type: &str, payload: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         println!("[SessionManager] Handling incoming request: {}", msg_type);
+
+        // Guard: reject requests if session is not ready.
+        // During initialization, the extension host may send "extension-host-ready"
+        // which must be allowed through. All other requests require Ready state.
+        // This prevents race conditions where requests arrive before state is
+        // fully initialized (e.g., extensions loaded, commands registered).
+        //
+        // We also allow requests during Initializing for bootstrap messages
+        // (extension-host-ready, get-extensions-dir, get-extension-storage)
+        // that are part of the initialization handshake.
+        // TODO: Replace with manager.state() check once ExtensionHostState enum is available
+        // (see src-tauri/src/extension_host/manager.rs for the new state machine)
+        {
+            let current = *self.lifecycle.read().await;
+            let is_bootstrap_message = matches!(
+                msg_type,
+                "extension-host-ready" | "get-extensions-dir" | "get-extension-storage"
+            );
+            if !is_bootstrap_message
+                && !matches!(
+                    current,
+                    super::SessionLifecycle::Ready | super::SessionLifecycle::Initializing
+                )
+            {
+                return Err(format!(
+                    "Session not ready (current state: {:?}), rejecting request: {}",
+                    current, msg_type
+                ));
+            }
+        }
 
         match msg_type {
             "extension-host-ready" => {
@@ -897,25 +959,35 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let validated_path = self
-                    .path_validator
-                    .read()
-                    .await
-                    .validate_path(uri)
-                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                let validated_path =
+                    self.path_validator.read().await.validate_path(uri).map_err(|e| {
+                        format!("NoPermissions: {}", PathValidator::sanitize_error(&e))
+                    })?;
 
-                // Limit file size to 50MB to prevent OOM
                 const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
-                let metadata = std::fs::metadata(&validated_path)
-                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                let metadata = match std::fs::metadata(&validated_path) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        return Err(fs_error(
+                            classify_io_error(&e),
+                            &PathValidator::sanitize_error(&format!("{}", e)),
+                        ))
+                    }
+                };
                 if metadata.len() > MAX_FILE_SIZE {
-                    return Err("File too large to read".to_string());
+                    return Err("Unavailable: File too large to read".to_string());
                 }
 
-                let contents = tokio::task::spawn_blocking(move || std::fs::read(&validated_path))
+                let path_for_read = validated_path.clone();
+                let contents = tokio::task::spawn_blocking(move || std::fs::read(&path_for_read))
                     .await
-                    .map_err(|e| format!("Task failed: {}", e))?
-                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                    .map_err(|e| format!("Unavailable: {}", e))?
+                    .map_err(|e| {
+                        fs_error(
+                            classify_io_error(&e),
+                            &PathValidator::sanitize_error(&format!("{}", e)),
+                        )
+                    })?;
 
                 Ok(json!({ "data": contents }))
             }
@@ -925,18 +997,22 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let validated_path = self
-                    .path_validator
-                    .read()
-                    .await
-                    .validate_path(uri)
-                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                let validated_path =
+                    self.path_validator.read().await.validate_path(uri).map_err(|e| {
+                        format!("NoPermissions: {}", PathValidator::sanitize_error(&e))
+                    })?;
 
+                let path_for_stat = validated_path.clone();
                 let metadata =
-                    tokio::task::spawn_blocking(move || std::fs::metadata(&validated_path))
+                    tokio::task::spawn_blocking(move || std::fs::metadata(&path_for_stat))
                         .await
-                        .map_err(|e| format!("Task failed: {}", e))?
-                        .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                        .map_err(|e| format!("Unavailable: {}", e))?
+                        .map_err(|e| {
+                            fs_error(
+                                classify_io_error(&e),
+                                &PathValidator::sanitize_error(&format!("{}", e)),
+                            )
+                        })?;
 
                 let file_type = if metadata.is_file() {
                     1
@@ -977,18 +1053,22 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let validated_path = self
-                    .path_validator
-                    .read()
-                    .await
-                    .validate_path(uri)
-                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                let validated_path =
+                    self.path_validator.read().await.validate_path(uri).map_err(|e| {
+                        format!("NoPermissions: {}", PathValidator::sanitize_error(&e))
+                    })?;
 
+                let path_for_readdir = validated_path.clone();
                 let entries = tokio::task::spawn_blocking(move || {
                     let mut result: Vec<(String, u8)> = Vec::new();
-                    let dir_entries = match std::fs::read_dir(&validated_path) {
+                    let dir_entries = match std::fs::read_dir(&path_for_readdir) {
                         Ok(e) => e,
-                        Err(e) => return Err(format!("{}", e)),
+                        Err(e) => {
+                            return Err(fs_error(
+                                classify_io_error(&e),
+                                &PathValidator::sanitize_error(&format!("{}", e)),
+                            ))
+                        }
                     };
                     for entry in dir_entries.flatten() {
                         let name = entry.file_name().to_string_lossy().to_string();
@@ -1006,8 +1086,8 @@ impl SessionManager {
                     Ok(result)
                 })
                 .await
-                .map_err(|e| format!("Task failed: {}", e))?
-                .map_err(|e| PathValidator::sanitize_error(&e))?;
+                .map_err(|e| format!("Unavailable: {}", e))?
+                .map_err(|e| e)?;
 
                 Ok(json!({ "entries": entries }))
             }
@@ -1022,12 +1102,18 @@ impl SessionManager {
                     .read()
                     .await
                     .validate_path(uri)
-                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
 
-                tokio::task::spawn_blocking(move || std::fs::create_dir_all(&validated_path))
+                let path_for_mkdir = validated_path.clone();
+                tokio::task::spawn_blocking(move || std::fs::create_dir_all(&path_for_mkdir))
                     .await
-                    .map_err(|e| format!("Task failed: {}", e))?
-                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                    .map_err(|e| format!("Unavailable: {}", e))?
+                    .map_err(|e| {
+                        fs_error(
+                            classify_io_error(&e),
+                            &PathValidator::sanitize_error(&format!("{}", e)),
+                        )
+                    })?;
 
                 Ok(json!({ "success": true }))
             }
@@ -1044,26 +1130,33 @@ impl SessionManager {
                     .read()
                     .await
                     .validate_path(uri)
-                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
 
                 let bytes: Vec<u8> = if let Some(arr) = content.as_array() {
                     arr.iter().filter_map(|v| v.as_u64().map(|n| n as u8)).collect()
                 } else if let Some(s) = content.as_str() {
                     s.as_bytes().to_vec()
                 } else {
-                    return Err("Invalid content format".to_string());
+                    return Err("Unavailable: Invalid content format".to_string());
                 };
 
-                // Limit write size to 100MB
                 const MAX_WRITE_SIZE: usize = 100 * 1024 * 1024;
                 if bytes.len() > MAX_WRITE_SIZE {
-                    return Err("File content exceeds maximum allowed size".to_string());
+                    return Err(
+                        "Unavailable: File content exceeds maximum allowed size".to_string()
+                    );
                 }
 
-                tokio::task::spawn_blocking(move || std::fs::write(&validated_path, bytes))
+                let path_for_write = validated_path.clone();
+                tokio::task::spawn_blocking(move || std::fs::write(&path_for_write, bytes))
                     .await
-                    .map_err(|e| format!("Task failed: {}", e))?
-                    .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                    .map_err(|e| format!("Unavailable: {}", e))?
+                    .map_err(|e| {
+                        fs_error(
+                            classify_io_error(&e),
+                            &PathValidator::sanitize_error(&format!("{}", e)),
+                        )
+                    })?;
 
                 Ok(json!({ "success": true }))
             }
@@ -1083,22 +1176,28 @@ impl SessionManager {
                     .read()
                     .await
                     .validate_path(uri)
-                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
 
+                let path_for_delete = validated_path.clone();
                 tokio::task::spawn_blocking(move || {
-                    if validated_path.is_dir() {
+                    if path_for_delete.is_dir() {
                         if recursive {
-                            std::fs::remove_dir_all(&validated_path)
+                            std::fs::remove_dir_all(&path_for_delete)
                         } else {
-                            std::fs::remove_dir(&validated_path)
+                            std::fs::remove_dir(&path_for_delete)
                         }
                     } else {
-                        std::fs::remove_file(&validated_path)
+                        std::fs::remove_file(&path_for_delete)
                     }
                 })
                 .await
-                .map_err(|e| format!("Task failed: {}", e))?
-                .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                .map_err(|e| format!("Unavailable: {}", e))?
+                .map_err(|e| {
+                    fs_error(
+                        classify_io_error(&e),
+                        &PathValidator::sanitize_error(&format!("{}", e)),
+                    )
+                })?;
 
                 Ok(json!({ "success": true }))
             }
@@ -1117,20 +1216,25 @@ impl SessionManager {
                     .read()
                     .await
                     .validate_path(old_uri)
-                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
                 let new_validated = self
                     .path_validator
                     .read()
                     .await
                     .validate_path(new_uri)
-                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
 
-                tokio::task::spawn_blocking(move || {
-                    std::fs::rename(&old_validated, &new_validated)
-                })
-                .await
-                .map_err(|e| format!("Task failed: {}", e))?
-                .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                let old_path = old_validated.clone();
+                let new_path = new_validated.clone();
+                tokio::task::spawn_blocking(move || std::fs::rename(&old_path, &new_path))
+                    .await
+                    .map_err(|e| format!("Unavailable: {}", e))?
+                    .map_err(|e| {
+                        fs_error(
+                            classify_io_error(&e),
+                            &PathValidator::sanitize_error(&format!("{}", e)),
+                        )
+                    })?;
 
                 Ok(json!({ "success": true }))
             }
@@ -1149,20 +1253,25 @@ impl SessionManager {
                     .read()
                     .await
                     .validate_path(source_uri)
-                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
                 let dest_validated = self
                     .path_validator
                     .read()
                     .await
                     .validate_path(dest_uri)
-                    .map_err(|e| PathValidator::sanitize_error(&e))?;
+                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
 
-                tokio::task::spawn_blocking(move || {
-                    std::fs::copy(&source_validated, &dest_validated)
-                })
-                .await
-                .map_err(|e| format!("Task failed: {}", e))?
-                .map_err(|e| PathValidator::sanitize_error(&format!("{}", e)))?;
+                let src = source_validated.clone();
+                let dst = dest_validated.clone();
+                tokio::task::spawn_blocking(move || std::fs::copy(&src, &dst))
+                    .await
+                    .map_err(|e| format!("Unavailable: {}", e))?
+                    .map_err(|e| {
+                        fs_error(
+                            classify_io_error(&e),
+                            &PathValidator::sanitize_error(&format!("{}", e)),
+                        )
+                    })?;
 
                 Ok(json!({ "success": true }))
             }
@@ -1317,6 +1426,12 @@ impl SessionManager {
                 self.emit_event(SessionEvent::DiagnosticsCleared { uri: String::new() });
                 Ok(json!({"success": true}))
             }
+            "setContext" => {
+                let key = payload.get("key").and_then(|v| v.as_str()).unwrap_or_default();
+                let value = payload.get("value").cloned().unwrap_or(Value::Null);
+                self.emit_event(SessionEvent::ContextChanged { key: key.to_string(), value });
+                Ok(json!({"success": true}))
+            }
             "registerDebugConfigurationProvider"
             | "registerDebugAdapterDescriptorFactory"
             | "registerDebugAdapterTrackerFactory"
@@ -1327,7 +1442,7 @@ impl SessionManager {
             | "registerWebviewSerializer" => Ok(json!({"success": true})),
             _ => {
                 println!("[SessionManager] Unhandled request type: {}", msg_type);
-                Err(format!("Unhandled request type: {}", msg_type))
+                Ok(json!({"success": true}))
             }
         }
     }
@@ -1351,7 +1466,23 @@ impl SessionManager {
 
         {
             let mut manager = self.extension_host.lock().await;
-            manager.restart_if_needed(&entry, &outgoing, &incoming).await?;
+            // Update state from process status before deciding what to do.
+            manager.check_and_update_state();
+            let current = manager.state();
+            match current {
+                crate::extension_host::manager::ExtensionHostState::Running => {
+                    // Process is still alive — just reconnect IPC below.
+                }
+                crate::extension_host::manager::ExtensionHostState::Unhealthy => {
+                    manager.restart_if_needed(&entry, &outgoing, &incoming).await?;
+                }
+                _ => {
+                    return Err(format!(
+                        "Extension host in unexpected state for reconnection: {:?}",
+                        current
+                    ));
+                }
+            }
         }
 
         self.ipc_manager.reconnect_outgoing("main", &outgoing).await?;

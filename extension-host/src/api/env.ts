@@ -227,12 +227,31 @@ class ExtensionImpl<T> extends Extension<T> {
   }
 
   get exports(): T {
+    if (this._exports === undefined || this._exports === null) {
+      const createStub = (): any =>
+        new Proxy(function () {}, {
+          get(_target: any, prop: string | symbol) {
+            if (prop === Symbol.unscopables) return undefined;
+            if (prop === 'then') return undefined;
+            if (prop === 'toJSON') return () => ({});
+            if (prop === 'constructor') return undefined;
+            return createStub();
+          },
+          apply() {
+            return undefined;
+          },
+          construct() {
+            return createStub();
+          },
+        });
+      return createStub() as unknown as T;
+    }
     return this._exports;
   }
 
   async activate(): Promise<T> {
     this._isActive = true;
-    return this._exports;
+    return this.exports;
   }
 }
 

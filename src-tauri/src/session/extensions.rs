@@ -332,6 +332,36 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Loads (activates) an extension by sending an IPC request to the extension host.
+    ///
+    /// STATE CONSISTENCY across layers:
+    ///   This method updates backend state AFTER the IPC request returns successfully.
+    ///
+    ///   Success path:
+    ///     1. IPC "activate-extension" sent to extension host
+    ///     2. Extension host: Registered -> Activating -> Active (in ExtensionManager)
+    ///     3. IPC response received (success)
+    ///     4. Backend: mark_extension_active(id, true) updates SessionState
+    ///     5. Backend: emits ExtensionLoaded event to frontend
+    ///     6. Frontend: receives event, state reflects loaded extension
+    ///     All three layers agree: extension is active.
+    ///
+    ///   Failure path (IPC timeout or error):
+    ///     1. IPC "activate-extension" sent
+    ///     2. Extension host may have partially activated (state = Activating or Active)
+    ///     3. IPC times out or returns error
+    ///     4. Backend: mark_extension_active() NEVER called -- state unchanged (inactive)
+    ///     5. Frontend: never notified -- shows extension as inactive
+    ///     INCONSISTENCY: Extension host thinks it's active, backend/frontend think inactive.
+    ///     Recovery: On next extension host restart, all extensions re-register,
+    ///     and the scan_extensions() + load_auto_start_extensions() flow re-syncs.
+    ///
+    ///   Failure path (mark_extension_active fails -- shouldn't happen but theoretically):
+    ///     1. IPC succeeds -- extension host has activated
+    ///     2. mark_extension_active() fails (e.g., lock contention, impossible in practice)
+    ///     3. Extension host is active, backend state is stale
+    ///     4. Frontend never notified
+    ///     INCONSISTENCY: same as above but without host restart to fix it.
     pub async fn load_extension(&self, extension_id: &str) -> Result<(), String> {
         self.load_extension_internal(extension_id).await?;
 
@@ -356,6 +386,30 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Unloads (deactivates) an extension.
+    ///
+    /// STATE CONSISTENCY:
+    ///   Cleanup happens in a specific order. If any step fails, subsequent
+    ///   steps are SKIPPED (early return via `?`), leaving partial state:
+    ///
+    ///   1. IPC "deactivate-extension" -> if fails: extension stays active in host,
+    ///      backend state unchanged, status bar items NOT cleaned up.
+    ///      RESULT: extension appears active everywhere but may be broken.
+    ///
+    ///   2. mark_extension_active(id, false) -> if fails (shouldn't): host deactivated
+    ///      but backend still shows active.
+    ///      RESULT: ghost extension -- deactivated but appears active.
+    ///
+    ///   3. emit ExtensionUnloaded -> if fails (shouldn't): backend updated but
+    ///      frontend doesn't know.
+    ///      RESULT: frontend stale until next StateChanged event.
+    ///
+    ///   4. remove_extension_status_bar_items() -> if skipped (due to step 1 failure):
+    ///      orphaned status bar items remain in UI.
+    ///      RESULT: user sees phantom status bar items from dead extension.
+    ///
+    ///   TODO: Consider using a cleanup-on-best-effort pattern instead of early
+    ///   return, so that status bar items are always cleaned up even if IPC fails.
     pub async fn unload_extension(&self, extension_id: &str) -> Result<(), String> {
         println!("[SessionManager] Unloading extension: {}", extension_id);
 
@@ -369,6 +423,30 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Deletes an extension from disk and all state.
+    ///
+    /// STATE CONSISTENCY:
+    ///   Deletion is a multi-step process. Partial failures leave inconsistent state:
+    ///
+    ///   1. unload_extension() -- may fail (see above). Continues regardless (`let _`).
+    ///   2. IPC "uninstall-extension" -- if fails: backend returns error, but
+    ///      unload may have already changed state. Extension may be deactivated
+    ///      but files still on disk.
+    ///   3. Directory deletion (extension, storage, logs) -- errors are logged
+    ///      but state cleanup CONTINUES. This means:
+    ///      - SessionState shows extension as deleted (removed from lists)
+    ///      - But files may still exist on disk
+    ///      - Next install of same ID may conflict with orphaned files
+    ///      - User sees: extension gone from UI but wasted disk space
+    ///
+    ///   4. State cleanup (remove from installed_extensions, active_extensions,
+    ///      command_map) -- always runs even if directory deletion failed.
+    ///      This is intentional: better to have a clean state with orphaned
+    ///      files than a corrupted state referencing deleted files.
+    ///
+    ///   FILESYSTEM ATOMICITY: None. No rollback if deletion fails midway.
+    ///   Consider: delete state first, then files. If files fail to delete,
+    ///   at least the state is clean and a re-install won't conflict.
     pub async fn delete_extension(&self, extension_id: &str) -> Result<(), String> {
         println!("[SessionManager] Deleting extension: {}", extension_id);
 

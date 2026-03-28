@@ -38,6 +38,10 @@ export class PersistentMemento {
     try {
       if (fs.existsSync(this.filePath)) {
         const content = fs.readFileSync(this.filePath, 'utf-8');
+        if (content.trim().length === 0) {
+          this.data = {};
+          return;
+        }
         this.data = JSON.parse(content);
       }
     } catch (error) {

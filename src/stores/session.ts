@@ -46,6 +46,7 @@ export interface SessionState {
   installed_extensions: ExtensionInfo[];
   available_commands: string[];
   status_bar_items: StatusBarItemState[];
+  context_keys: Record<string, unknown>;
 }
 
 // Session state store
@@ -55,6 +56,7 @@ export const sessionState = writable<SessionState>({
   installed_extensions: [],
   available_commands: [],
   status_bar_items: [],
+  context_keys: {},
 });
 
 // Loading state
@@ -88,7 +90,45 @@ export async function initializeSession() {
 
     console.log('[Session] Initial state loaded:', state);
 
-    // Listen for session events
+    /**
+     * Session Event Handler
+     *
+     * Receives events from the Tauri backend (Rust) and updates frontend state.
+     * Events are emitted via Tauri's event system, which preserves order within
+     * a single emit thread but does NOT guarantee ordering across concurrent
+     * emit() calls from different async tasks.
+     *
+     * EVENT ORDERING GUARANTEES:
+     *   - StateChanged is the authoritative source of truth for full state.
+     *     When received, it REPLACES the entire session state.
+     *   - Specific events (ExtensionLoaded, CommandsChanged, etc.) are
+     *     incremental updates that modify individual fields.
+     *   - If StateChanged arrives AFTER a specific event, the StateChanged
+     *     payload already includes the change (safe, no data loss).
+     *   - If StateChanged arrives BEFORE a specific event, the specific
+     *     event may apply a change that's already in the state (idempotent).
+     *   - If events are lost (frontend disconnect/reconnect), state becomes
+     *     stale until the next StateChanged event.
+     *
+     * STALE STATE SCENARIOS:
+     *   1. Extension host crashes: backend state shows extensions as active,
+     *      but they're actually dead. No event notifies frontend of crash.
+     *      User sees: commands fail silently when targeting dead extensions.
+     *
+     *   2. Frontend disconnects/reconnects: events emitted during disconnect
+     *      are lost. State from last StateChanged is used. If extensions
+     *      were loaded/unloaded during disconnect, frontend is stale.
+     *      Recovery: manually trigger a full state refresh on reconnect.
+     *
+     *   3. Partial event handling: if setStatusBarItems() throws after
+     *      sessionState.update() succeeds, the session store and status bar
+     *      store diverge. No rollback mechanism exists.
+     *
+     * CROSS-LAYER CONSISTENCY:
+     *   Frontend state is a DERIVATIVE of backend state. It should never be
+     *   treated as the source of truth. When in doubt, the backend state
+     *   (accessible via sessionCommands.getState()) is authoritative.
+     */
     sessionUnlisten = await listen(TauriEventName.session, (event: any) => {
       const { type, data } = event.payload;
 
@@ -96,7 +136,14 @@ export async function initializeSession() {
 
       switch (type) {
         case 'StateChanged':
+          // StateChanged replaces the ENTIRE session state. This is the primary
+          // synchronization mechanism between backend and frontend. All derived
+          // stores (installedExtensions, activeExtensions, etc.) will recompute.
           sessionState.set(data.state);
+          // CAUTION: This updates an external store (e.g., setStatusBarItems).
+          // If this call throws, sessionState is already updated but the external
+          // store is stale. No rollback mechanism exists. Consider wrapping in
+          // try-catch to prevent partial state updates.
           setStatusBarItems(data.state.status_bar_items || []);
           console.log('[Session] State updated:', data.state);
           break;
@@ -115,6 +162,9 @@ export async function initializeSession() {
           break;
 
         case 'ExtensionLoaded':
+          // ExtensionLoaded is informational only. The actual state update happens
+          // when the next StateChanged event arrives with the extension in
+          // active_extensions. This event is used for logging/debugging.
           console.log('[Session] Extension loaded:', data.extension_id);
           break;
 
@@ -139,6 +189,10 @@ export async function initializeSession() {
             ...s,
             status_bar_items: data.items || [],
           }));
+          // CAUTION: This updates an external store (e.g., setStatusBarItems).
+          // If this call throws, sessionState is already updated but the external
+          // store is stale. No rollback mechanism exists. Consider wrapping in
+          // try-catch to prevent partial state updates.
           setStatusBarItems(data.items || []);
           console.log('[Session] Status bar items updated');
           break;
@@ -179,6 +233,16 @@ export async function initializeSession() {
 
         case 'ConfigurationChanged':
           console.log('[Session] Configuration changed:', data.section, data.key);
+          break;
+
+        case 'ContextChanged':
+          sessionState.update((s) => ({
+            ...s,
+            context_keys: {
+              ...(s.context_keys || {}),
+              [data.key]: data.value,
+            },
+          }));
           break;
 
         case 'DocumentChanged':

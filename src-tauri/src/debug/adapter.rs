@@ -1,13 +1,88 @@
 use super::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::process::{Child, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child as TokioChild, Command as TokioCommand};
 use tokio::sync::{oneshot, Mutex};
 
+/// STATE MACHINE: DebugAdapter
+///
+/// Tracks the lifecycle of a Debug Adapter Protocol (DAP) adapter process.
+///
+/// State Diagram:
+///
+///   Stopped ──► Starting ──► Initializing ──► Configured ──► Running
+///     ▲             │              │               │            │
+///     │             │              │               │            │
+///     │             ▼              ▼               ▼            ▼
+///     │          Crashed ◄──── Crashed ◄──── Crashed ◄──── Crashed
+///     │                                                        │
+///     │                                                        │
+///     │                                            ShuttingDown│
+///     │                                                │       │
+///     └────────────────────────────────────────────────┘       │
+///                                                     ▲        │
+///                                                     └────────┘
+///
+/// Transitions:
+///   Stopped      -> Starting      (start() called)
+///   Starting     -> Initializing  (process spawned, DAP initialize sent)
+///   Starting     -> Crashed       (spawn failed)
+///   Initializing -> Configured    (initialize response received, configurationDone sent)
+///   Initializing -> Crashed       (initialize failed or timed out)
+///   Configured   -> Running       (launch/attach response received)
+///   Configured   -> Crashed       (launch/attach failed)
+///   Running      -> ShuttingDown  (disconnect/terminate requested)
+///   Running      -> Crashed       (adapter process exited unexpectedly)
+///   ShuttingDown -> Stopped       (adapter exited cleanly)
+///   Crashed      -> Starting      (restart attempt)
+///
+/// Concurrency Invariant:
+///   Same as LspClient -- state in Arc<Mutex<>>, separate from process/writer.
+///   Lock ordering: state -> process -> writer -> pending_responses.
+///
+/// Interruption Table:
+/// ┌──────────────┬────────────────────────────────────────────────────────────┐
+/// │ State        │ What happens + impact                                     │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Stopped      │ Safe. No resources.                                       │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Starting     │ Spawn fails -> Crashed. No debug session impact.          │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Initializing │ If adapter crashes: -> Crashed. Debug session cannot      │
+/// │              │ start. User sees: "failed to start debug session".        │
+/// │              │ Pending initialize request hangs FOREVER (BUG, now fixed  │
+/// │              │ with 30s timeout).                                        │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Configured   │ If adapter crashes: -> Crashed. Breakpoints lost.         │
+/// │              │ User sees: debug session disappears.                      │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Running      │ If adapter crashes: -> Crashed. Active debug session lost.│
+/// │              │ ALL pending requests (evaluate, stackTrace, etc.) were    │
+/// │              │ hanging FOREVER (BUG). After fix: timeout after 30s.     │
+/// │              │ User sees: debug controls stop responding, then error.    │
+/// │              │ Debug session state should transition to Terminated.      │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ ShuttingDown │ Normal cleanup. Pending requests drained/rejected.        │
+/// ├──────────────┼────────────────────────────────────────────────────────────┤
+/// │ Crashed      │ Debug session dead. No auto-restart for debug adapters.   │
+/// │              │ User must start a new debug session manually.             │
+/// └──────────────┴────────────────────────────────────────────────────────────┘
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DebugAdapterState {
+    Stopped,
+    Starting,
+    Initializing,
+    Configured,
+    Running,
+    ShuttingDown,
+    Crashed,
+}
+
 pub struct DebugAdapter {
+    state: Arc<Mutex<DebugAdapterState>>,
     session: DebugSession,
     process: Arc<Mutex<Option<TokioChild>>>,
     writer: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
@@ -20,6 +95,7 @@ pub struct DebugAdapter {
 impl DebugAdapter {
     pub fn new(session: DebugSession, adapter_command: String, adapter_args: Vec<String>) -> Self {
         Self {
+            state: Arc::new(Mutex::new(DebugAdapterState::Stopped)),
             session,
             process: Arc::new(Mutex::new(None)),
             writer: Arc::new(Mutex::new(None)),
@@ -30,7 +106,52 @@ impl DebugAdapter {
         }
     }
 
+    /// Validates and performs a state transition for the debug adapter.
+    async fn transition(&self, to: DebugAdapterState) -> Result<(), String> {
+        let mut state = self.state.lock().await;
+        let valid = match *state {
+            DebugAdapterState::Stopped => matches!(to, DebugAdapterState::Starting),
+            DebugAdapterState::Starting => {
+                matches!(to, DebugAdapterState::Initializing | DebugAdapterState::Crashed)
+            }
+            DebugAdapterState::Initializing => {
+                matches!(to, DebugAdapterState::Configured | DebugAdapterState::Crashed)
+            }
+            DebugAdapterState::Configured => {
+                matches!(to, DebugAdapterState::Running | DebugAdapterState::Crashed)
+            }
+            DebugAdapterState::Running => {
+                matches!(to, DebugAdapterState::ShuttingDown | DebugAdapterState::Crashed)
+            }
+            DebugAdapterState::ShuttingDown => matches!(to, DebugAdapterState::Stopped),
+            DebugAdapterState::Crashed => matches!(to, DebugAdapterState::Starting),
+        };
+
+        if valid {
+            println!(
+                "[Debug:{}] State: {:?} -> {:?}",
+                self.session.id, *state, to
+            );
+            *state = to;
+            Ok(())
+        } else {
+            let msg = format!(
+                "[Debug:{}] Invalid state transition: {:?} -> {:?}",
+                self.session.id, *state, to
+            );
+            eprintln!("{}", msg);
+            Err(msg)
+        }
+    }
+
+    /// Returns the current state.
+    pub async fn get_state(&self) -> DebugAdapterState {
+        *self.state.lock().await
+    }
+
     pub async fn start(&self) -> Result<(), String> {
+        self.transition(DebugAdapterState::Starting).await?;
+
         let mut process_guard = self.process.lock().await;
 
         if process_guard.is_some() {
@@ -43,9 +164,16 @@ impl DebugAdapter {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| {
-            format!("Failed to start debug adapter {}: {}", self.session.adapter_type, e)
-        })?;
+        let mut child = match cmd.spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                let _ = self.transition(DebugAdapterState::Crashed).await;
+                return Err(format!(
+                    "Failed to start debug adapter {}: {}",
+                    self.session.adapter_type, e
+                ));
+            }
+        };
 
         let stdin = child.stdin.take().ok_or("Failed to get stdin")?;
         let stdout = child.stdout.take().ok_or("Failed to get stdout")?;
@@ -68,18 +196,24 @@ impl DebugAdapter {
 
         *self.writer.lock().await = Some(stdin);
         *process_guard = Some(child);
+        // Release process lock before transitioning state (lock ordering: state -> process)
+        drop(process_guard);
 
-        let pending = Arc::clone(&self.pending_responses);
+        let pending_clone = Arc::clone(&self.pending_responses);
+        let state_clone = Arc::clone(&self.state);
+        let session_id_clone = self.session.id.clone();
         tokio::spawn(async move {
             let mut reader = BufReader::new(stdout);
             let mut header_buf = String::new();
 
             loop {
                 header_buf.clear();
+                let mut read_err = false;
                 loop {
                     let mut byte = [0u8; 1];
                     if reader.read_exact(&mut byte).await.is_err() {
-                        return;
+                        read_err = true;
+                        break;
                     }
                     header_buf.push(byte[0] as char);
 
@@ -89,8 +223,13 @@ impl DebugAdapter {
 
                     if header_buf.len() > 4096 {
                         eprintln!("[Debug] Header too long, disconnecting");
-                        return;
+                        read_err = true;
+                        break;
                     }
+                }
+
+                if read_err {
+                    break;
                 }
 
                 let mut content_length: usize = 0;
@@ -106,7 +245,7 @@ impl DebugAdapter {
 
                 let mut body = vec![0u8; content_length];
                 if reader.read_exact(&mut body).await.is_err() {
-                    return;
+                    break;
                 }
 
                 let response: Value = match serde_json::from_slice(&body) {
@@ -119,7 +258,7 @@ impl DebugAdapter {
 
                 if response.get("type").and_then(|t| t.as_str()) == Some("response") {
                     if let Some(seq) = response.get("request_seq").and_then(|v| v.as_i64()) {
-                        let mut pending_guard = pending.lock().await;
+                        let mut pending_guard = pending_clone.lock().await;
                         if let Some(sender) = pending_guard.remove(&(seq as i32)) {
                             if response.get("success").and_then(|s| s.as_bool()) == Some(true) {
                                 let _ = sender.send(Ok(response));
@@ -134,12 +273,38 @@ impl DebugAdapter {
                     }
                 }
             }
+
+            // Read loop ended -- transition to Crashed if still active
+            {
+                let mut state = state_clone.lock().await;
+                if matches!(
+                    *state,
+                    DebugAdapterState::Initializing
+                        | DebugAdapterState::Configured
+                        | DebugAdapterState::Running
+                ) {
+                    println!(
+                        "[Debug:{}] Read loop ended, state -> Crashed",
+                        session_id_clone
+                    );
+                    *state = DebugAdapterState::Crashed;
+                }
+            }
+            // Reject all pending requests when read loop ends
+            let mut pending = pending_clone.lock().await;
+            for (_, sender) in pending.drain() {
+                let _ = sender.send(Err("Debug adapter connection closed".to_string()));
+            }
         });
+
+        self.transition(DebugAdapterState::Initializing).await?;
 
         Ok(())
     }
 
     pub async fn stop(&self) -> Result<(), String> {
+        let _ = self.transition(DebugAdapterState::ShuttingDown).await;
+
         let mut process_guard = self.process.lock().await;
 
         if let Some(mut child) = process_guard.take() {
@@ -149,12 +314,19 @@ impl DebugAdapter {
 
         *self.writer.lock().await = None;
 
+        let _ = self.transition(DebugAdapterState::Stopped).await;
+
         Ok(())
     }
 
     pub async fn is_running(&self) -> bool {
-        let guard = self.process.lock().await;
-        guard.is_some()
+        let state = self.state.lock().await;
+        matches!(
+            *state,
+            DebugAdapterState::Initializing
+                | DebugAdapterState::Configured
+                | DebugAdapterState::Running
+        )
     }
 
     async fn next_sequence(&self) -> i32 {
@@ -201,13 +373,20 @@ impl DebugAdapter {
                 .map_err(|e| format!("Failed to write DAP body: {}", e))?;
         }
 
-        match rx.await {
-            Ok(Ok(response)) => Ok(response.get("body").cloned().unwrap_or(Value::Null)),
-            Ok(Err(e)) => Err(format!("DAP error: {}", e)),
-            Err(_) => {
+        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+            Ok(Ok(Ok(response))) => Ok(response.get("body").cloned().unwrap_or(Value::Null)),
+            Ok(Ok(Err(e))) => Err(format!("DAP error: {}", e)),
+            Ok(Err(_)) => {
+                // Channel closed -- adapter crashed or connection lost
                 let mut pending = self.pending_responses.lock().await;
                 pending.remove(&seq);
-                Err("DAP request channel closed".to_string())
+                Err("DAP request channel closed (adapter may have crashed)".to_string())
+            }
+            Err(_) => {
+                // Timeout -- adapter did not respond within 30 seconds
+                let mut pending = self.pending_responses.lock().await;
+                pending.remove(&seq);
+                Err("DAP request timed out after 30s".to_string())
             }
         }
     }

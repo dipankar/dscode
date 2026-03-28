@@ -30,6 +30,7 @@ import {
   Diagnostic,
   DocumentSymbol,
 } from './languages';
+import { LanguageStatusItem, LanguageStatusSeverity } from './common';
 import {
   UIAPI,
   StatusBarItem,
@@ -51,6 +52,7 @@ import {
   TerminalDimensions,
   TerminalExitReason,
   TerminalExitStatus,
+  TerminalShellExecution,
 } from './terminal';
 import {
   EnvironmentAPIImpl,
@@ -262,8 +264,18 @@ export function registerLoadedExtension<T = any>(
 export function updateExtensionActivation<T = any>(extensionId: string, exports: T): void {
   const ext = extensionsAPI.getExtension<T>(extensionId);
   if (ext) {
-    // ExtensionImpl uses (this as any) for properties, so we do the same
     (ext as any)._isActive = true;
+    (ext as any)._exports = exports;
+  }
+}
+
+/**
+ * Update an extension's exports without marking it as active (for failed activations)
+ * This ensures getExtension().exports returns a usable value instead of undefined
+ */
+export function _updateExtensionExports<T = any>(extensionId: string, exports: T): void {
+  const ext = extensionsAPI.getExtension<T>(extensionId);
+  if (ext) {
     (ext as any)._exports = exports;
   }
 }
@@ -342,6 +354,12 @@ export const window = {
   },
   get onDidChangeActiveTerminal() {
     return terminalAPI.onDidChangeActiveTerminal;
+  },
+  get onDidStartTerminalShellExecution() {
+    return terminalAPI.onDidStartTerminalShellExecution;
+  },
+  get onDidEndTerminalShellExecution() {
+    return terminalAPI.onDidEndTerminalShellExecution;
   },
   // Window events
   get onDidChangeActiveTextEditor() {
@@ -565,6 +583,9 @@ export const languages = {
   },
   get setLanguageConfiguration() {
     return languagesAPI.setLanguageConfiguration.bind(languagesAPI);
+  },
+  get createLanguageStatusItem() {
+    return languagesAPI.createLanguageStatusItem.bind(languagesAPI);
   },
 };
 
@@ -796,6 +817,17 @@ export const tests = {
   },
 };
 
+export interface LanguageModelChatMessage {
+  role: number;
+  content: string;
+}
+
+export const lm = {
+  selectChatModels(_selector: any): Promise<any[]> {
+    return Promise.resolve([]);
+  },
+};
+
 /**
  * Export types
  */
@@ -844,6 +876,7 @@ export {
   TerminalDimensions,
   TerminalExitStatus,
   TerminalExitReason,
+  TerminalShellExecution,
   // Environment types
   Extension,
   ExtensionKind,
@@ -925,6 +958,9 @@ export {
   QuickPickItem,
   QuickPick,
   InputBox,
+  // Language Status
+  LanguageStatusItem,
+  LanguageStatusSeverity,
   // Authentication types
   AuthenticationSession,
   AuthenticationProvider,
@@ -957,7 +993,7 @@ export {
 };
 
 // Version info
-export const version = '1.80.0'; // Pretend we're VS Code 1.80
+export const version = '1.93.0';
 
 // Extension context type
 export interface ExtensionContext {
@@ -972,6 +1008,7 @@ export interface ExtensionContext {
   storageUri?: Uri;
   globalStorageUri: Uri;
   logUri: Uri;
+  environmentVariableCollection: EnvironmentVariableCollection;
 }
 
 // Enums for compatibility
@@ -980,6 +1017,13 @@ export enum DiagnosticSeverity {
   Warning = 1,
   Information = 2,
   Hint = 3,
+}
+
+export enum IndentAction {
+  None = 0,
+  Indent = 1,
+  IndentOutdent = 2,
+  Outdent = 3,
 }
 
 export enum CompletionItemKind {

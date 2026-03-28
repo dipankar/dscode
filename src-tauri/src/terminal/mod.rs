@@ -39,6 +39,62 @@ pub struct TerminalOptions {
     pub profile_id: Option<String>,
 }
 
+/// STATE MACHINE: TerminalInstance
+///
+/// Tracks the lifecycle of a PTY-backed terminal instance.
+///
+/// State Diagram:
+///
+///   Created ──────► Running ──────► ShuttingDown ──────► Closed
+///                      │                                    ▲
+///                      │ (process exit,                     │
+///                      │  read error)                       │
+///                      └────────────────────────────────────┘
+///
+/// Transitions:
+///   Created      -> Running      (start signal sent via start_sender channel)
+///   Running      -> ShuttingDown (shutdown_signal flag set to true)
+///   Running      -> Closed       (PTY process exits, reader thread detects EOF)
+///   ShuttingDown -> Closed       (reader thread sees shutdown flag, exits loop)
+///
+/// Concurrency Invariant:
+///   Terminal I/O uses std::sync::Mutex (not tokio) because PTY operations
+///   are synchronous. The reader thread runs on a dedicated OS thread (not
+///   tokio task). ShutdownSignal uses AtomicBool for lock-free cross-thread
+///   signaling. State transitions should be synchronized through the
+///   TerminalManager's terminals Mutex.
+///
+/// Interruption Table:
+/// ┌──────────────┬──────────────────────────────────────────────────────────┐
+/// │ State        │ What happens on crash/error                             │
+/// ├──────────────┼──────────────────────────────────────────────────────────┤
+/// │ Created      │ PTY allocated but reader waiting for start signal.      │
+/// │              │ If app crashes: PTY master handle dropped, slave exits.  │
+/// │              │ start_sender channel dropped, reader thread unblocks     │
+/// │              │ and exits (recv() returns Err).                          │
+/// ├──────────────┼──────────────────────────────────────────────────────────┤
+/// │ Running      │ Reader thread actively reading PTY output.              │
+/// │              │ If app crashes: PTY handles dropped, OS cleans up.      │
+/// │              │ If shell process exits: reader gets EOF, -> Closed.     │
+/// │              │ If reader thread panics: JoinHandle::join returns Err.  │
+/// │              │ Writer can still try to write (will get error).         │
+/// ├──────────────┼──────────────────────────────────────────────────────────┤
+/// │ ShuttingDown │ Shutdown flag set. Reader thread checking flag each     │
+/// │              │ iteration. May take up to one read timeout to notice.   │
+/// │              │ If reader hangs on blocking read: may not shut down     │
+/// │              │ gracefully. Consider: close PTY master to force EOF.    │
+/// ├──────────────┼──────────────────────────────────────────────────────────┤
+/// │ Closed       │ Reader thread joined. PTY resources released.           │
+/// │              │ Terminal entry removed from TerminalManager map.        │
+/// └──────────────┴──────────────────────────────────────────────────────────┘
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalState {
+    Created,
+    Running,
+    ShuttingDown,
+    Closed,
+}
+
 /// Shutdown signal for terminal reader thread
 struct ShutdownSignal {
     flag: Arc<AtomicBool>,
@@ -64,6 +120,7 @@ impl ShutdownSignal {
 
 pub struct TerminalInstance {
     pub info: TerminalInfo,
+    pub state: TerminalState,
     writer: Box<dyn Write + Send>,
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     start_sender: Option<Sender<()>>,
@@ -258,6 +315,7 @@ impl TerminalManager {
         // Store terminal instance
         let terminal_instance = TerminalInstance {
             info: info.clone(),
+            state: TerminalState::Created,
             writer,
             master: Arc::clone(&master),
             start_sender: Some(start_tx),
@@ -389,6 +447,7 @@ impl TerminalManager {
         // Store terminal instance
         let terminal_instance = TerminalInstance {
             info: info.clone(),
+            state: TerminalState::Created,
             writer,
             master: Arc::clone(&master),
             start_sender: Some(start_tx),
@@ -432,6 +491,7 @@ impl TerminalManager {
         let mut terminals = self.terminals.lock().expect("terminals lock poisoned");
         if let Some(mut terminal) = terminals.remove(id) {
             // Signal the reader thread to stop
+            terminal.state = TerminalState::ShuttingDown;
             terminal.shutdown_signal.signal();
 
             // Drop the master to close the PTY (this will cause read to return EOF/error)
@@ -443,6 +503,7 @@ impl TerminalManager {
                 let _ = handle.join();
             }
 
+            terminal.state = TerminalState::Closed;
             println!("[Terminal] Terminal {} closed and cleaned up", id);
             Ok(())
         } else {
@@ -461,6 +522,7 @@ impl TerminalManager {
 
         if let Some(sender) = terminal.start_sender.take() {
             sender.send(()).map_err(|e| format!("Failed to send start signal: {}", e))?;
+            terminal.state = TerminalState::Running;
         }
 
         Ok(())
@@ -473,11 +535,13 @@ impl TerminalManager {
 
         for id in ids {
             if let Some(mut terminal) = terminals.remove(&id) {
+                terminal.state = TerminalState::ShuttingDown;
                 terminal.shutdown_signal.signal();
                 drop(terminal.master);
                 if let Some(handle) = terminal.reader_handle.take() {
                     let _ = handle.join();
                 }
+                terminal.state = TerminalState::Closed;
             }
         }
 

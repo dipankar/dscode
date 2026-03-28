@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
-  import { editorStore } from '../stores/editor';
+  import { editorStore, isDocumentDirty } from '../stores/editor';
   import { settingsStore } from '../lib/settings-store';
   import { debugStore } from '../stores/debug';
   import { File, FileCode, FileJson, FileText } from 'lucide-svelte';
@@ -390,7 +390,7 @@
     const openFile = $editorStore.openFiles.get(changedPath);
     if (!openFile) return;
 
-    if (openFile.isDirty) return;
+    if (isDocumentDirty(openFile.state)) return;
 
     try {
       const content = await invoke<string>('read_file', { path: changedPath });
@@ -754,7 +754,7 @@
     {/if}
   </div>
 
-  {#if activeFile && activeFile.isDirty}
+  {#if activeFile && isDocumentDirty(activeFile.state)}
     <div class="save-indicator">Unsaved changes - Press Ctrl+S to save</div>
   {/if}
 </div>

@@ -753,6 +753,32 @@ export class RenameEdit {
   }
 }
 
+export enum LanguageStatusSeverity {
+  Information = 0,
+  Warning = 1,
+  Error = 2,
+}
+
+export class LanguageStatusItem {
+  id: string;
+  name: string;
+  severity: LanguageStatusSeverity;
+  text: string;
+  detail?: string;
+  busy: boolean;
+  command?: { title: string; command: string; arguments?: unknown[] };
+
+  constructor(id: string, name: string, severity?: LanguageStatusSeverity) {
+    this.id = id;
+    this.name = name;
+    this.severity = severity ?? LanguageStatusSeverity.Information;
+    this.text = '';
+    this.busy = false;
+  }
+
+  dispose(): void {}
+}
+
 // RelativePattern for glob matching
 export class RelativePattern {
   base: string;

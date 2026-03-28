@@ -8,6 +8,56 @@
 import { EventEmitter } from '../api/events';
 
 /**
+ * Activation Event Manager
+ *
+ * Manages lazy activation of extensions based on VS Code-compatible activation
+ * events. Extensions declare activation events in their manifest (e.g.,
+ * "onLanguage:python", "onCommand:myCommand", "*"). When an event fires, all
+ * extensions registered for that event are activated.
+ *
+ * Data Structures:
+ *   pendingActivations: Map<extensionId, Set<activationEvent>>
+ *     Extensions waiting to be activated, keyed by their ID. Each extension
+ *     may have multiple activation events. When ANY matching event fires,
+ *     the extension is activated and removed from this map.
+ *
+ *   activatedExtensions: Set<extensionId>
+ *     Extensions that have already been activated. Used to prevent double
+ *     activation. An extension in this set will NOT be activated again even
+ *     if another matching event fires.
+ *
+ *   immediateActivations: Set<extensionId>
+ *     Extensions with the "*" activation event. These are activated
+ *     immediately during loadExtensions(), before any user interaction.
+ *
+ *   startupFinishedActivations: Set<extensionId>
+ *     Extensions with "onStartupFinished" event. Activated after all
+ *     immediate extensions have finished loading.
+ *
+ * Interaction with ExtensionState (manager.ts):
+ *   This manager triggers activation but does NOT own the state machine.
+ *   The ExtensionManager.activateExtension() method handles state transitions.
+ *   This manager only tracks WHICH extensions need activation and WHEN.
+ *   The ExtensionState machine (Registered -> Activating -> Active/Failed)
+ *   is the authoritative source for whether an extension is actually active.
+ *
+ * Interruption Behavior:
+ *   If the extension host crashes during batch activation (e.g., during
+ *   loadExtensions() processing "*" events):
+ *   - Extensions already activated: resources lost, freed by OS
+ *   - Extensions pending activation: never activated, no resources allocated
+ *   - activatedExtensions set: lost with process, rebuilt on restart
+ *   - Backend has NO knowledge of which extensions were partially activated
+ *   - On restart: all extensions re-register, activation starts from scratch
+ *
+ *   If a single extension fails during activation:
+ *   - That extension transitions to 'Failed' state (in ExtensionManager)
+ *   - Other pending extensions are NOT affected
+ *   - The failed extension is still added to activatedExtensions to prevent
+ *     retry loops (it won't be re-triggered by the same event)
+ */
+
+/**
  * Supported activation event types
  */
 export type ActivationEventType =

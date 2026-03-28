@@ -28,6 +28,8 @@ import {
   SymbolTag,
   SignatureHelp,
   Color,
+  LanguageStatusItem,
+  LanguageStatusSeverity,
 } from './common';
 
 export interface DocumentFilter {
@@ -447,6 +449,16 @@ export interface DeclarationProvider {
     | Promise<Definition | Definition[] | null | undefined>;
 }
 
+export type IndentActionValue = 0 | 1 | 2 | 3;
+
+export interface EnterAction {
+  indentText: string;
+  outdentText: string;
+  appendText: string;
+  removeText: number;
+  indentAction: IndentActionValue;
+}
+
 export interface LanguageConfiguration {
   comments?: {
     lineComment?: string;
@@ -457,6 +469,29 @@ export interface LanguageConfiguration {
   indentationRules?: {
     increaseIndentPattern: RegExp;
     decreaseIndentPattern: RegExp;
+    unIndentedLinePattern?: RegExp;
+  };
+  onEnterRules?: {
+    beforeText: RegExp;
+    afterText?: RegExp;
+    previousLineText?: RegExp;
+    action: EnterAction;
+  }[];
+  autoClosingPairs?: {
+    open: string;
+    close: string;
+    notIn?: string[];
+  }[];
+  surroundingPairs?: {
+    open: string;
+    close: string;
+  }[];
+  folding?: {
+    offSide?: boolean;
+    markers?: {
+      start: RegExp;
+      end: RegExp;
+    };
   };
 }
 
@@ -1613,6 +1648,14 @@ export class LanguagesAPI {
   ): { dispose(): void } {
     this.bridge.send('setLanguageConfiguration', { language, configuration });
     return { dispose: () => {} };
+  }
+
+  createLanguageStatusItem(
+    id: string,
+    selector: DocumentSelector | string | string[]
+  ): LanguageStatusItem {
+    const item = new LanguageStatusItem(id, id);
+    return item;
   }
 }
 

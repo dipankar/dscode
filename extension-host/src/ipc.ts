@@ -9,6 +9,67 @@ export interface IPCMessage {
   payload: unknown;
 }
 
+/**
+ * STATE MACHINE: IpcConnection
+ *
+ * Tracks the connection state of the bidirectional Unix domain socket IPC
+ * between the extension host and the Tauri backend.
+ *
+ * State Diagram:
+ *
+ *   Disconnected ──────► Connecting ──────► Connected
+ *       ▲                    │                  │
+ *       │        (max retry) │    (socket error)│
+ *       │                    ▼                  ▼
+ *       └────────────────────┴─────── Reconnecting
+ *                                         │
+ *                    (max retry failed)   │
+ *       Disconnected ◄───────────────────┘
+ *
+ * Transitions:
+ *   Disconnected -> Connecting    (connect() called)
+ *   Connecting   -> Connected     (both sockets established successfully)
+ *   Connecting   -> Disconnected  (connection failed after max retries)
+ *   Connected    -> Reconnecting  (socket error/close detected while connected)
+ *   Connected    -> Disconnected  (close() called intentionally)
+ *   Reconnecting -> Connected     (reconnection succeeded)
+ *   Reconnecting -> Disconnected  (reconnection failed after retries)
+ *
+ * Concurrency Invariant:
+ *   State transitions happen synchronously in Node.js event handlers (socket
+ *   'close', 'error' events). The `request()` method checks state before
+ *   sending. Socket close handlers transition state BEFORE rejecting pending
+ *   requests, ensuring no new requests are accepted during cleanup.
+ *
+ * Interruption Table:
+ * ┌──────────────┬──────────────────────────────────────────────────────────┐
+ * │ State        │ What happens on socket error, process crash, or close   │
+ * ├──────────────┼──────────────────────────────────────────────────────────┤
+ * │ Disconnected │ No-op. Already disconnected. No resources to clean up.  │
+ * ├──────────────┼──────────────────────────────────────────────────────────┤
+ * │ Connecting   │ Retry with linear backoff (10 attempts, 200ms * N).     │
+ * │              │ After exhaustion: -> Disconnected. All connection        │
+ * │              │ promises rejected. No pending requests exist yet.       │
+ * ├──────────────┼──────────────────────────────────────────────────────────┤
+ * │ Connected    │ All pending requests rejected with 'connection closed'  │
+ * │              │ error. Timers cleared for each pending request.         │
+ * │              │ -> Disconnected. Caller must reconnect explicitly.      │
+ * │              │ Backend (Rust) will detect socket close in its read     │
+ * │              │ loop and set alive=false on ExtensionIpc.               │
+ * ├──────────────┼──────────────────────────────────────────────────────────┤
+ * │ Reconnecting │ Same as Connecting but entered from Connected state.    │
+ * │              │ If fails: -> Disconnected with all pending rejected.    │
+ * └──────────────┴──────────────────────────────────────────────────────────┘
+ *
+ * Pending Request Lifecycle:
+ *   Created -> timer started -> ONE of:
+ *     1. Response received: clearTimeout(timer), resolve promise
+ *     2. Timeout fires (30s): delete from map, reject with timeout error
+ *     3. Socket closes: clearTimeout(timer), reject with connection error
+ *   Exactly ONE of these three outcomes occurs per request.
+ */
+type IpcConnectionState = 'Disconnected' | 'Connecting' | 'Connected' | 'Reconnecting';
+
 function writeMessage(socket: net.Socket, msg: IPCMessage): void {
   const body = Buffer.from(JSON.stringify(msg), 'utf8');
   const header = Buffer.alloc(4);
@@ -66,22 +127,31 @@ export class SocketIPC extends EventEmitter {
   private messageId = 0;
   private pendingRequests: Map<
     string,
-    { resolve: (value: unknown) => void; reject: (reason: unknown) => void }
+    {
+      resolve: (value: unknown) => void;
+      reject: (reason: unknown) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
   > = new Map();
   private outgoingBuffer: Uint8Array = new Uint8Array(0);
   private incomingBuffer: Uint8Array = new Uint8Array(0);
-  private listening = false;
-  private connected = false;
+  private state: IpcConnectionState = 'Disconnected';
 
   async connect(outgoingUrl: string, incomingUrl: string): Promise<void> {
+    this.state = 'Connecting';
     const outgoingPath = this.extractPath(outgoingUrl);
     const incomingPath = this.extractPath(incomingUrl);
 
-    await this.startOutgoingServer(outgoingPath);
-    await this.connectIncoming(incomingPath);
+    try {
+      await this.startOutgoingServer(outgoingPath);
+      await this.connectIncoming(incomingPath);
 
-    this.connected = true;
-    console.error(`[SocketIPC] Connected (outgoing=${outgoingPath}, incoming=${incomingPath})`);
+      this.state = 'Connected';
+      console.error(`[SocketIPC] Connected (outgoing=${outgoingPath}, incoming=${incomingPath})`);
+    } catch (error) {
+      this.state = 'Disconnected';
+      throw error;
+    }
   }
 
   private extractPath(url: string): string {
@@ -101,7 +171,6 @@ export class SocketIPC extends EventEmitter {
 
       this.outgoingServer = net.createServer((socket) => {
         this.outgoingSocket = socket;
-        this.listening = true;
         console.error('[SocketIPC] Tauri connected to outgoing socket');
 
         socket.on('data', (data: Buffer) => {
@@ -115,7 +184,6 @@ export class SocketIPC extends EventEmitter {
 
         socket.on('close', () => {
           this.outgoingSocket = null;
-          this.listening = false;
           console.error('[SocketIPC] Outgoing socket closed');
         });
 
@@ -143,12 +211,13 @@ export class SocketIPC extends EventEmitter {
     return new Promise((resolve, reject) => {
       const maxAttempts = 10;
       let attempt = 0;
+      let resolved = false;
 
       const tryConnect = () => {
         attempt++;
         const socket = net.connect(socketPath, () => {
           this.incomingSocket = socket;
-          this.connected = true;
+          resolved = true;
           console.error('[SocketIPC] Connected to incoming socket');
           resolve();
         });
@@ -162,6 +231,7 @@ export class SocketIPC extends EventEmitter {
               const pending = this.pendingRequests.get(msg.id);
               if (pending) {
                 this.pendingRequests.delete(msg.id);
+                clearTimeout(pending.timer);
                 const errMsg = (msg.payload as { error?: string })?.error || 'Unknown error';
                 pending.reject(new Error(errMsg));
               }
@@ -169,6 +239,7 @@ export class SocketIPC extends EventEmitter {
               const pending = this.pendingRequests.get(msg.id);
               if (pending) {
                 this.pendingRequests.delete(msg.id);
+                clearTimeout(pending.timer);
                 pending.resolve(msg.payload);
               }
             }
@@ -176,16 +247,27 @@ export class SocketIPC extends EventEmitter {
         });
 
         socket.on('error', (err) => {
-          if (attempt < maxAttempts) {
-            setTimeout(tryConnect, attempt * 200);
+          if (!resolved) {
+            if (attempt < maxAttempts) {
+              console.error(
+                `[Bridge] Connection attempt ${attempt} failed, retrying in ${attempt * 200}ms...`
+              );
+              setTimeout(tryConnect, attempt * 200);
+            } else {
+              reject(new Error(`Failed to connect after ${maxAttempts} attempts: ${err.message}`));
+            }
           } else {
-            reject(new Error(`Failed to connect after ${maxAttempts} attempts: ${err.message}`));
+            console.error('[SocketIPC] Incoming socket error after connection:', err.message);
           }
         });
 
         socket.on('close', () => {
-          this.incomingSocket = null;
-          console.error('[SocketIPC] Incoming socket closed');
+          if (resolved) {
+            this.incomingSocket = null;
+            this.state = 'Disconnected';
+            console.error('[SocketIPC] Incoming socket closed');
+            this.rejectAllPending('IPC connection closed');
+          }
         });
 
         socket.setNoDelay(true);
@@ -245,6 +327,10 @@ export class SocketIPC extends EventEmitter {
   }
 
   async request(msgType: string, payload: unknown): Promise<unknown> {
+    if (this.state !== 'Connected') {
+      throw new Error('IPC not connected (state: ' + this.state + ')');
+    }
+
     if (!this.incomingSocket || !this.incomingSocket.writable) {
       throw new Error('Not connected. Call connect() first.');
     }
@@ -253,15 +339,14 @@ export class SocketIPC extends EventEmitter {
     const message: IPCMessage = { id, type: msgType, payload };
 
     return new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject });
-      writeMessage(this.incomingSocket!, message);
-
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (this.pendingRequests.has(id)) {
           this.pendingRequests.delete(id);
-          reject(new Error(`Request ${id} timed out`));
+          reject(new Error(`Request '${msgType}' timed out after 30s (id: ${id})`));
         }
       }, 30000);
+      this.pendingRequests.set(id, { resolve, reject, timer });
+      writeMessage(this.incomingSocket!, message);
     });
   }
 
@@ -269,7 +354,17 @@ export class SocketIPC extends EventEmitter {
     await this.request(msgType, payload);
   }
 
+  private rejectAllPending(reason: string): void {
+    for (const [id, pending] of this.pendingRequests) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(reason));
+    }
+    this.pendingRequests.clear();
+  }
+
   close(): void {
+    this.rejectAllPending('IPC shutting down');
+
     if (this.incomingSocket) {
       this.incomingSocket.destroy();
       this.incomingSocket = null;
@@ -285,21 +380,11 @@ export class SocketIPC extends EventEmitter {
       this.outgoingServer = null;
     }
 
-    for (const [, pending] of this.pendingRequests) {
-      pending.reject(new Error('IPC closed'));
-    }
-    this.pendingRequests.clear();
-
-    this.listening = false;
-    this.connected = false;
+    this.state = 'Disconnected';
     console.error('[SocketIPC] Connections closed');
   }
 
-  isListening(): boolean {
-    return this.listening;
-  }
-
   isConnected(): boolean {
-    return this.connected;
+    return this.state === 'Connected';
   }
 }
