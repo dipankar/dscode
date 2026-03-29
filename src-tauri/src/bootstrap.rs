@@ -31,7 +31,6 @@ pub fn configure_builder(
         .plugin(tauri_plugin_dialog::init())
         .manage(FileWatcherState::new())
         .manage(ResourceMonitor::new())
-        .manage(tokio::sync::RwLock::new(PathValidator::new()))
         .manage(tokio::sync::Mutex::new(lsp_manager))
         .manage(Mutex::new(TerminalManager::new()))
         .manage(Mutex::new(DebugManager::new()))
@@ -43,11 +42,23 @@ fn setup_app(app: &mut tauri::App<Wry>) -> SetupResult {
     let app_dirs = register_app_directories(app)?;
     build_tray(app)?;
 
-    let session_manager = register_session_manager(app, app_dirs.clone());
+    let path_validator = create_path_validator(&app_dirs);
+    app.manage(path_validator.clone());
+
+    let session_manager = register_session_manager(app, app_dirs.clone(), path_validator);
     register_feature_registries(app);
     start_session_initialization(session_manager);
 
     Ok(())
+}
+
+fn create_path_validator(app_dirs: &AppDirectories) -> Arc<RwLock<PathValidator>> {
+    let mut pv = PathValidator::new();
+    pv.set_extensions_dir(app_dirs.extensions_dir.clone());
+    pv.set_storage_dir(app_dirs.storage_dir.clone());
+    pv.set_logs_dir(app_dirs.logs_dir.clone());
+    pv.set_temp_dir(std::env::temp_dir());
+    Arc::new(RwLock::new(pv))
 }
 
 fn register_app_directories(app: &mut tauri::App<Wry>) -> Result<AppDirectories, Box<dyn Error>> {
@@ -101,9 +112,13 @@ fn build_tray(app: &mut tauri::App<Wry>) -> SetupResult {
 
 fn register_session_manager(
     app: &mut tauri::App<Wry>, app_dirs: AppDirectories,
+    path_validator: Arc<RwLock<PathValidator>>,
 ) -> Arc<RwLock<SessionManager>> {
-    let session_manager =
-        Arc::new(RwLock::new(SessionManager::new(app.handle().clone(), app_dirs)));
+    let session_manager = Arc::new(RwLock::new(SessionManager::new(
+        app.handle().clone(),
+        app_dirs,
+        path_validator,
+    )));
 
     app.manage(session_manager.clone());
     session_manager

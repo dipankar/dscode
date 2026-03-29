@@ -1432,6 +1432,51 @@ impl SessionManager {
                 self.emit_event(SessionEvent::ContextChanged { key: key.to_string(), value });
                 Ok(json!({"success": true}))
             }
+            "showOpenFolderDialog" => {
+                self.emit_event(SessionEvent::OpenFolderDialog);
+                Ok(json!({"success": true}))
+            }
+            "showOpenFileDialog" => {
+                self.emit_event(SessionEvent::OpenFileDialog);
+                Ok(json!({"success": true}))
+            }
+            "openFolder" => {
+                let uri = payload.get("uri").and_then(|v| v.as_str());
+                if let Some(folder_path) = uri {
+                    // Add to workspace and notify frontend
+                    {
+                        let mut state = self.state.write().await;
+                        let path = PathBuf::from(folder_path);
+                        if !state.workspace_folders.contains(&path) {
+                            state.workspace_folders.push(path.clone());
+                        }
+                    }
+                    self.emit_event(SessionEvent::OpenFolder { uri: folder_path.to_string() });
+
+                    // Update path validator with new workspace folder
+                    {
+                        let mut pv = self.path_validator.write().await;
+                        pv.add_workspace_folder(PathBuf::from(folder_path));
+                    }
+
+                    let state = self.state.read().await.clone();
+                    self.emit_event(SessionEvent::StateChanged { state });
+                } else {
+                    // No URI provided, show folder picker dialog
+                    self.emit_event(SessionEvent::OpenFolderDialog);
+                }
+                Ok(json!({"success": true}))
+            }
+            "openFile" => {
+                let uri = payload
+                    .get("uri")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Missing uri for openFile".to_string())?;
+
+                // Open the file in the editor via the existing document mechanism
+                self.open_text_document(uri).await?;
+                Ok(json!({"success": true}))
+            }
             "registerDebugConfigurationProvider"
             | "registerDebugAdapterDescriptorFactory"
             | "registerDebugAdapterTrackerFactory"

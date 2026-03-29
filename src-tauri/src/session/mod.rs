@@ -428,6 +428,15 @@ pub enum SessionEvent {
 
     /// Context key changed (setContext)
     ContextChanged { key: String, value: Value },
+
+    /// Request to show an open-folder dialog (from extension host)
+    OpenFolderDialog,
+
+    /// Request to show an open-file dialog (from extension host)
+    OpenFileDialog,
+
+    /// Request to open a specific folder path (from extension host)
+    OpenFolder { uri: String },
 }
 
 /// Central session manager
@@ -469,7 +478,10 @@ impl SessionManager {
     const CORE_COMMAND_OWNER: &'static str = "__core__";
     const OUTPUT_CHANNEL_MAX_LINES: usize = 2000;
 
-    pub fn new(app_handle: AppHandle, app_dirs: AppDirectories) -> Self {
+    pub fn new(
+        app_handle: AppHandle, app_dirs: AppDirectories,
+        path_validator: Arc<RwLock<PathValidator>>,
+    ) -> Self {
         let state = Arc::new(RwLock::new(SessionState {
             workspace_folders: Vec::new(),
             active_extensions: Vec::new(),
@@ -492,18 +504,6 @@ impl SessionManager {
                 eprintln!("[SessionManager] Failed to load configuration: {}", err);
                 ConfigurationStore::empty(app_dirs.storage_dir.join("settings.json"))
             }
-        };
-
-        let path_validator = {
-            let ext_dir = app_dirs.extensions_dir.clone();
-            let storage_dir = app_dirs.storage_dir.clone();
-            let logs_dir = app_dirs.logs_dir.clone();
-            let mut pv = PathValidator::new();
-            pv.set_extensions_dir(ext_dir);
-            pv.set_storage_dir(storage_dir);
-            pv.set_logs_dir(logs_dir);
-            pv.set_temp_dir(std::env::temp_dir());
-            Arc::new(RwLock::new(pv))
         };
 
         Self {

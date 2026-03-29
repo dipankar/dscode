@@ -1,6 +1,7 @@
 import { writable, derived } from 'svelte/store';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import { setStatusBarItems, type StatusBarItemState } from './statusbar';
 import { toastStore } from '../lib/error-handler';
 import { showWindowPrompt } from './windowPrompt';
@@ -8,6 +9,7 @@ import { showQuickPick } from './quickPick';
 import { showInputBox } from './inputBox';
 import { showStatusBarMessage, clearStatusBarMessage } from './statusBarMessage';
 import { editorStore } from './editor';
+import { workspaceStore } from './workspace';
 import {
   TauriEventName,
   WindowEventName,
@@ -336,6 +338,18 @@ export async function initializeSession() {
           }
           break;
 
+        case 'OpenFolderDialog':
+          handleOpenFolderDialog();
+          break;
+
+        case 'OpenFileDialog':
+          handleOpenFileDialog();
+          break;
+
+        case 'OpenFolder':
+          handleOpenFolder(data.uri);
+          break;
+
         default:
           console.warn('[Session] Unknown event type:', type);
       }
@@ -598,5 +612,62 @@ async function handleLanguageConfigurationChanged(data: any): Promise<void> {
     }
   } catch (error) {
     console.error(`[Session] Failed to set language configuration for ${language}:`, error);
+  }
+}
+
+async function handleOpenFolderDialog(): Promise<void> {
+  try {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: 'Open Folder',
+    });
+
+    if (selected && typeof selected === 'string') {
+      await addWorkspaceFolder(selected);
+      workspaceStore.setRootPath(selected);
+      const tree = await invoke<any[]>('read_directory', { path: selected });
+      workspaceStore.setFileTree(
+        tree.map((node: any) => ({
+          ...node,
+          dirState: node.node_type === 'directory' ? 'Collapsed' : undefined,
+        }))
+      );
+    }
+  } catch (error) {
+    console.error('[Session] Failed to open folder dialog:', error);
+  }
+}
+
+async function handleOpenFileDialog(): Promise<void> {
+  try {
+    const selected = await open({
+      directory: false,
+      multiple: false,
+      title: 'Open File',
+    });
+
+    if (selected && typeof selected === 'string') {
+      const content = await invoke<string>('read_file', { path: selected });
+      const language = await invoke<string>('get_file_language', { path: selected });
+      editorStore.openFile(selected, content, language);
+    }
+  } catch (error) {
+    console.error('[Session] Failed to open file dialog:', error);
+  }
+}
+
+async function handleOpenFolder(uri: string): Promise<void> {
+  try {
+    workspaceStore.setRootPath(uri);
+    const tree = await invoke<any[]>('read_directory', { path: uri });
+    workspaceStore.setFileTree(
+      tree.map((node: any) => ({
+        ...node,
+        dirState: node.node_type === 'directory' ? 'Collapsed' : undefined,
+      }))
+    );
+  } catch (error) {
+    console.error('[Session] Failed to open folder:', error);
   }
 }
