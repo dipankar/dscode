@@ -21,8 +21,23 @@
   import { inputBoxStore } from './stores/inputBox';
   import { appErrorStore, setAppError } from './stores/appError';
   import { createAppShellController, createDefaultAppShellState } from './lib/app-shell/controller';
+  import { workspaceStore } from './stores/workspace';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
 
   $: theme = $settingsStore.theme.colorTheme;
+
+  $: {
+    const rootPath = $workspaceStore.rootPath;
+    if (rootPath) {
+      const folderName = rootPath.split('/').pop() || rootPath.split('\\').pop() || rootPath;
+      const title = `${folderName} - DSCode`;
+      document.title = title;
+      getCurrentWindow().setTitle(title).catch(() => {});
+    } else {
+      document.title = 'DSCode';
+      getCurrentWindow().setTitle('DSCode').catch(() => {});
+    }
+  }
 
   let shellState = createDefaultAppShellState();
 

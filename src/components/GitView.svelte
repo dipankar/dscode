@@ -45,6 +45,10 @@
     }, DEBOUNCE_MS);
   }
 
+  $: if ($workspaceStore.rootPath) {
+    loadGitStatus();
+  }
+
   onMount(() => {
     loadGitStatus();
 

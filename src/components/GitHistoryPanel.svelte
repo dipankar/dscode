@@ -22,6 +22,10 @@
     loadHistory();
   });
 
+  $: if ($workspaceStore.rootPath) {
+    loadHistory();
+  }
+
   async function loadHistory() {
     const rootPath = $workspaceStore.rootPath;
     if (!rootPath) {

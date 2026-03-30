@@ -6,6 +6,7 @@
   import Terminal from './Terminal.svelte';
   import GitHistoryPanel from './GitHistoryPanel.svelte';
   import { editorStore } from '../stores/editor';
+  import { workspaceStore } from '../stores/workspace';
   import { invoke } from '@tauri-apps/api/core';
   import { Plus, X } from 'lucide-svelte';
   import { outputChannelReveal } from '../stores/outputChannels';
@@ -37,7 +38,7 @@
       const terminalId = await invoke<string>('create_terminal', {
         name: `Terminal ${terminals.length + 1}`,
         shell: null,
-        cwd: null,
+        cwd: $workspaceStore.rootPath || null,
       });
 
       terminals = [...terminals, { id: terminalId, name: `Terminal ${terminals.length + 1}` }];
