@@ -6,6 +6,7 @@
  */
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use tracing::{debug, error, info, warn};
 use zip::ZipArchive;
 
 static HTTP_CLIENT: once_cell::sync::Lazy<reqwest::Client> =
@@ -340,7 +341,7 @@ pub async fn download_extension(
         })
         .ok_or("Could not find VSIX download URL in marketplace response")?;
 
-    println!("[Marketplace] Downloading from: {}", download_url);
+    info!("[Marketplace] Downloading from: {}", download_url);
 
     // Download the .vsix file with proper headers
     let response = HTTP_CLIENT
@@ -351,7 +352,7 @@ pub async fn download_extension(
         .await
         .map_err(|e| format!("Failed to download extension: {}", e))?;
 
-    println!("[Marketplace] Response status: {}", response.status());
+    debug!("[Marketplace] Response status: {}", response.status());
 
     if !response.status().is_success() {
         return Err(format!("Download failed with status: {}", response.status()));
@@ -364,7 +365,7 @@ pub async fn download_extension(
             && !ct.contains("application/zip")
             && !ct.contains("binary/octet-stream")
         {
-            eprintln!("[Marketplace] Warning: Unexpected content-type: {}", ct);
+            warn!("[Marketplace] Warning: Unexpected content-type: {}", ct);
         }
     }
 
@@ -378,7 +379,7 @@ pub async fn download_extension(
     let bytes =
         response.bytes().await.map_err(|e| format!("Failed to read response bytes: {}", e))?;
 
-    println!("[Marketplace] Downloaded {} bytes", bytes.len());
+    info!("[Marketplace] Downloaded {} bytes", bytes.len());
 
     if bytes.len() < 1024 {
         return Err(format!(
@@ -393,11 +394,11 @@ pub async fn download_extension(
         } else {
             String::from_utf8_lossy(&bytes)
         };
-        eprintln!(
+        error!(
             "[Marketplace] ERROR: File is not a ZIP. First bytes: {:?}",
             &bytes[0..std::cmp::min(16, bytes.len())]
         );
-        eprintln!("[Marketplace] Preview: {}", preview);
+        error!("[Marketplace] Preview: {}", preview);
         return Err(format!("Downloaded file is not a valid ZIP archive (invalid magic number). This usually means the marketplace API returned an error page instead of the extension file."));
     }
 

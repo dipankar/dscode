@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -80,9 +81,65 @@ pub fn log(level: LogLevel, module: &str, message: &str) {
     LogEntry::new(level, module, message).log();
 }
 
+/// Returns the log directory path for the application.
+///
+/// Uses the platform-specific cache directory:
+/// - macOS: `~/Library/Caches/dscode/logs/`
+/// - Linux: `~/.cache/dscode/logs/`
+/// - Windows: `C:\Users\<user>\AppData\Local\dscode\logs\`
+fn log_dir() -> Option<PathBuf> {
+    dirs::cache_dir().map(|d| d.join("dscode").join("logs"))
+}
+
 pub fn init() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("dscode=info"));
+
+    let pid = std::process::id();
+    let version = env!("CARGO_PKG_VERSION");
+    let os_info = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+
+    // Set up the layered subscriber with both stdout and file output
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::fmt;
+
+    let stdout_layer = fmt::layer()
+        .with_writer(std::io::stdout);
+
+    if let Some(log_path) = log_dir() {
+        // Ensure the log directory exists
+        if let Err(e) = std::fs::create_dir_all(&log_path) {
+            eprintln!("Warning: could not create log directory {:?}: {}", log_path, e);
+        }
+
+        // Rolling file appender: daily rotation, keeps log files in the configured directory
+        let file_appender = tracing_appender::rolling::daily(&log_path, "dscode.log");
+
+        let file_layer = fmt::layer()
+            .with_writer(file_appender)
+            .with_ansi(false);
+
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(stdout_layer)
+            .with(file_layer)
+            .init();
+    } else {
+        // Fallback: stdout only if no cache directory can be determined
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(stdout_layer)
+            .init();
+    }
+
+    // Log structured fields: version, pid, and OS info
+    tracing::info!(
+        version = %version,
+        pid = pid,
+        os = %os_info,
+        "DSCode logging initialized"
+    );
 }
 
 #[cfg(test)]
@@ -107,5 +164,16 @@ mod tests {
 
         assert!(should_log(LogLevel::Warn));
         assert!(should_log(LogLevel::Error));
+    }
+
+    #[test]
+    fn test_log_dir_returns_some_path() {
+        let path = log_dir();
+        // On CI or some environments, dirs::cache_dir() may return None,
+        // so just verify the function doesn't panic.
+        if let Some(p) = path {
+            assert!(p.to_string_lossy().contains("dscode"));
+            assert!(p.to_string_lossy().contains("logs"));
+        }
     }
 }

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
+use tracing::{error, info};
 
 /// Marketplace UI registry for enhanced marketplace experience
 pub struct MarketplaceUIRegistry {
@@ -87,7 +88,7 @@ impl MarketplaceUIRegistry {
     pub async fn set_featured_extensions(&self, extension_ids: Vec<String>) {
         let mut featured = self.featured_extensions.write().await;
         *featured = extension_ids;
-        println!("[MarketplaceUI] Updated featured extensions");
+        info!("Updated featured extensions");
     }
 
     /// Get featured extensions
@@ -122,10 +123,10 @@ impl MarketplaceUIRegistry {
 
         // Emit event
         if let Err(e) = self.app_handle.emit("marketplace-review-added", &extension_id) {
-            eprintln!("[MarketplaceUI] Failed to emit review added event: {}", e);
+            error!("Failed to emit review added event: {}", e);
         }
 
-        println!("[MarketplaceUI] Added review for: {}", extension_id);
+        info!("Added review for: {}", extension_id);
 
         Ok(())
     }
@@ -204,7 +205,7 @@ impl MarketplaceUIRegistry {
         let mut recommendations = self.recommendations.write().await;
         recommendations.insert(extension_id.clone(), recommended_ids);
 
-        println!("[MarketplaceUI] Added recommendations for: {}", extension_id);
+        info!("Added recommendations for: {}", extension_id);
     }
 
     /// Get recommendations
@@ -245,10 +246,10 @@ impl MarketplaceUIRegistry {
 
         // Emit event
         if let Err(e) = self.app_handle.emit("marketplace-update-available", &notification) {
-            eprintln!("[MarketplaceUI] Failed to emit update notification: {}", e);
+            error!("Failed to emit update notification: {}", e);
         }
 
-        println!("[MarketplaceUI] Added update notification for: {}", notification.extension_id);
+        info!("Added update notification for: {}", notification.extension_id);
     }
 
     /// Get all update notifications
@@ -261,7 +262,7 @@ impl MarketplaceUIRegistry {
         let mut notifications = self.update_notifications.write().await;
         notifications.retain(|n| n.extension_id != extension_id);
 
-        println!("[MarketplaceUI] Removed update notification for: {}", extension_id);
+        info!("Removed update notification for: {}", extension_id);
     }
 
     /// Clear all update notifications
@@ -269,7 +270,7 @@ impl MarketplaceUIRegistry {
         let mut notifications = self.update_notifications.write().await;
         notifications.clear();
 
-        println!("[MarketplaceUI] Cleared all update notifications");
+        info!("Cleared all update notifications");
     }
 
     // ===== Search & Filter =====
@@ -302,7 +303,7 @@ impl MarketplaceUIRegistry {
         let mut notifications = self.update_notifications.write().await;
         notifications.clear();
 
-        println!("[MarketplaceUI] Cleared all marketplace data");
+        info!("[MarketplaceUI] Cleared all marketplace data");
     }
 }
 

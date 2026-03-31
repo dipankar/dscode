@@ -12,7 +12,7 @@ mod configuration;
 mod contributions;
 mod documents;
 mod extensions;
-mod ipc;
+pub(crate) mod ipc;
 mod ipc_providers;
 mod workspace;
 
@@ -36,12 +36,13 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{oneshot, RwLock};
 use tokio::time::Duration;
 
-use crate::config::AppDirectories;
-use crate::debug::DebugAdapterPool;
-use crate::extension_host::path_validator::PathValidator;
-use crate::extension_host::{ExtensionHostManager, IpcManager, SecretStorage};
-use crate::lsp::{LspServerPool, LspServerStrategy};
+use dscode_core::AppDirectories;
+use dscode_dap::DebugAdapterPool;
+use dscode_extension_host::PathValidator;
+use dscode_extension_host::{ExtensionHostManager, IpcManager, SecretStorage};
+use dscode_lsp::{LspServerPool, LspServerStrategy};
 use configuration::ConfigurationStore;
+use tracing::{debug, error, info, warn};
 
 /// STATE MACHINE: SessionLifecycle
 ///
@@ -501,7 +502,7 @@ impl SessionManager {
         let configuration_store = match ConfigurationStore::default_in_dir(&app_dirs.storage_dir) {
             Ok(store) => store,
             Err(err) => {
-                eprintln!("[SessionManager] Failed to load configuration: {}", err);
+                warn!("Failed to load configuration: {}", err);
                 ConfigurationStore::empty(app_dirs.storage_dir.join("settings.json"))
             }
         };
@@ -550,15 +551,15 @@ impl SessionManager {
     async fn transition_lifecycle(&self, to: SessionLifecycle) -> Result<(), String> {
         let mut lifecycle = self.lifecycle.write().await;
         if lifecycle.can_transition_to(to) {
-            println!("[SessionManager] Lifecycle: {:?} -> {:?}", *lifecycle, to);
+            info!("Lifecycle: {:?} -> {:?}", *lifecycle, to);
             *lifecycle = to;
             Ok(())
         } else {
             let msg = format!(
-                "[SessionManager] Invalid lifecycle transition: {:?} -> {:?}",
+                "Invalid lifecycle transition: {:?} -> {:?}",
                 *lifecycle, to
             );
-            eprintln!("{}", msg);
+            error!("{}", msg);
             Err(msg)
         }
     }
@@ -566,34 +567,34 @@ impl SessionManager {
     /// Emit an event to the UI
     fn emit_event(&self, event: SessionEvent) {
         if let Err(e) = self.app_handle.emit("session-event", &event) {
-            eprintln!("[SessionManager] Failed to emit event: {}", e);
+            warn!("Failed to emit event: {}", e);
         }
     }
 
     /// Initialize the session - start Extension Host and load extensions
     pub async fn initialize(&self) -> Result<(), String> {
         if self.initialized.get().is_some() {
-            println!("[SessionManager] Already initialized, skipping");
+            info!("Already initialized, skipping");
             return Ok(());
         }
 
         self.transition_lifecycle(SessionLifecycle::Initializing).await?;
 
-        println!("[SessionManager] Initializing session...");
+        info!("Initializing session...");
 
-        println!("[SessionManager] Starting Extension Host...");
+        info!("Starting Extension Host...");
         if let Err(e) = self.start_extension_host().await {
             let _ = self.transition_lifecycle(SessionLifecycle::Error).await;
             return Err(e);
         }
 
-        println!("[SessionManager] Waiting for extension host ready signal...");
+        info!("Waiting for extension host ready signal...");
 
         let ready_wait = self.extension_host_ready.notified();
         match tokio::time::timeout(Duration::from_secs(30), ready_wait).await {
-            Ok(_) => println!("[SessionManager] Extension host is ready"),
+            Ok(_) => info!("Extension host is ready"),
             Err(_) => {
-                eprintln!("[SessionManager] Timeout waiting for extension host ready signal");
+                error!("Timeout waiting for extension host ready signal");
                 let _ = self.transition_lifecycle(SessionLifecycle::Error).await;
                 return Err("Extension host failed to start within timeout".to_string());
             }
@@ -615,7 +616,7 @@ impl SessionManager {
         self.transition_lifecycle(SessionLifecycle::Ready).await?;
         let _ = self.initialized.set(());
 
-        println!("[SessionManager] Session initialized");
+        info!("Session initialized");
         Ok(())
     }
 
@@ -861,7 +862,7 @@ impl SessionManager {
                 let entry = match entry {
                     Ok(entry) => entry,
                     Err(err) => {
-                        eprintln!("[SessionManager] File search error: {}", err);
+                        warn!("File search error: {}", err);
                         continue;
                     }
                 };
@@ -970,7 +971,7 @@ impl SessionManager {
                     }
                 }
                 Err(err) => {
-                    eprintln!("[SessionManager] File watcher error: {}", err);
+                    warn!("File watcher error: {}", err);
                 }
             })
             .map_err(|e| format!("Failed to create file watcher: {}", e))?;
@@ -1000,7 +1001,7 @@ impl SessionManager {
         });
 
         if let Err(err) = self.ipc_manager.request("main", "fsWatcher:event", payload).await {
-            eprintln!("[SessionManager] Failed to forward fs watcher event: {}", err);
+            warn!("Failed to forward fs watcher event: {}", err);
         }
     }
 
@@ -1218,7 +1219,7 @@ impl SessionManager {
 
     /// Shutdown session
     pub async fn shutdown(&self) -> Result<(), String> {
-        println!("[SessionManager] Shutting down session...");
+        info!("Shutting down session...");
 
         let _ = self.transition_lifecycle(SessionLifecycle::ShuttingDown).await;
 
@@ -1234,7 +1235,7 @@ impl SessionManager {
 
         let _ = self.transition_lifecycle(SessionLifecycle::Shutdown).await;
 
-        println!("[SessionManager] Session shutdown complete");
+        info!("Session shutdown complete");
         Ok(())
     }
 

@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { settingsStore, type Settings } from '../lib/settings-store';
   import { showConfirmPrompt } from '../stores/windowPrompt';
+  import { focusTrap } from '../lib/focus-trap';
 
   export let visible = false;
   export let onClose: () => void;
@@ -9,6 +10,10 @@
   let settings: Settings;
   let activeTab: 'editor' | 'theme' | 'terminal' | 'git' = 'editor';
   let settingsUnsubscribe: (() => void) | null = null;
+  let modalContainer: HTMLDivElement;
+  let previouslyFocused: HTMLElement | null = null;
+
+  const tabKeys: Array<'editor' | 'theme' | 'terminal' | 'git'> = ['editor', 'theme', 'terminal', 'git'];
 
   onMount(() => {
     settingsUnsubscribe = settingsStore.subscribe((s) => {
@@ -22,6 +27,21 @@
       settingsUnsubscribe = null;
     }
   });
+
+  $: if (visible && modalContainer) {
+    previouslyFocused = document.activeElement as HTMLElement;
+    const firstFocusable = modalContainer.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (firstFocusable) {
+      firstFocusable.focus();
+    }
+  }
+
+  $: if (!visible && previouslyFocused) {
+    previouslyFocused.focus();
+    previouslyFocused = null;
+  }
 
   function handleSave() {
     settingsStore.set(settings);
@@ -40,9 +60,43 @@
     }
   }
 
-  function handleKeyDown(e: KeyboardEvent) {
+  function handleOverlayKeyDown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
+      e.preventDefault();
       onClose();
+    }
+  }
+
+  function handleTabKeyDown(e: KeyboardEvent) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const currentIdx = tabKeys.indexOf(activeTab);
+      const nextIdx = (currentIdx + 1) % tabKeys.length;
+      activeTab = tabKeys[nextIdx];
+      focusActiveTab();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const currentIdx = tabKeys.indexOf(activeTab);
+      const prevIdx = (currentIdx - 1 + tabKeys.length) % tabKeys.length;
+      activeTab = tabKeys[prevIdx];
+      focusActiveTab();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      activeTab = tabKeys[0];
+      focusActiveTab();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      activeTab = tabKeys[tabKeys.length - 1];
+      focusActiveTab();
+    }
+  }
+
+  function focusActiveTab() {
+    if (!modalContainer) return;
+    const tabs = modalContainer.querySelectorAll<HTMLButtonElement>('.tab-btn');
+    const idx = tabKeys.indexOf(activeTab);
+    if (tabs[idx]) {
+      tabs[idx].focus();
     }
   }
 </script>
@@ -50,13 +104,13 @@
 {#if visible}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="settings-overlay" on:click={onClose} on:keydown={handleKeyDown}>
+  <div class="settings-overlay" on:click={onClose} on:keydown={handleOverlayKeyDown}>
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="settings-modal" on:click|stopPropagation>
+    <div bind:this={modalContainer} class="settings-modal" on:click|stopPropagation role="dialog" aria-modal="true" aria-label="Settings" use:focusTrap>
       <div class="settings-header">
         <h2>Settings</h2>
-        <button class="close-btn" on:click={onClose}>
+        <button class="close-btn" on:click={onClose} aria-label="Close settings">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path
               d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"
@@ -66,10 +120,13 @@
       </div>
 
       <div class="settings-content">
-        <div class="settings-sidebar">
+        <div class="settings-sidebar" role="tablist" aria-label="Settings categories" tabindex="0" on:keydown={handleTabKeyDown}>
           <button
             class="tab-btn"
             class:active={activeTab === 'editor'}
+            role="tab"
+            aria-selected={activeTab === 'editor'}
+            tabindex={activeTab === 'editor' ? 0 : -1}
             on:click={() => (activeTab = 'editor')}
           >
             Editor
@@ -77,6 +134,9 @@
           <button
             class="tab-btn"
             class:active={activeTab === 'theme'}
+            role="tab"
+            aria-selected={activeTab === 'theme'}
+            tabindex={activeTab === 'theme' ? 0 : -1}
             on:click={() => (activeTab = 'theme')}
           >
             Theme
@@ -84,6 +144,9 @@
           <button
             class="tab-btn"
             class:active={activeTab === 'terminal'}
+            role="tab"
+            aria-selected={activeTab === 'terminal'}
+            tabindex={activeTab === 'terminal' ? 0 : -1}
             on:click={() => (activeTab = 'terminal')}
           >
             Terminal
@@ -91,13 +154,16 @@
           <button
             class="tab-btn"
             class:active={activeTab === 'git'}
+            role="tab"
+            aria-selected={activeTab === 'git'}
+            tabindex={activeTab === 'git' ? 0 : -1}
             on:click={() => (activeTab = 'git')}
           >
             Git
           </button>
         </div>
 
-        <div class="settings-panel">
+        <div class="settings-panel" role="tabpanel" aria-label="{activeTab} settings">
           {#if activeTab === 'editor'}
             <h3>Editor Settings</h3>
 

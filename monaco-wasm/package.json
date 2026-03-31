@@ -1,0 +1,16 @@
+{
+  "name": "@dscode/monaco-wasm",
+  "version": "0.1.0",
+  "description": "Monaco Editor WASM bindings for DSCode",
+  "keywords": ["dscode", "monaco", "wasm", "editor"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dipankar/dscode",
+    "directory": "monaco-wasm"
+  },
+  "files": ["pkg/"],
+  "publishConfig": {
+    "access": "public"
+  }
+}

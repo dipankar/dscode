@@ -245,9 +245,60 @@
   }
 
   const virtualListOptions: VirtualListOptions = { itemHeight: 24, overscan: 8 };
+
+  let treeContainer: HTMLDivElement | null = null;
+  let focusedRowIndex = -1;
+
+  function getTreeRowElements(): HTMLButtonElement[] {
+    if (!treeContainer) return [];
+    return Array.from(treeContainer.querySelectorAll<HTMLButtonElement>('button.tree-row'));
+  }
+
+  function handleTreeKeydown(e: KeyboardEvent) {
+    const rows = getTreeRowElements();
+    if (rows.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown': {
+        e.preventDefault();
+        focusedRowIndex = Math.min(focusedRowIndex + 1, rows.length - 1);
+        rows[focusedRowIndex]?.focus();
+        break;
+      }
+      case 'ArrowUp': {
+        e.preventDefault();
+        focusedRowIndex = Math.max(focusedRowIndex - 1, 0);
+        rows[focusedRowIndex]?.focus();
+        break;
+      }
+      case 'Home': {
+        e.preventDefault();
+        focusedRowIndex = 0;
+        rows[focusedRowIndex]?.focus();
+        break;
+      }
+      case 'End': {
+        e.preventDefault();
+        focusedRowIndex = rows.length - 1;
+        rows[focusedRowIndex]?.focus();
+        break;
+      }
+      case 'Escape': {
+        if (contextMenuVisible) {
+          e.preventDefault();
+          closeContextMenu();
+        }
+        break;
+      }
+    }
+  }
+
+  function handleRowFocus(index: number) {
+    focusedRowIndex = index;
+  }
 </script>
 
-<div class="sidebar">
+<div class="sidebar" role="complementary" aria-label="Sidebar">
   {#if currentActivity === 'explorer'}
     <div class="sidebar-header">
       <h3>EXPLORER</h3>
@@ -263,12 +314,17 @@
           <button on:click={openFolder}>Open Folder</button>
         </div>
       {:else}
-        <VirtualList items={flatRows} options={virtualListOptions} let:item={row}>
+        <div bind:this={treeContainer} role="tree" aria-label="File explorer" tabindex="0" on:keydown={handleTreeKeydown}>
+        <VirtualList items={flatRows} options={virtualListOptions} let:item={row} let:index={rowIndex}>
           <button
             class="tree-row"
             class:selected={row.node.node_type === 'file' && selectedFile === row.node.path}
             style="padding-left: {row.depth * 12 + 8}px"
+            role="treeitem"
+            aria-selected={row.node.node_type === 'file' && selectedFile === row.node.path}
+            aria-expanded={row.node.node_type === 'directory' ? (expandedPaths.has(row.node.path) ? 'true' : 'false') : undefined}
             on:click={() => handleRowClick(row)}
+            on:focus={() => handleRowFocus(rowIndex)}
             on:contextmenu|stopPropagation={(e) => handleRowContextMenu(e, row)}
           >
             {#if row.node.node_type === 'directory'}
@@ -290,6 +346,7 @@
             <span class="tree-name">{row.node.name}</span>
           </button>
         </VirtualList>
+        </div>
       {/if}
     </div>
   {:else if currentActivity === 'debug'}

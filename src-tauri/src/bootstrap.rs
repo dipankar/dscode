@@ -4,14 +4,14 @@ use crate::commands::{
     MenuRegistry, SettingsUIRegistry, StatusBarRegistry, TaskRegistry, TestRunnerRegistry,
     TextDocumentRegistry, ThemeRegistry,
 };
-use crate::config::AppDirectories;
-use crate::debug::{DebugAdapterPool, DebugManager};
-use crate::extension_host::path_validator::PathValidator;
-use crate::lsp::LspManager;
 use crate::monitoring::ResourceMonitor;
 use crate::session::SessionManager;
-use crate::terminal::TerminalManager;
 use crate::watcher::FileWatcherState;
+use dscode_core::AppDirectories;
+use dscode_dap::{DebugAdapterPool, DebugManager};
+use dscode_extension_host::PathValidator;
+use dscode_lsp::LspManager;
+use dscode_terminal::{TerminalManager, TauriEventSender};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use tauri::{
@@ -21,6 +21,7 @@ use tauri::{
     Manager, Wry,
 };
 use tokio::sync::RwLock;
+use tracing::{error, info};
 
 type SetupResult = Result<(), Box<dyn Error>>;
 
@@ -32,9 +33,6 @@ pub fn configure_builder(
         .manage(FileWatcherState::new())
         .manage(ResourceMonitor::new())
         .manage(tokio::sync::Mutex::new(lsp_manager))
-        .manage(Mutex::new(TerminalManager::new()))
-        .manage(Mutex::new(DebugManager::new()))
-        .manage(RwLock::new(DebugAdapterPool::new()))
         .setup(setup_app)
 }
 
@@ -44,6 +42,13 @@ fn setup_app(app: &mut tauri::App<Wry>) -> SetupResult {
 
     let path_validator = create_path_validator(&app_dirs);
     app.manage(path_validator.clone());
+
+    // Create TerminalManager with TauriEventSender for forwarding PTY events
+    let terminal_manager = TerminalManager::new(Box::new(TauriEventSender::new(app.handle().clone())));
+    app.manage(Mutex::new(terminal_manager));
+
+    app.manage(Mutex::new(DebugManager::new()));
+    app.manage(RwLock::new(DebugAdapterPool::new()));
 
     let session_manager = register_session_manager(app, app_dirs.clone(), path_validator);
     register_feature_registries(app);
@@ -62,7 +67,7 @@ fn create_path_validator(app_dirs: &AppDirectories) -> Arc<RwLock<PathValidator>
 }
 
 fn register_app_directories(app: &mut tauri::App<Wry>) -> Result<AppDirectories, Box<dyn Error>> {
-    let app_dirs = AppDirectories::from_app_config(app.config())
+    let app_dirs = AppDirectories::resolve()
         .map_err(|error| std::io::Error::other(error.to_string()))?;
 
     app.manage(app_dirs.clone());
@@ -87,7 +92,7 @@ fn build_tray(app: &mut tauri::App<Wry>) -> SetupResult {
                 if let Some(window) = tray.app_handle().get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
-                    println!("[Tray] Window restored via tray click");
+                    info!("[Tray] Window restored via tray click");
                 }
             }
         })
@@ -96,11 +101,11 @@ fn build_tray(app: &mut tauri::App<Wry>) -> SetupResult {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
-                    println!("[Tray] Window restored via menu");
+                    info!("[Tray] Window restored via menu");
                 }
             }
             "quit" => {
-                println!("[Tray] Quit requested");
+                info!("[Tray] Quit requested");
                 app.exit(0);
             }
             _ => {}
@@ -148,9 +153,16 @@ fn register_feature_registries(app: &mut tauri::App<Wry>) {
 }
 
 fn start_session_initialization(session_manager: Arc<RwLock<SessionManager>>) {
+    // Clean up stale IPC sockets from previous sessions before starting
+    crate::session::ipc::cleanup_stale_sockets();
+
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = session_manager.read().await.initialize().await {
-            eprintln!("[App] Failed to initialize session: {error}");
+        let sm = session_manager.read().await;
+        // Start periodic cleanup of stale pending requests
+        sm.start_pending_request_cleanup();
+
+        if let Err(error) = sm.initialize().await {
+            error!("[App] Failed to initialize session: {error}");
         }
     });
 }

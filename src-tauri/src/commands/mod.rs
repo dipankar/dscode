@@ -1,5 +1,5 @@
-// Allow dead code for work-in-progress modules and registry systems
-#![allow(dead_code)]
+// Command modules for Tauri IPC handlers
+// Each module handles a specific domain of editor operations
 
 mod activity_bar_ops;
 mod activity_bar_registry;

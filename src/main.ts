@@ -67,8 +67,19 @@ export async function initializeMonaco() {
   }
 }
 
+const appEl = document.getElementById('app')!;
+
 const app = new App({
-  target: document.getElementById('app')!,
+  target: appEl,
+});
+
+// Signal that the app is ready so the loading screen can fade out.
+// Use requestAnimationFrame to ensure the Svelte DOM has been painted
+// before we trigger the CSS transition on the loading screen.
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    appEl.setAttribute('data-app-ready', '');
+  });
 });
 
 export default app;

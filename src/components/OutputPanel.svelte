@@ -44,7 +44,7 @@
   }
 </script>
 
-<div class="output-panel" class:visible>
+<div class="output-panel" class:visible role="log" aria-live="polite">
   <div class="output-header">
     <select class="channel-select" value={activeChannelId ?? ''} on:change={handleChannelChange}>
       {#each channels as channel}

@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Emitter;
+use tracing::error;
 
 impl SessionManager {
     pub async fn get_workspace_folders_detailed(&self) -> Vec<WorkspaceFolder> {
@@ -120,7 +121,7 @@ impl SessionManager {
         if let Err(err) =
             self.app_handle.emit("configuration-changed", &(section.clone(), scope.clone()))
         {
-            eprintln!("[SessionManager] Failed to emit workspace configuration change: {}", err);
+            error!("[SessionManager] Failed to emit workspace configuration change: {}", err);
         }
 
         Ok(())
@@ -144,7 +145,7 @@ impl SessionManager {
         }
 
         if let Err(err) = self.app_handle.emit("file-decorations-changed", &provider_id) {
-            eprintln!("[SessionManager] Failed to emit file decorations change: {}", err);
+            error!("[SessionManager] Failed to emit file decorations change: {}", err);
         }
 
         Ok(())

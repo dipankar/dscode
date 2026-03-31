@@ -8,7 +8,7 @@ use tauri::State;
 pub async fn register_color_theme(
     theme: ColorTheme, registry: State<'_, ThemeRegistry>,
 ) -> Result<String, String> {
-    registry.register_color_theme(theme)
+    registry.register_color_theme(theme).map_err(|e| e.to_string())
 }
 
 /// Unregister color theme
@@ -16,7 +16,7 @@ pub async fn register_color_theme(
 pub async fn unregister_color_theme(
     theme_id: String, registry: State<'_, ThemeRegistry>,
 ) -> Result<(), String> {
-    registry.unregister_color_theme(&theme_id)
+    registry.unregister_color_theme(&theme_id).map_err(|e| e.to_string())
 }
 
 /// Get color theme
@@ -24,7 +24,7 @@ pub async fn unregister_color_theme(
 pub async fn get_color_theme(
     theme_id: String, registry: State<'_, ThemeRegistry>,
 ) -> Result<ColorTheme, String> {
-    registry.get_color_theme(&theme_id)
+    registry.get_color_theme(&theme_id).map_err(|e| e.to_string())
 }
 
 /// Get all color themes
@@ -48,7 +48,7 @@ pub async fn get_color_themes_by_type(
 pub async fn set_active_color_theme(
     theme_id: String, registry: State<'_, ThemeRegistry>,
 ) -> Result<(), String> {
-    registry.set_active_color_theme(theme_id)
+    registry.set_active_color_theme(theme_id).map_err(|e| e.to_string())
 }
 
 /// Get active color theme
@@ -66,7 +66,7 @@ pub async fn get_active_color_theme(
 pub async fn register_icon_theme(
     theme: IconTheme, registry: State<'_, ThemeRegistry>,
 ) -> Result<String, String> {
-    registry.register_icon_theme(theme)
+    registry.register_icon_theme(theme).map_err(|e| e.to_string())
 }
 
 /// Unregister icon theme
@@ -74,7 +74,7 @@ pub async fn register_icon_theme(
 pub async fn unregister_icon_theme(
     theme_id: String, registry: State<'_, ThemeRegistry>,
 ) -> Result<(), String> {
-    registry.unregister_icon_theme(&theme_id)
+    registry.unregister_icon_theme(&theme_id).map_err(|e| e.to_string())
 }
 
 /// Get icon theme
@@ -82,7 +82,7 @@ pub async fn unregister_icon_theme(
 pub async fn get_icon_theme(
     theme_id: String, registry: State<'_, ThemeRegistry>,
 ) -> Result<IconTheme, String> {
-    registry.get_icon_theme(&theme_id)
+    registry.get_icon_theme(&theme_id).map_err(|e| e.to_string())
 }
 
 /// Get all icon themes
@@ -98,7 +98,7 @@ pub async fn get_all_icon_themes(
 pub async fn set_active_icon_theme(
     theme_id: String, registry: State<'_, ThemeRegistry>,
 ) -> Result<(), String> {
-    registry.set_active_icon_theme(theme_id)
+    registry.set_active_icon_theme(theme_id).map_err(|e| e.to_string())
 }
 
 /// Get active icon theme
@@ -116,7 +116,7 @@ pub async fn get_active_icon_theme(
 pub async fn register_product_icon_theme(
     theme: ProductIconTheme, registry: State<'_, ThemeRegistry>,
 ) -> Result<String, String> {
-    registry.register_product_icon_theme(theme)
+    registry.register_product_icon_theme(theme).map_err(|e| e.to_string())
 }
 
 /// Unregister product icon theme
@@ -124,7 +124,7 @@ pub async fn register_product_icon_theme(
 pub async fn unregister_product_icon_theme(
     theme_id: String, registry: State<'_, ThemeRegistry>,
 ) -> Result<(), String> {
-    registry.unregister_product_icon_theme(&theme_id)
+    registry.unregister_product_icon_theme(&theme_id).map_err(|e| e.to_string())
 }
 
 /// Get product icon theme
@@ -132,7 +132,7 @@ pub async fn unregister_product_icon_theme(
 pub async fn get_product_icon_theme(
     theme_id: String, registry: State<'_, ThemeRegistry>,
 ) -> Result<ProductIconTheme, String> {
-    registry.get_product_icon_theme(&theme_id)
+    registry.get_product_icon_theme(&theme_id).map_err(|e| e.to_string())
 }
 
 /// Get all product icon themes
@@ -148,7 +148,7 @@ pub async fn get_all_product_icon_themes(
 pub async fn set_active_product_icon_theme(
     theme_id: String, registry: State<'_, ThemeRegistry>,
 ) -> Result<(), String> {
-    registry.set_active_product_icon_theme(theme_id)
+    registry.set_active_product_icon_theme(theme_id).map_err(|e| e.to_string())
 }
 
 /// Get active product icon theme

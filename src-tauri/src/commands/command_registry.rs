@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
+use tracing::warn;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandInfo {
@@ -222,8 +223,8 @@ impl CommandRegistry {
         // Check for conflicts
         if let Some(existing) = commands.get(&command.id) {
             if existing.owner != command.owner {
-                eprintln!(
-                    "[CommandRegistry] Warning: Command '{}' already registered by '{}', overriding with '{}'",
+                warn!(
+                    "Command '{}' already registered by '{}', overriding with '{}'",
                     command.id, existing.owner, command.owner
                 );
             }

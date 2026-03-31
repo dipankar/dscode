@@ -1,7 +1,9 @@
+use dscode_core::CoreError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
+use tracing::{debug, error, info};
 
 /// File system provider for custom file systems
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,60 +155,74 @@ impl FileSystemRegistry {
     /// Register a file system provider
     pub fn register_file_system_provider(
         &self, provider: FileSystemProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.providers.write().map_err(|e| e.to_string())?;
+    ) -> Result<String, CoreError> {
+        let mut providers = self.providers.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         // Check for duplicate scheme
         if providers.iter().any(|p| p.scheme == provider.scheme) {
-            return Err(format!(
+            return Err(CoreError::Config(format!(
                 "File system provider for scheme '{}' already registered",
                 provider.scheme
-            ));
+            )));
         }
 
         let id = provider.id.clone();
         providers.push(provider.clone());
 
-        println!("[FileSystem] Registered provider: {} (scheme: {})", id, provider.scheme);
+        info!("Registered provider: {} (scheme: {})", id, provider.scheme);
 
         // Emit event
         if let Err(e) = self.app_handle.emit("filesystem-provider-registered", &provider) {
-            eprintln!("[FileSystem] Failed to emit provider registered event: {}", e);
+            error!("Failed to emit provider registered event: {}", e);
         }
 
         Ok(id)
     }
 
     /// Unregister a file system provider
-    pub fn unregister_file_system_provider(&self, scheme: &str) -> Result<(), String> {
-        let mut providers = self.providers.write().map_err(|e| e.to_string())?;
+    pub fn unregister_file_system_provider(&self, scheme: &str) -> Result<(), CoreError> {
+        let mut providers = self.providers.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let initial_len = providers.len();
         providers.retain(|p| p.scheme != scheme);
 
         if providers.len() == initial_len {
-            return Err(format!("No file system provider found for scheme '{}'", scheme));
+            return Err(CoreError::PathResolution(format!(
+                "No file system provider found for scheme '{}'",
+                scheme
+            )));
         }
 
-        println!("[FileSystem] Unregistered provider for scheme: {}", scheme);
+        info!("Unregistered provider for scheme: {}", scheme);
 
         // Emit event
         if let Err(e) = self.app_handle.emit("filesystem-provider-unregistered", scheme) {
-            eprintln!("[FileSystem] Failed to emit provider unregistered event: {}", e);
+            error!("Failed to emit provider unregistered event: {}", e);
         }
 
         Ok(())
     }
 
     /// Get file system provider for scheme
-    pub fn get_file_system_provider(&self, scheme: &str) -> Result<FileSystemProvider, String> {
-        let providers = self.providers.read().map_err(|e| e.to_string())?;
+    pub fn get_file_system_provider(&self, scheme: &str) -> Result<FileSystemProvider, CoreError> {
+        let providers = self.providers.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         providers
             .iter()
             .find(|p| p.scheme == scheme)
             .cloned()
-            .ok_or_else(|| format!("No file system provider found for scheme '{}'", scheme))
+            .ok_or_else(|| {
+                CoreError::PathResolution(format!(
+                    "No file system provider found for scheme '{}'",
+                    scheme
+                ))
+            })
     }
 
     /// Get all file system providers
@@ -215,48 +231,59 @@ impl FileSystemRegistry {
     }
 
     /// Create a file watcher
-    pub fn create_file_watcher(&self, watcher: FileWatcher) -> Result<String, String> {
-        let mut watchers = self.watchers.write().map_err(|e| e.to_string())?;
+    pub fn create_file_watcher(&self, watcher: FileWatcher) -> Result<String, CoreError> {
+        let mut watchers = self.watchers.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let id = watcher.id.clone();
         watchers.insert(id.clone(), watcher.clone());
 
-        println!("[FileSystem] Created watcher: {} (pattern: {})", id, watcher.glob_pattern);
+        info!("Created watcher: {} (pattern: {})", id, watcher.glob_pattern);
 
         // Emit event
         if let Err(e) = self.app_handle.emit("file-watcher-created", &watcher) {
-            eprintln!("[FileSystem] Failed to emit watcher created event: {}", e);
+            error!("Failed to emit watcher created event: {}", e);
         }
 
         Ok(id)
     }
 
     /// Dispose a file watcher
-    pub fn dispose_file_watcher(&self, watcher_id: &str) -> Result<(), String> {
-        let mut watchers = self.watchers.write().map_err(|e| e.to_string())?;
+    pub fn dispose_file_watcher(&self, watcher_id: &str) -> Result<(), CoreError> {
+        let mut watchers = self.watchers.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         if watchers.remove(watcher_id).is_none() {
-            return Err(format!("File watcher not found: {}", watcher_id));
+            return Err(CoreError::PathResolution(format!(
+                "File watcher not found: {}",
+                watcher_id
+            )));
         }
 
-        println!("[FileSystem] Disposed watcher: {}", watcher_id);
+        info!("Disposed watcher: {}", watcher_id);
 
         // Emit event
         if let Err(e) = self.app_handle.emit("file-watcher-disposed", watcher_id) {
-            eprintln!("[FileSystem] Failed to emit watcher disposed event: {}", e);
+            error!("Failed to emit watcher disposed event: {}", e);
         }
 
         Ok(())
     }
 
     /// Get file watcher by ID
-    pub fn get_file_watcher(&self, watcher_id: &str) -> Result<FileWatcher, String> {
-        let watchers = self.watchers.read().map_err(|e| e.to_string())?;
+    pub fn get_file_watcher(&self, watcher_id: &str) -> Result<FileWatcher, CoreError> {
+        let watchers = self.watchers.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         watchers
             .get(watcher_id)
             .cloned()
-            .ok_or_else(|| format!("File watcher not found: {}", watcher_id))
+            .ok_or_else(|| {
+                CoreError::PathResolution(format!("File watcher not found: {}", watcher_id))
+            })
     }
 
     /// Get all file watchers
@@ -270,8 +297,10 @@ impl FileSystemRegistry {
     }
 
     /// Emit file change event
-    pub fn emit_file_change_event(&self, event: FileChangeEvent) -> Result<(), String> {
-        let watchers = self.watchers.read().map_err(|e| e.to_string())?;
+    pub fn emit_file_change_event(&self, event: FileChangeEvent) -> Result<(), CoreError> {
+        let watchers = self.watchers.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         // Find matching watchers
         for watcher in watchers.values() {
@@ -292,7 +321,7 @@ impl FileSystemRegistry {
                 if let Err(e) =
                     self.app_handle.emit(&format!("file-watcher-event:{}", watcher.id), &event)
                 {
-                    eprintln!("[FileSystem] Failed to emit file change event: {}", e);
+                    error!("Failed to emit file change event: {}", e);
                 }
             }
         }
@@ -328,7 +357,7 @@ impl FileSystemRegistry {
             providers.retain(|p| p.owner != owner);
             let removed = before - providers.len();
             if removed > 0 {
-                println!("[FileSystem] Cleared {} provider(s) for owner: {}", removed, owner);
+                info!("Cleared {} provider(s) for owner: {}", removed, owner);
             }
         }
 
@@ -340,7 +369,7 @@ impl FileSystemRegistry {
             watchers.retain(|_, w| w.owner != owner);
             let removed = before - watchers.len();
             if removed > 0 {
-                println!("[FileSystem] Cleared {} watcher(s) for owner: {}", removed, owner);
+                info!("Cleared {} watcher(s) for owner: {}", removed, owner);
             }
         }
     }

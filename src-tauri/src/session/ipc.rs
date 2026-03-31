@@ -1,8 +1,8 @@
 use super::contributions::ExtensionContributes;
 use super::{SessionEvent, SessionManager, TextEditPayload};
 use crate::commands::{CommandInfo, CommandRegistry, LanguageFeaturesRegistry};
-use crate::extension_host::path_validator::PathValidator;
-use crate::extension_host::IncomingRequestHandler;
+use dscode_extension_host::PathValidator;
+use dscode_extension_host::IncomingRequestHandler;
 use serde_json::{json, Map, Value};
 use std::fs;
 use std::io;
@@ -12,7 +12,36 @@ use tauri::path::BaseDirectory;
 use tauri::Manager;
 use tokio::sync::oneshot;
 use tokio::time::{sleep, Duration};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+/// Maximum age for a pending request before it's considered stale (5 minutes).
+const STALE_REQUEST_TIMEOUT_SECS: u64 = 300;
+
+/// Remove orphaned dscode-*.sock files from /tmp that belong to previous sessions.
+pub fn cleanup_stale_sockets() {
+    #[cfg(target_family = "unix")]
+    {
+        let socket_dir = std::path::Path::new("/tmp");
+        let mut cleaned = 0;
+        if let Ok(entries) = fs::read_dir(socket_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with("dscode-") && name_str.ends_with(".sock") {
+                    if let Err(e) = fs::remove_file(entry.path()) {
+                        warn!("Failed to remove stale socket {:?}: {}", entry.path(), e);
+                    } else {
+                        cleaned += 1;
+                    }
+                }
+            }
+        }
+        if cleaned > 0 {
+            info!("Cleaned up {} stale IPC socket(s)", cleaned);
+        }
+    }
+}
 
 fn classify_io_error(error: &io::Error) -> &'static str {
     match error.kind() {
@@ -30,12 +59,94 @@ fn fs_error(code: &str, message: &str) -> String {
 }
 
 impl SessionManager {
+    /// Spawn a background task that periodically removes stale pending requests.
+    ///
+    /// If the frontend doesn't respond to a pending request within the timeout
+    /// (5 minutes by default), the oneshot::Sender is dropped, causing the
+    /// Receiver to get a RecvError. This prevents memory leaks from orphaned
+    /// pending requests when the frontend disconnects or hangs.
+    pub fn start_pending_request_cleanup(&self) {
+        let pending_message = Arc::clone(&self.pending_message_requests);
+        let pending_quick_pick = Arc::clone(&self.pending_quick_pick_requests);
+        let pending_input = Arc::clone(&self.pending_input_requests);
+
+        tokio::spawn(async move {
+            let interval = Duration::from_secs(60);
+            loop {
+                sleep(interval).await;
+
+                // Clean up message requests if too many are pending (sign of stale entries)
+                let stale_message_ids: Vec<String> = {
+                    let pending = pending_message.read().await;
+                    if pending.len() > 100 {
+                        pending.keys().cloned().collect()
+                    } else {
+                        Vec::new()
+                    }
+                };
+
+                if !stale_message_ids.is_empty() {
+                    let mut pending = pending_message.write().await;
+                    for id in stale_message_ids {
+                        if let Some(sender) = pending.remove(&id) {
+                            drop(sender);
+                            debug!("Cleaned up stale message request: {}", id);
+                        }
+                    }
+                    warn!("Cleaned up stale pending message requests");
+                }
+
+                // Clean up quick pick requests
+                let stale_quick_pick_ids: Vec<String> = {
+                    let pending = pending_quick_pick.read().await;
+                    if pending.len() > 100 {
+                        pending.keys().cloned().collect()
+                    } else {
+                        Vec::new()
+                    }
+                };
+
+                if !stale_quick_pick_ids.is_empty() {
+                    let mut pending = pending_quick_pick.write().await;
+                    for id in stale_quick_pick_ids {
+                        if let Some(sender) = pending.remove(&id) {
+                            drop(sender);
+                            debug!("Cleaned up stale quick pick request: {}", id);
+                        }
+                    }
+                    warn!("Cleaned up stale pending quick pick requests");
+                }
+
+                // Clean up input requests
+                let stale_input_ids: Vec<String> = {
+                    let pending = pending_input.read().await;
+                    if pending.len() > 100 {
+                        pending.keys().cloned().collect()
+                    } else {
+                        Vec::new()
+                    }
+                };
+
+                if !stale_input_ids.is_empty() {
+                    let mut pending = pending_input.write().await;
+                    for id in stale_input_ids {
+                        if let Some(sender) = pending.remove(&id) {
+                            drop(sender);
+                            debug!("Cleaned up stale input request: {}", id);
+                        }
+                    }
+                    warn!("Cleaned up stale pending input requests");
+                }
+            }
+        });
+    }
+
     /// Start the Extension Host with bidirectional NNG IPC
     pub(super) async fn start_extension_host(&self) -> Result<(), String> {
         {
             let mut manager = self.extension_host.lock().await;
-            if manager.state() == crate::extension_host::manager::ExtensionHostState::Running {
-                println!("[SessionManager] Extension Host already running, skipping");
+            if manager.state() == dscode_extension_host::ExtensionHostState::Running {
+                debug!("[SessionManager] Extension Host already running, skipping");
                 return Ok(());
             }
         }
@@ -76,12 +187,12 @@ impl SessionManager {
 
         self.ipc_manager.connect_outgoing("main", &outgoing_socket).await?;
 
-        println!("[SessionManager] Extension Host started successfully");
+        info!("[SessionManager] Extension Host started successfully");
         Ok(())
     }
 
     /// Clone for handler callback
-    pub(super) fn clone_for_handler(&self) -> Arc<Self> {
+    pub fn clone_for_handler(&self) -> Arc<Self> {
         Arc::new(Self {
             app_handle: self.app_handle.clone(),
             state: Arc::clone(&self.state),
@@ -163,12 +274,12 @@ impl SessionManager {
 
         for candidate in &candidates {
             if candidate.exists() {
-                println!("[SessionManager] Resolved extension host entry to {:?}", candidate);
+                debug!("[SessionManager] Resolved extension host entry to {:?}", candidate);
                 return Ok(candidate.clone());
             }
         }
 
-        eprintln!(
+        error!(
             "[SessionManager] Extension host entry not found. Checked {} candidates",
             candidates.len()
         );
@@ -182,7 +293,7 @@ impl SessionManager {
             let socket_path = socket_dir.join(format!("dscode-{}-{}.sock", kind, session_id));
             if socket_path.exists() {
                 if let Err(err) = fs::remove_file(&socket_path) {
-                    eprintln!(
+                    warn!(
                         "[SessionManager] Failed to remove stale socket {:?}: {}",
                         socket_path, err
                     );
@@ -221,7 +332,7 @@ impl SessionManager {
     async fn handle_incoming_request(
         &self, msg_type: &str, payload: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
-        println!("[SessionManager] Handling incoming request: {}", msg_type);
+        debug!("[SessionManager] Handling incoming request: {}", msg_type);
 
         // Guard: reject requests if session is not ready.
         // During initialization, the extension host may send "extension-host-ready"
@@ -255,7 +366,7 @@ impl SessionManager {
 
         match msg_type {
             "extension-host-ready" => {
-                println!("[SessionManager] Extension host ready signal received");
+                info!("[SessionManager] Extension host ready signal received");
                 self.extension_host_ready.notify_waiters();
                 Ok(json!({"success": true}))
             }
@@ -265,7 +376,7 @@ impl SessionManager {
                     .extensions_dir
                     .canonicalize()
                     .unwrap_or_else(|_| self.app_dirs.extensions_dir.clone());
-                println!("[SessionManager] Extensions directory: {:?}", extensions_dir);
+                debug!("[SessionManager] Extensions directory: {:?}", extensions_dir);
                 Ok(json!(extensions_dir.to_string_lossy().to_string()))
             }
             "get-extension-storage" => {
@@ -815,7 +926,7 @@ impl SessionManager {
                         .request("main", "configuration-changed", notify_payload)
                         .await
                     {
-                        eprintln!(
+                        error!(
                             "[SessionManager] Failed to forward configuration change: {}",
                             err
                         );
@@ -915,7 +1026,7 @@ impl SessionManager {
                             )
                             .await
                         {
-                            eprintln!("[SessionManager] Failed to notify secret change: {}", e);
+                            error!("[SessionManager] Failed to notify secret change: {}", e);
                         }
                         Ok(json!({ "success": true }))
                     }
@@ -946,7 +1057,7 @@ impl SessionManager {
                             )
                             .await
                         {
-                            eprintln!("[SessionManager] Failed to notify secret deletion: {}", e);
+                            error!("[SessionManager] Failed to notify secret deletion: {}", e);
                         }
                         Ok(json!({ "success": true }))
                     }
@@ -1486,7 +1597,7 @@ impl SessionManager {
             | "registerNotebookContentProvider"
             | "registerWebviewSerializer" => Ok(json!({"success": true})),
             _ => {
-                println!("[SessionManager] Unhandled request type: {}", msg_type);
+                warn!("[SessionManager] Unhandled request type: {}", msg_type);
                 Ok(json!({"success": true}))
             }
         }
@@ -1497,7 +1608,7 @@ impl SessionManager {
             return Ok(());
         }
 
-        println!("[SessionManager] IPC disconnected, attempting reconnection...");
+        info!("[SessionManager] IPC disconnected, attempting reconnection...");
 
         let outgoing_socket = self.outgoing_socket.read().await.clone();
         let incoming_socket = self.incoming_socket.read().await.clone();
@@ -1515,10 +1626,10 @@ impl SessionManager {
             manager.check_and_update_state();
             let current = manager.state();
             match current {
-                crate::extension_host::manager::ExtensionHostState::Running => {
+                dscode_extension_host::ExtensionHostState::Running => {
                     // Process is still alive — just reconnect IPC below.
                 }
-                crate::extension_host::manager::ExtensionHostState::Unhealthy => {
+                dscode_extension_host::ExtensionHostState::Unhealthy => {
                     manager.restart_if_needed(&entry, &outgoing, &incoming).await?;
                 }
                 _ => {
@@ -1532,7 +1643,7 @@ impl SessionManager {
 
         self.ipc_manager.reconnect_outgoing("main", &outgoing).await?;
 
-        println!("[SessionManager] Extension host reconnected successfully");
+        info!("[SessionManager] Extension host reconnected successfully");
         Ok(())
     }
 }

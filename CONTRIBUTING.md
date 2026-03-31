@@ -13,7 +13,7 @@ This project adheres to the [Contributor Covenant Code of Conduct](https://www.c
 - **Node.js** 20+ and npm
 - **Rust** stable (1.75+) with cargo
 - **Platform dependencies**:
-  - **Linux**: `libwebkit2gtk-4.0-dev`, `libssl-dev`, `libgtk-3-dev`, `librsvg2-dev`
+  - **Linux**: `libwebkit2gtk-4.1-dev`, `libssl-dev`, `libgtk-3-dev`, `librsvg2-dev`, `patchelf`
   - **macOS**: Xcode Command Line Tools (`xcode-select --install`)
   - **Windows**: Microsoft Visual C++ Build Tools
 
@@ -37,19 +37,68 @@ This project adheres to the [Contributor Covenant Code of Conduct](https://www.c
    npm run tauri:dev
    ```
 
+## Workspace Structure
+
+DSCode uses a Cargo workspace with 8 members:
+
+| Crate | Path | Purpose |
+|-------|------|---------|
+| `dscode-core` | `crates/dscode-core/` | TextBuffer, AppDirectories, shared types |
+| `dscode-lsp` | `crates/dscode-lsp/` | LSP client, manager, connection pool |
+| `dscode-dap` | `crates/dscode-dap/` | Debug Adapter Protocol client and pool |
+| `dscode-extension-host` | `crates/dscode-extension-host/` | Extension host manager, IPC, sandbox, permissions |
+| `dscode-terminal` | `crates/dscode-terminal/` | Terminal manager, PTY lifecycle |
+| `dscode-session` | `crates/dscode-session/` | Session manager, extension lifecycle, workspace, config |
+| `dscode` | `src-tauri/` | Tauri binary (depends on all library crates) |
+| `monaco-wasm` | `monaco-wasm/` | Monaco Editor WASM bindings |
+
+### Per-Crate Development
+
+Each library crate can be built and tested independently:
+
+```bash
+# Build a specific crate
+cargo build -p dscode-core
+
+# Test a specific crate
+cargo test -p dscode-lsp
+
+# Check a specific crate
+cargo check -p dscode-session
+```
+
+### Feature Flags
+
+Some crates have optional Tauri integration via feature flags:
+
+- `dscode-extension-host` — `tauri` feature enables `AppHandle`-dependent IPC
+- `dscode-terminal` — `tauri` feature enables `TauriEventSender`
+- `dscode-session` — `tauri` feature enables Tauri IPC providers
+
+The binary crate enables all Tauri features. Library crate tests run without Tauri features.
+
 ## Build Commands
 
 Run these checks before submitting a pull request:
 
 ```bash
+# Full workspace type check
+cargo check --workspace
+
+# Full workspace tests
+cargo test --workspace
+
+# Clippy lint (treat warnings as errors)
+cargo clippy --workspace -- -D warnings
+
+# Format check
+cargo fmt --check
+
 # Frontend TypeScript check
 npx tsc --noEmit
 
 # Svelte component type check
 npm run check
-
-# Rust backend type check
-cd src-tauri && cargo check
 
 # Extension host TypeScript check
 cd extension-host && npx tsc --noEmit
@@ -68,20 +117,26 @@ npm run lint
 
 All of the following must pass before committing:
 
-1. `npx tsc --noEmit` — frontend TypeScript
-2. `cd src-tauri && cargo check` — Rust
-3. `cd extension-host && npx tsc --noEmit` — extension host TypeScript
-4. `npx vite build` — production build
+1. `cargo check --workspace` — Rust workspace compiles
+2. `cargo test --workspace` — All workspace tests pass
+3. `cargo clippy --workspace -- -D warnings` — No clippy warnings
+4. `cargo fmt --check` — Code is formatted
+5. `npx tsc --noEmit` — Frontend TypeScript
+6. `cd extension-host && npx tsc --noEmit` — Extension host TypeScript
+7. `npx vite build` — Production build succeeds
 
 ## Code Style
 
 ### Rust
 
 - Format with `cargo fmt`
-- Lint with `cargo clippy -- -D warnings`
+- Lint with `cargo clippy --workspace -- -D warnings`
 - Use `tokio::sync::Mutex` (never `std::sync::Mutex`) in async contexts
 - Use `tokio::task::spawn_blocking` for filesystem I/O in Tauri command handlers
-- No comments unless explicitly requested
+- Use `tracing` macros (`info!`, `debug!`, `error!`, `warn!`) instead of `println!`/`eprintln!`
+- Use typed error enums (`thiserror`) instead of `String` for internal errors
+- Use `pub(crate)` for items that shouldn't be part of the crate's public API
+- Document all `pub` items with `///` doc comments
 
 ### TypeScript & Svelte
 
@@ -90,7 +145,8 @@ All of the following must pass before committing:
 - Type-check with `npm run check` (svelte-check)
 - Use `showConfirmPrompt()`/`showAlertPrompt()` from `stores/windowPrompt` instead of `confirm()`/`alert()`
 - Components must unsubscribe from stores in `onDestroy()` to prevent memory leaks
-- No comments unless explicitly requested
+- Add ARIA attributes for accessibility (`role`, `aria-label`, `aria-live`)
+- Use focus traps for modal components
 
 ### Styling
 
@@ -135,6 +191,8 @@ DSCode has three main layers:
 
 - **Frontend**: Svelte 4 + TypeScript + Monaco Editor + xterm.js
 - **Backend**: Tauri 2.1 (Rust) with tokio async runtime
+  - 6 reusable library crates (dscode-core, dscode-lsp, dscode-dap, dscode-extension-host, dscode-terminal, dscode-session)
+  - 1 binary crate (src-tauri) that depends on the library crates
 - **Extension Host**: Separate Node.js process communicating via NNG IPC
 
 See [docs/architecture/overview.md](docs/architecture/overview.md) for the full architecture document and [docs/](docs/) for additional design docs.
@@ -142,8 +200,16 @@ See [docs/architecture/overview.md](docs/architecture/overview.md) for the full 
 ## Testing
 
 ```bash
-# Rust tests
-cd src-tauri && cargo test
+# All workspace tests
+cargo test --workspace
+
+# Specific crate tests
+cargo test -p dscode-core
+cargo test -p dscode-lsp
+cargo test -p dscode-dap
+cargo test -p dscode-extension-host
+cargo test -p dscode-terminal
+cargo test -p dscode-session
 
 # Extension host tests
 cd extension-host && npm test

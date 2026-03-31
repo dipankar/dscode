@@ -1,0 +1,23 @@
+[package]
+name = "dscode-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Language Server Protocol client, manager, and connection pool for DSCode"
+readme = "README.md"
+keywords = ["lsp", "language-server", "dscode", "ide"]
+categories = ["development-tools", "asynchronous"]
+
+[dependencies]
+lsp-types = "0.94"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
+use tracing::error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityBarItem {
@@ -260,7 +261,7 @@ impl ActivityBarRegistry {
         let visible_items = self.get_visible_items();
 
         if let Err(e) = self.app_handle.emit("activity-bar-items-changed", &visible_items) {
-            eprintln!("[ActivityBarRegistry] Failed to emit event: {}", e);
+            error!("Failed to emit event: {}", e);
         }
     }
 

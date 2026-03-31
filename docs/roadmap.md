@@ -500,6 +500,81 @@
 
 ---
 
+## Phase 9: Public Launch (Current)
+
+**Goal:** Production-ready, publishable codebase with reusable Rust libraries on cargo, npm, and pypi.
+
+### 9.1 Library Extraction & Workspace
+- [ ] A1: Create Cargo workspace
+- [ ] A2: Extract dscode-core crate (text_buffer, config, shared types)
+- [ ] A3: Extract dscode-extension-host crate (manager, IPC, sandbox, permissions, rate limiter, secrets)
+- [ ] A4: Extract dscode-lsp crate (client, manager, pool)
+- [ ] A5: Extract dscode-dap crate (adapter, manager, pool, types)
+- [ ] A6: Extract dscode-terminal crate (manager, PTY lifecycle)
+- [ ] A7: Extract dscode-session crate (manager, IPC, extensions, documents, config, workspace)
+- [ ] A8: Update binary crate dependencies
+- [ ] A9: Update imports and module structure
+- [ ] A10: Write per-crate READMEs
+
+### 9.2 Error Handling & API Hygiene
+- [ ] B1: Define typed error enums for all crates (DscodeCoreError, LspError, DapError, ExtensionHostError, SessionError, TerminalError)
+- [ ] B2: Replace 614 String errors with typed errors
+- [ ] B3: Fix 104 .expect() panic-prone calls on Mutex locks
+- [ ] B4: Add pub(crate) visibility boundaries to library crates
+- [ ] B5: Remove #![allow(dead_code)] from commands/mod.rs
+
+### 9.3 Logging & Observability
+- [ ] C1: Replace 260 println! calls with tracing macros
+- [ ] C2: Replace 91 eprintln! calls with tracing macros
+- [ ] C3: Enhanced logging init (file output, rotation, structured fields)
+- [ ] C4: Add #[tracing::instrument] spans to key async operations
+
+### 9.4 Test Coverage
+- [ ] D1: dscode-core unit tests
+- [ ] D2: dscode-extension-host unit tests
+- [ ] D3: dscode-lsp unit tests
+- [ ] D4: dscode-dap unit tests
+- [ ] D5: dscode-terminal unit tests
+- [ ] D6: dscode-session unit tests
+- [ ] D7: Integration tests (LSP, extension host, terminal)
+- [ ] D8: Cross-platform CI (ubuntu/macos/windows)
+
+### 9.5 Security Hardening
+- [ ] E1: Windows sandbox (Job Objects API) - replace no-op
+- [ ] E2: VSIX manifest verification (SHA256 hash, identity validation)
+- [ ] E3: Secret cache encryption (AES-256-GCM, zeroize, TTL)
+- [ ] E4: Node.js binary integrity verification
+- [ ] E5: Stale IPC socket cleanup
+
+### 9.6 CI/CD & Publishing
+- [ ] F1: Cross-platform CI matrix
+- [ ] F2: Release workflow (tag-triggered, multi-platform builds)
+- [ ] F3: Cargo publishing setup (metadata, dry-run, docs.rs)
+- [ ] F4: npm extension-host publishing
+- [ ] F5: npm monaco-wasm publishing
+- [ ] F6: PyPI publishing (dscode-core Python bindings via PyO3/maturin)
+- [ ] F7: Tauri build in CI
+
+### 9.7 Documentation & Public Readiness
+- [ ] G1: Update CONTRIBUTING.md (remove "no comments" rule, add workspace instructions)
+- [ ] G2: Update SECURITY.md (document security hardening)
+- [ ] G3: Add rustdoc to all pub APIs in library crates
+- [ ] G4: Add docs.rs metadata to each crate
+- [ ] G5: Update root README.md (badges, library section, architecture diagram)
+- [ ] G6: Add MIT license to monaco-wasm
+
+### 9.8 UI Review & Polish
+- [ ] H1: Branded loading/splash screen (replace blank skeleton)
+- [ ] H2: Keyboard navigation audit
+- [ ] H3: ARIA attributes for accessibility (20 components)
+- [ ] H4: Focus traps for 8 modal components
+- [ ] H5: Screen reader announcements
+- [ ] H6: Svelte component tests
+
+**Deliverable:** Publishable crates on cargo.io, npm, and PyPI with proper documentation, tests, and security hardening. Target: v1.0.0.
+
+---
+
 ## Release Schedule
 
 ### v0.2.0-alpha (Week 3)
@@ -529,10 +604,18 @@
 - Search & replace
 - Performance optimizations
 
-### v1.0.0 (Week 17)
+### v1.0.0 (Week 17+)
 - Settings & themes
 - Full documentation
 - Production release
+- **Public Launch (Phase 9):**
+  - Library crates on cargo.io (dscode-core, dscode-lsp, dscode-dap, dscode-extension-host, dscode-session, dscode-terminal)
+  - npm packages (dscode-extension-host, monaco-wasm)
+  - PyPI package (dscode-core Python bindings)
+  - Branded loading screen
+  - Security hardening (Windows sandbox, VSIX verification, encrypted secrets)
+  - Cross-platform CI/CD
+  - Typed error handling, tracing-based logging, comprehensive tests
 
 ---
 

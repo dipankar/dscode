@@ -3,6 +3,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { clearWindowPrompt } from '../stores/windowPrompt';
   import type { WindowPrompt } from '../stores/windowPrompt';
+  import { focusTrap } from '../lib/focus-trap';
 
   export let prompt: WindowPrompt;
   let primaryButton: HTMLButtonElement | null = null;
@@ -39,7 +40,7 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="prompt-overlay" role="dialog" aria-modal="true" aria-labelledby="window-prompt-title">
+<div class="prompt-overlay" role="dialog" aria-modal="true" aria-labelledby="window-prompt-title" use:focusTrap>
   <div class="prompt-modal">
     <header class={`level-${prompt.level}`}>
       <h2 id="window-prompt-title">

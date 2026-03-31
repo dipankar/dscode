@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { clearQuickPick, type QuickPickEntry, type QuickPickState } from '../stores/quickPick';
+  import { focusTrap } from '../lib/focus-trap';
 
   export let request: QuickPickState;
 
@@ -225,6 +226,7 @@
     role="dialog"
     aria-modal="true"
     aria-label={request.title ?? 'Quick pick'}
+    use:focusTrap
   >
     {#if request.title}
       <header>

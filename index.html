@@ -27,69 +27,132 @@
         overflow: hidden;
       }
 
-      /* Loading skeleton - shows immediately */
-      .app-skeleton {
-        display: flex;
-        height: 100vh;
-        width: 100vw;
-      }
-
-      .skeleton-activity-bar {
-        width: 48px;
-        background-color: #333333;
-        border-right: 1px solid #3e3e42;
-      }
-
-      .skeleton-sidebar {
-        width: 250px;
-        background-color: #252526;
-        border-right: 1px solid #3e3e42;
-      }
-
-      .skeleton-main {
-        flex: 1;
+      /* === Branded Loading Screen === */
+      .loading-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
         display: flex;
         flex-direction: column;
+        align-items: center;
+        justify-content: center;
         background-color: #1e1e1e;
+        transition: opacity 0.5s ease-out, visibility 0.5s ease-out;
       }
 
-      .skeleton-editor {
-        flex: 1;
-        background-color: #1e1e1e;
+      /* Fade out when Svelte app is ready */
+      #app[data-app-ready] + .loading-screen,
+      #app[data-app-ready] ~ .loading-screen {
+        opacity: 0;
+        visibility: hidden;
       }
 
-      .skeleton-status {
-        height: 22px;
+      /* Logo icon */
+      .loading-logo {
+        width: 80px;
+        height: 80px;
+        margin-bottom: 24px;
+      }
+
+      /* App name */
+      .loading-title {
+        font-size: 28px;
+        font-weight: 300;
+        letter-spacing: 4px;
+        color: #e0e0e0;
+        margin-bottom: 6px;
+      }
+
+      /* Version */
+      .loading-version {
+        font-size: 12px;
+        font-weight: 400;
+        color: #6e6e6e;
+        letter-spacing: 1px;
+        margin-bottom: 32px;
+      }
+
+      /* Animated dots indicator */
+      .loading-dots {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .loading-dots span {
+        display: block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
         background-color: #007acc;
-        border-top: 1px solid #3e3e42;
+        animation: dot-pulse 1.4s ease-in-out infinite;
       }
 
-      /* Pulse animation for skeleton */
-      .skeleton-pulse {
-        animation: pulse 1.5s ease-in-out infinite;
+      .loading-dots span:nth-child(1) {
+        animation-delay: 0s;
       }
 
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.7; }
+      .loading-dots span:nth-child(2) {
+        animation-delay: 0.2s;
       }
 
-      /* Hide skeleton when app loads */
-      #app:not(:empty) + .app-skeleton {
-        display: none;
+      .loading-dots span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+
+      @keyframes dot-pulse {
+        0%, 80%, 100% {
+          opacity: 0.2;
+          transform: scale(0.8);
+        }
+        40% {
+          opacity: 1;
+          transform: scale(1.2);
+        }
+      }
+
+      /* Light theme detection for loading screen */
+      @media (prefers-color-scheme: light) {
+        .loading-screen {
+          background-color: #ffffff;
+        }
+
+        .loading-title {
+          color: #1e1e1e;
+        }
+
+        .loading-version {
+          color: #999999;
+        }
+
+        .loading-dots span {
+          background-color: #007acc;
+        }
       }
     </style>
   </head>
   <body>
     <div id="app"></div>
 
-    <!-- Static skeleton - renders instantly while JS loads -->
-    <div class="app-skeleton skeleton-pulse">
-      <div class="skeleton-activity-bar"></div>
-      <div class="skeleton-sidebar"></div>
-      <div class="skeleton-main">
-        <div class="skeleton-editor"></div>
-        <div class="skeleton-status"></div>
+    <!-- Branded loading screen - renders instantly before JS loads -->
+    <div class="loading-screen">
+      <svg class="loading-logo" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#007acc"/>
+            <stop offset="100%" stop-color="#0098ff"/>
+          </linearGradient>
+        </defs>
+        <rect width="128" height="128" rx="24" fill="url(#logo-grad)"/>
+        <text x="64" y="84" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="58" font-weight="700" fill="white" text-anchor="middle">DS</text>
+      </svg>
+      <div class="loading-title">DSCode</div>
+      <div class="loading-version">v0.1.0</div>
+      <div class="loading-dots">
+        <span></span>
+        <span></span>
+        <span></span>
       </div>
     </div>
 

@@ -345,7 +345,7 @@
   }
 </script>
 
-<div class="git-view">
+<div class="git-view" role="region" aria-label="Source Control">
   <div class="git-header">
     <h3>SOURCE CONTROL</h3>
     <button class="refresh-btn" on:click={loadGitStatus} title="Refresh">

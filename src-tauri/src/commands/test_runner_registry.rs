@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
+use tracing::{error, info};
 
 /// Test runner registry for extension API testing
 pub struct TestRunnerRegistry {
@@ -32,7 +33,7 @@ impl TestRunnerRegistry {
         let suite_id = suite.id.clone();
         suites.insert(suite_id.clone(), suite);
 
-        println!("[TestRunner] Registered test suite: {}", suite_id);
+        info!("[TestRunner] Registered test suite: {}", suite_id);
 
         Ok(suite_id)
     }
@@ -90,10 +91,10 @@ impl TestRunnerRegistry {
 
         // Emit event
         if let Err(e) = self.app_handle.emit("test-run-started", &result) {
-            eprintln!("[TestRunner] Failed to emit test run started event: {}", e);
+            error!("[TestRunner] Failed to emit test run started event: {}", e);
         }
 
-        println!("[TestRunner] Started test run: {}", run_id);
+        info!("[TestRunner] Started test run: {}", run_id);
 
         Ok(())
     }
@@ -116,7 +117,7 @@ impl TestRunnerRegistry {
 
             // Emit event
             if let Err(e) = self.app_handle.emit("test-result-updated", &test_result) {
-                eprintln!("[TestRunner] Failed to emit test result updated event: {}", e);
+                error!("[TestRunner] Failed to emit test result updated event: {}", e);
             }
 
             Ok(())
@@ -137,10 +138,10 @@ impl TestRunnerRegistry {
 
             // Emit event
             if let Err(e) = self.app_handle.emit("test-run-completed", &*run_result) {
-                eprintln!("[TestRunner] Failed to emit test run completed event: {}", e);
+                error!("[TestRunner] Failed to emit test run completed event: {}", e);
             }
 
-            println!("[TestRunner] Completed test run: {}", run_id);
+            info!("[TestRunner] Completed test run: {}", run_id);
 
             Ok(())
         } else {
@@ -183,7 +184,7 @@ impl TestRunnerRegistry {
         let mut coverage_data = self.coverage_data.write().await;
         coverage_data.insert(extension_id.clone(), coverage);
 
-        println!("[TestRunner] Updated coverage for: {}", extension_id);
+        info!("[TestRunner] Updated coverage for: {}", extension_id);
 
         Ok(())
     }
@@ -271,7 +272,7 @@ impl TestRunnerRegistry {
         let mut coverage_data = self.coverage_data.write().await;
         coverage_data.remove(extension_id);
 
-        println!("[TestRunner] Cleared test data for: {}", extension_id);
+        info!("[TestRunner] Cleared test data for: {}", extension_id);
     }
 
     /// Clear all test results
@@ -279,7 +280,7 @@ impl TestRunnerRegistry {
         let mut results = self.test_results.write().await;
         results.clear();
 
-        println!("[TestRunner] Cleared all test results");
+        info!("[TestRunner] Cleared all test results");
     }
 }
 

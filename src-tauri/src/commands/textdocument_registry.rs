@@ -1,7 +1,9 @@
+use dscode_core::CoreError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
+use tracing::{error, info};
 
 /// Text document representation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,34 +152,39 @@ impl TextDocumentRegistry {
     }
 
     /// Register a text document
-    pub fn register_text_document(&self, document: TextDocument) -> Result<(), String> {
-        let mut documents = self.documents.write().map_err(|e| e.to_string())?;
+    pub fn register_text_document(&self, document: TextDocument) -> Result<(), CoreError> {
+        let mut documents = self.documents.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let uri = document.uri.clone();
         documents.insert(uri.clone(), document.clone());
 
-        println!("[TextDocument] Registered document: {}", uri);
+        info!("Registered document: {}", uri);
 
         // Emit event
         if let Err(e) = self.app_handle.emit("text-document-opened", &document) {
-            eprintln!("[TextDocument] Failed to emit document opened event: {}", e);
+            error!("Failed to emit document opened event: {}", e);
         }
 
         Ok(())
     }
 
     /// Unregister a text document
-    pub fn unregister_text_document(&self, uri: &str) -> Result<(), String> {
-        let mut documents = self.documents.write().map_err(|e| e.to_string())?;
+    pub fn unregister_text_document(&self, uri: &str) -> Result<(), CoreError> {
+        let mut documents = self.documents.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        let document =
-            documents.remove(uri).ok_or_else(|| format!("Text document not found: {}", uri))?;
+        let document = documents
+            .remove(uri)
+            .ok_or_else(|| CoreError::Config(format!("Text document not found: {}", uri)))?;
 
-        println!("[TextDocument] Unregistered document: {}", uri);
+        info!("Unregistered document: {}", uri);
 
         // Emit event
         if let Err(e) = self.app_handle.emit("text-document-closed", &document) {
-            eprintln!("[TextDocument] Failed to emit document closed event: {}", e);
+            error!("Failed to emit document closed event: {}", e);
         }
 
         Ok(())
@@ -186,11 +193,14 @@ impl TextDocumentRegistry {
     /// Update text document
     pub fn update_text_document(
         &self, uri: &str, version: u64, content_changes: Vec<TextDocumentContentChange>,
-    ) -> Result<(), String> {
-        let mut documents = self.documents.write().map_err(|e| e.to_string())?;
+    ) -> Result<(), CoreError> {
+        let mut documents = self.documents.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        let document =
-            documents.get_mut(uri).ok_or_else(|| format!("Text document not found: {}", uri))?;
+        let document = documents
+            .get_mut(uri)
+            .ok_or_else(|| CoreError::Config(format!("Text document not found: {}", uri)))?;
 
         // Update version
         document.version = version;
@@ -199,34 +209,42 @@ impl TextDocumentRegistry {
 
         // Emit event
         if let Err(e) = self.app_handle.emit("text-document-changed", &event) {
-            eprintln!("[TextDocument] Failed to emit document changed event: {}", e);
+            error!("Failed to emit document changed event: {}", e);
         }
 
         Ok(())
     }
 
     /// Mark document as saved
-    pub fn mark_document_saved(&self, uri: &str) -> Result<(), String> {
-        let mut documents = self.documents.write().map_err(|e| e.to_string())?;
+    pub fn mark_document_saved(&self, uri: &str) -> Result<(), CoreError> {
+        let mut documents = self.documents.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        let document =
-            documents.get_mut(uri).ok_or_else(|| format!("Text document not found: {}", uri))?;
+        let document = documents
+            .get_mut(uri)
+            .ok_or_else(|| CoreError::Config(format!("Text document not found: {}", uri)))?;
 
         document.is_dirty = false;
 
         // Emit event
         if let Err(e) = self.app_handle.emit("text-document-saved", &document.clone()) {
-            eprintln!("[TextDocument] Failed to emit document saved event: {}", e);
+            error!("Failed to emit document saved event: {}", e);
         }
 
         Ok(())
     }
 
     /// Get text document
-    pub fn get_text_document(&self, uri: &str) -> Result<TextDocument, String> {
-        let documents = self.documents.read().map_err(|e| e.to_string())?;
+    pub fn get_text_document(&self, uri: &str) -> Result<TextDocument, CoreError> {
+        let documents = self.documents.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        documents.get(uri).cloned().ok_or_else(|| format!("Text document not found: {}", uri))
+        documents
+            .get(uri)
+            .cloned()
+            .ok_or_else(|| CoreError::Config(format!("Text document not found: {}", uri)))
     }
 
     /// Get all text documents
@@ -235,29 +253,35 @@ impl TextDocumentRegistry {
     }
 
     /// Register text editor
-    pub fn register_text_editor(&self, editor: TextEditor) -> Result<(), String> {
-        let mut editors = self.editors.write().map_err(|e| e.to_string())?;
+    pub fn register_text_editor(&self, editor: TextEditor) -> Result<(), CoreError> {
+        let mut editors = self.editors.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let id = editor.id.clone();
         editors.insert(id.clone(), editor.clone());
 
-        println!("[TextDocument] Registered editor: {}", id);
+        info!("Registered editor: {}", id);
 
         // Emit event
         if let Err(e) = self.app_handle.emit("text-editor-opened", &editor) {
-            eprintln!("[TextDocument] Failed to emit editor opened event: {}", e);
+            error!("Failed to emit editor opened event: {}", e);
         }
 
         Ok(())
     }
 
     /// Unregister text editor
-    pub fn unregister_text_editor(&self, editor_id: &str) -> Result<(), String> {
-        let mut editors = self.editors.write().map_err(|e| e.to_string())?;
+    pub fn unregister_text_editor(&self, editor_id: &str) -> Result<(), CoreError> {
+        let mut editors = self.editors.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        editors.remove(editor_id).ok_or_else(|| format!("Text editor not found: {}", editor_id))?;
+        editors
+            .remove(editor_id)
+            .ok_or_else(|| CoreError::Config(format!("Text editor not found: {}", editor_id)))?;
 
-        println!("[TextDocument] Unregistered editor: {}", editor_id);
+        info!("Unregistered editor: {}", editor_id);
 
         Ok(())
     }
@@ -265,18 +289,20 @@ impl TextDocumentRegistry {
     /// Update editor selections
     pub fn update_editor_selections(
         &self, editor_id: &str, selections: Vec<Selection>,
-    ) -> Result<(), String> {
-        let mut editors = self.editors.write().map_err(|e| e.to_string())?;
+    ) -> Result<(), CoreError> {
+        let mut editors = self.editors.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let editor = editors
             .get_mut(editor_id)
-            .ok_or_else(|| format!("Text editor not found: {}", editor_id))?;
+            .ok_or_else(|| CoreError::Config(format!("Text editor not found: {}", editor_id)))?;
 
         editor.selections = selections;
 
         // Emit event
         if let Err(e) = self.app_handle.emit("text-editor-selection-changed", &editor.clone()) {
-            eprintln!("[TextDocument] Failed to emit selection changed event: {}", e);
+            error!("Failed to emit selection changed event: {}", e);
         }
 
         Ok(())
@@ -285,32 +311,36 @@ impl TextDocumentRegistry {
     /// Update editor visible ranges
     pub fn update_editor_visible_ranges(
         &self, editor_id: &str, visible_ranges: Vec<Range>,
-    ) -> Result<(), String> {
-        let mut editors = self.editors.write().map_err(|e| e.to_string())?;
+    ) -> Result<(), CoreError> {
+        let mut editors = self.editors.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let editor = editors
             .get_mut(editor_id)
-            .ok_or_else(|| format!("Text editor not found: {}", editor_id))?;
+            .ok_or_else(|| CoreError::Config(format!("Text editor not found: {}", editor_id)))?;
 
         editor.visible_ranges = visible_ranges;
 
         // Emit event
         if let Err(e) = self.app_handle.emit("text-editor-visible-ranges-changed", &editor.clone())
         {
-            eprintln!("[TextDocument] Failed to emit visible ranges changed event: {}", e);
+            error!("Failed to emit visible ranges changed event: {}", e);
         }
 
         Ok(())
     }
 
     /// Get text editor
-    pub fn get_text_editor(&self, editor_id: &str) -> Result<TextEditor, String> {
-        let editors = self.editors.read().map_err(|e| e.to_string())?;
+    pub fn get_text_editor(&self, editor_id: &str) -> Result<TextEditor, CoreError> {
+        let editors = self.editors.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         editors
             .get(editor_id)
             .cloned()
-            .ok_or_else(|| format!("Text editor not found: {}", editor_id))
+            .ok_or_else(|| CoreError::Config(format!("Text editor not found: {}", editor_id)))
     }
 
     /// Get all text editors
@@ -321,32 +351,38 @@ impl TextDocumentRegistry {
     /// Create decoration type
     pub fn create_decoration_type(
         &self, decoration_type: DecorationType,
-    ) -> Result<String, String> {
-        let mut decoration_types = self.decoration_types.write().map_err(|e| e.to_string())?;
+    ) -> Result<String, CoreError> {
+        let mut decoration_types = self.decoration_types.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let id = decoration_type.id.clone();
         decoration_types.insert(id.clone(), decoration_type);
 
-        println!("[TextDocument] Created decoration type: {}", id);
+        info!("Created decoration type: {}", id);
 
         Ok(id)
     }
 
     /// Dispose decoration type
-    pub fn dispose_decoration_type(&self, decoration_type_id: &str) -> Result<(), String> {
-        let mut decoration_types = self.decoration_types.write().map_err(|e| e.to_string())?;
+    pub fn dispose_decoration_type(&self, decoration_type_id: &str) -> Result<(), CoreError> {
+        let mut decoration_types = self.decoration_types.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        decoration_types
-            .remove(decoration_type_id)
-            .ok_or_else(|| format!("Decoration type not found: {}", decoration_type_id))?;
+        decoration_types.remove(decoration_type_id).ok_or_else(|| {
+            CoreError::Config(format!("Decoration type not found: {}", decoration_type_id))
+        })?;
 
         // Also remove all decorations of this type
-        let mut decorations = self.decorations.write().map_err(|e| e.to_string())?;
+        let mut decorations = self.decorations.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
         for decoration_list in decorations.values_mut() {
             decoration_list.retain(|d| d.decoration_type != decoration_type_id);
         }
 
-        println!("[TextDocument] Disposed decoration type: {}", decoration_type_id);
+        info!("Disposed decoration type: {}", decoration_type_id);
 
         Ok(())
     }
@@ -354,8 +390,10 @@ impl TextDocumentRegistry {
     /// Set editor decorations
     pub fn set_editor_decorations(
         &self, editor_id: &str, decoration_type_id: &str, ranges: Vec<Range>, owner: &str,
-    ) -> Result<(), String> {
-        let mut decorations = self.decorations.write().map_err(|e| e.to_string())?;
+    ) -> Result<(), CoreError> {
+        let mut decorations = self.decorations.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let editor_decorations = decorations.entry(editor_id.to_string()).or_insert_with(Vec::new);
 
@@ -376,7 +414,7 @@ impl TextDocumentRegistry {
         if let Err(e) =
             self.app_handle.emit(&format!("editor-decorations-changed:{}", editor_id), &editor_id)
         {
-            eprintln!("[TextDocument] Failed to emit decorations changed event: {}", e);
+            error!("Failed to emit decorations changed event: {}", e);
         }
 
         Ok(())
@@ -398,8 +436,8 @@ impl TextDocumentRegistry {
             decoration_types.retain(|_, dt| dt.owner != owner);
             let removed = before - decoration_types.len();
             if removed > 0 {
-                println!(
-                    "[TextDocument] Cleared {} decoration type(s) for owner: {}",
+                info!(
+                    "Cleared {} decoration type(s) for owner: {}",
                     removed, owner
                 );
             }
@@ -416,8 +454,8 @@ impl TextDocumentRegistry {
                 total_removed += before - decoration_list.len();
             }
             if total_removed > 0 {
-                println!(
-                    "[TextDocument] Cleared {} decoration(s) for owner: {}",
+                info!(
+                    "Cleared {} decoration(s) for owner: {}",
                     total_removed, owner
                 );
             }

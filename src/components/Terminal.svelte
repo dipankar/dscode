@@ -159,7 +159,7 @@
   });
 </script>
 
-<div class="terminal-wrapper">
+<div class="terminal-wrapper" role="application" aria-label="Terminal">
   <div class="terminal-container" bind:this={terminalContainer}></div>
 </div>
 

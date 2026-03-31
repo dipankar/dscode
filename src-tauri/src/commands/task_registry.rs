@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
+use tracing::{error, info};
 
 /// Task registry for managing task providers and definitions
 pub struct TaskRegistry {
@@ -34,7 +35,7 @@ impl TaskRegistry {
 
         providers.push(provider.clone());
 
-        println!("[Task] Registered task provider: {} (type: {})", provider.id, provider.task_type);
+        info!("[Task] Registered task provider: {} (type: {})", provider.id, provider.task_type);
 
         Ok(provider_id)
     }
@@ -45,7 +46,7 @@ impl TaskRegistry {
 
         if let Some(pos) = providers.iter().position(|p| p.id == provider_id) {
             providers.remove(pos);
-            println!("[Task] Unregistered task provider: {}", provider_id);
+            info!("[Task] Unregistered task provider: {}", provider_id);
             Ok(())
         } else {
             Err(format!("Task provider '{}' not found", provider_id))
@@ -88,10 +89,10 @@ impl TaskRegistry {
 
         // Emit task started event
         if let Err(e) = self.app_handle.emit("task-started", &execution) {
-            eprintln!("[Task] Failed to emit task started event: {}", e);
+            error!("[Task] Failed to emit task started event: {}", e);
         }
 
-        println!("[Task] Started task execution: {}", execution_id);
+        info!("[Task] Started task execution: {}", execution_id);
 
         Ok(execution_id)
     }
@@ -108,10 +109,10 @@ impl TaskRegistry {
 
             // Emit task updated event
             if let Err(e) = self.app_handle.emit("task-updated", execution.clone()) {
-                eprintln!("[Task] Failed to emit task updated event: {}", e);
+                error!("[Task] Failed to emit task updated event: {}", e);
             }
 
-            println!("[Task] Updated task execution: {} (state: {:?})", execution_id, state);
+            info!("[Task] Updated task execution: {} (state: {:?})", execution_id, state);
 
             Ok(())
         } else {
@@ -133,10 +134,10 @@ impl TaskRegistry {
 
             // Emit task ended event
             if let Err(e) = self.app_handle.emit("task-ended", execution.clone()) {
-                eprintln!("[Task] Failed to emit task ended event: {}", e);
+                error!("[Task] Failed to emit task ended event: {}", e);
             }
 
-            println!("[Task] Ended task execution: {} (exit code: {})", execution_id, exit_code);
+            info!("[Task] Ended task execution: {} (exit code: {})", execution_id, exit_code);
 
             Ok(())
         } else {
@@ -162,7 +163,7 @@ impl TaskRegistry {
     pub fn clear_task_executions(&self) {
         let mut executions = self.task_executions.blocking_write();
         executions.clear();
-        println!("[Task] Cleared all task executions");
+        info!("[Task] Cleared all task executions");
     }
 
     // ===== Cleanup =====
@@ -172,7 +173,7 @@ impl TaskRegistry {
         let mut providers = self.providers.blocking_write();
         providers.retain(|p| p.owner != owner);
 
-        println!("[Task] Cleared task data for owner: {}", owner);
+        info!("[Task] Cleared task data for owner: {}", owner);
     }
 }
 

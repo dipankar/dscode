@@ -3,6 +3,7 @@
 > A fast, Rust-based Visual Studio Code alternative with full extension compatibility
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/tauri-%2324C8DB.svg?style=flat&logo=tauri&logoColor=white)](https://tauri.app/)
 [![Svelte](https://img.shields.io/badge/svelte-%23f1413d.svg?style=flat&logo=svelte&logoColor=white)](https://svelte.dev/)
@@ -23,36 +24,101 @@ DSCode is a code editor built with a **Rust backend** (Tauri 2.1) and **Svelte 4
 - **LSP Support**: Language Server Protocol integration for intelligent code editing
 - **Git Integration**: Full SCM via libgit2
 - **Cross-Platform**: Linux, macOS, and Windows support
+- **Reusable Libraries**: Core components available as Cargo crates for use in other Rust projects
+
+## Library Crates
+
+DSCode's core components are published as reusable Rust libraries. Use them independently in your own projects:
+
+| Crate | Description | Install |
+|-------|-------------|---------|
+| `dscode-core` | TextBuffer (rope-based), AppDirectories, CoreError | `cargo add dscode-core` |
+| `dscode-lsp` | LSP client, manager, connection pool | `cargo add dscode-lsp` |
+| `dscode-dap` | Debug Adapter Protocol client, manager, pool | `cargo add dscode-dap` |
+| `dscode-extension-host` | Extension host manager, IPC, sandbox, permissions, rate limiter, secrets | `cargo add dscode-extension-host` |
+| `dscode-terminal` | Terminal manager, PTY lifecycle, TerminalEventSender trait | `cargo add dscode-terminal` |
+| `dscode-session` | Session manager, extension lifecycle, workspace, configuration | `cargo add dscode-session` |
+
+### Using as a Library
+
+```rust
+use dscode_core::{TextBuffer, AppDirectories};
+
+fn main() {
+    let buffer = TextBuffer::new("Hello, world!");
+    println!("Buffer length: {} chars", buffer.len_chars());
+
+    let app_dirs = AppDirectories::resolve(None);
+    println!("Config dir: {:?}", app_dirs.config_dir);
+}
+```
+
+```rust
+use dscode_lsp::{LspManager, LspServerPool, LspServerStrategy};
+
+fn main() {
+    let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
+    let manager = LspManager::new(pool);
+    manager.register_server("rust", "rust-analyzer", vec!["--stdio".to_string()]);
+}
+```
+
+Each crate has optional Tauri integration via feature flags:
+```toml
+[dependencies]
+dscode-terminal = { version = "0.1", features = ["tauri"] }
+```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│           Tauri Window (WebKit/Chromium)                │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │   Frontend (Svelte 4 + TypeScript)                │  │
-│  │   - Monaco Editor                                  │  │
-│  │   - Svelte Components (34 components)              │  │
-│  │   - CSS Custom Properties (VS Code theme compat)   │  │
-│  └────────────────┬──────────────────────────────────┘  │
-│                   │ Tauri IPC (invoke/emit)             │
-│  ┌────────────────▼──────────────────────────────────┐  │
-│  │   Rust Backend                                    │  │
-│  │   - SessionManager (central coordinator)           │  │
-│  │   - File System + Path Validation                  │  │
-│  │   - Git Integration (libgit2)                     │  │
-│  │   - Terminal (PTY)                                │  │
-│  │   - Resource Monitoring                           │  │
-│  └────────────────┬──────────────────────────────────┘  │
-└───────────────────┼──────────────────────────────────────┘
-                    │ NNG IPC (nanomsg, serde_json)
-         ┌──────────┴────────────┬─────────────┐
-         │                       │             │
-    ┌────▼──────┐          ┌────▼────┐   ┌───▼────┐
-    │ Extension │          │   LSP   │   │ Debug  │
-    │   Host    │          │ Client  │   │  DAP   │
-    │ (Node.js) │          │         │   │        │
-    └───────────┘          └─────────┘   └────────┘
+┌──────────────────────────────────────────────────────────────┐
+│             Tauri Window (WebKit/Chromium)                   │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │   Frontend (Svelte 4 + TypeScript)                     │ │
+│  │   - Monaco Editor                                      │ │
+│  │   - Svelte Components (38 components)                   │ │
+│  │   - CSS Custom Properties (VS Code theme compat)        │ │
+│  │   - ARIA accessibility, focus traps                     │ │
+│  └──────────────────────┬─────────────────────────────────┘ │
+│                          │ Tauri IPC (invoke/emit)            │
+│  ┌───────────────────────▼─────────────────────────────────┐ │
+│  │   Rust Binary (src-tauri)                               │ │
+│  │   - SessionManager (central coordinator)                │ │
+│  │   - Tauri Command Handlers (45 modules)                 │ │
+│  │   - Bootstrap, Logging, Monitoring, File Watcher        │ │
+│  └──────────┬──────────────────────────────────────────────┘ │
+└─────────────┼────────────────────────────────────────────────┘
+              │ depends on
+┌─────────────▼────────────────────────────────────────────────┐
+│  Cargo Workspace Library Crates                              │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐ │
+│  │ dscode-core  │ │  dscode-lsp  │ │    dscode-dap        │ │
+│  │ TextBuffer   │ │  LspClient   │ │    DebugAdapter      │ │
+│  │ AppDirs      │ │  LspManager  │ │    DebugManager      │ │
+│  │ CoreError    │ │  LspPool     │ │    DapPool           │ │
+│  └──────────────┘ └──────────────┘ └──────────────────────┘ │
+│  ┌──────────────────────┐ ┌──────────────┐                 │
+│  │ dscode-extension-host │ │  dscode-term │                 │
+│  │ HostManager          │ │  TermManager │                 │
+│  │ IPC + Sandbox        │ │  PTY         │                 │
+│  │ Permissions + Rate   │ │  EventSender │                 │
+│  │ Secrets + Validator  │ │  TermError   │                 │
+│  └──────────────────────┘ └──────────────┘                 │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │ dscode-session                                          │ │
+│  │ ConfigStore, ExtensionLifecycle, Workspace, Documents,  │ │
+│  │ Contributions, EventEmitter, SessionState                │ │
+│  └────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+              │ NNG IPC (nanomsg, serde_json)
+   ┌──────────┴────────────┬─────────────┐
+   │                       │             │
+  ┌▼──────────┐     ┌─────▼────┐   ┌────▼───┐
+  │ Extension │     │   LSP    │   │ Debug  │
+  │   Host    │     │ Server  │   │  DAP    │
+  │ (Node.js) │     │         │   │ Server │
+  └───────────┘     └─────────┘   └────────┘
 ```
 
 ## Core Technologies
@@ -75,6 +141,8 @@ DSCode is a code editor built with a **Rust backend** (Tauri 2.1) and **Svelte 4
 - **LSP**: [tower-lsp](https://github.com/ebkalderon/tower-lsp) - Language Server Protocol
 - **Git**: [git2](https://github.com/rust-lang/git2-rs) - libgit2 bindings
 - **Terminal**: [portable-pty](https://github.com/wez/wezterm/tree/main/pty) - PTY support
+- **Logging**: [tracing](https://github.com/tokio-rs/tracing) - Structured logging
+- **Errors**: [thiserror](https://github.com/dtolnay/thiserror) - Typed error enums
 - **Search**: ripgrep-based (ignore + grep crates)
 
 ### Extension Runtime
@@ -82,83 +150,35 @@ DSCode is a code editor built with a **Rust backend** (Tauri 2.1) and **Svelte 4
 - **Runtime**: Full **Node.js** process (separate from Tauri)
 - **Communication**: NNG REQ/REP IPC with worker threads
 - **API**: vscode.\* API implementation
-- **Security**: Deny-by-default sandbox (macOS: sandbox-exec, Linux: bwrap)
+- **Security**: Deny-by-default sandbox (macOS: sandbox-exec, Linux: bwrap, Windows: Job Objects)
 - **Secrets**: OS keyring integration via SecretStorage API
 
 ## Project Structure
 
 ```
 dscode/
-├── src-tauri/                     # Rust backend
+├── Cargo.toml                     # Workspace root
+├── crates/
+│   ├── dscode-core/               # TextBuffer, AppDirectories
+│   ├── dscode-lsp/                 # LSP client, manager, pool
+│   ├── dscode-dap/                 # Debug Adapter Protocol
+│   ├── dscode-extension-host/      # Extension host management
+│   ├── dscode-terminal/            # Terminal manager
+│   └── dscode-session/            # Session management
+├── src-tauri/                     # Tauri binary crate
 │   ├── src/
-│   │   ├── main.rs                # Tauri app entry point
+│   │   ├── main.rs                # App entry point
 │   │   ├── bootstrap.rs           # App initialization
-│   │   ├── commands/              # Tauri command handlers
-│   │   │   ├── file_ops.rs        # File operations
-│   │   │   ├── git_ops.rs         # Git commands
-│   │   │   ├── terminal_ops.rs    # Terminal commands
-│   │   │   └── debug_ops.rs       # Debug commands
-│   │   ├── session/              # Session management
-│   │   │   ├── mod.rs             # SessionManager (central coordinator)
-│   │   │   ├── ipc.rs             # Extension host IPC handler
-│   │   │   ├── extensions.rs      # Extension lifecycle
-│   │   │   └── workspace.rs       # Workspace management
-│   │   ├── extension_host/       # Extension host management
-│   │   │   ├── manager.rs        # Process lifecycle + crash recovery
-│   │   │   ├── nng_ipc.rs        # NNG IPC with spawn_blocking
-│   │   │   ├── nng_manager.rs    # NNG connection manager
-│   │   │   ├── sandbox.rs        # Multi-platform sandboxing
-│   │   │   ├── path_validator.rs # Path validation + traversal prevention
-│   │   │   └── secrets.rs        # SecretStorage with keyring
-│   │   ├── lsp/                  # Language Server Protocol
-│   │   │   ├── client.rs         # LSP client (tokio async)
-│   │   │   ├── manager.rs       # LSP manager
-│   │   │   └── pool.rs          # LSP connection pool
-│   │   ├── core/                 # Core editor logic
-│   │   ├── debug/                # Debug Adapter Protocol
-│   │   ├── terminal/             # Terminal manager
-│   │   ├── git/                  # Git integration
-│   │   ├── config/               # Configuration management
-│   │   ├── monitoring/           # Resource monitoring
-│   │   └── watcher.rs            # File watching
+│   │   ├── session/               # SessionManager + IPC
+│   │   ├── commands/              # 45 Tauri command modules
+│   │   └── ...
 │   └── Cargo.toml
-├── src/                           # Frontend (Svelte/TypeScript)
-│   ├── main.ts                    # App entry, lazy component loading
-│   ├── App.svelte                 # Root component + error boundary
-│   ├── app.css                    # Global styles + CSS custom properties
-│   ├── components/                # Svelte UI components
-│   │   ├── ActivityBar.svelte
-│   │   ├── EditorArea.svelte
-│   │   ├── Sidebar.svelte
-│   │   ├── CommandPalette.svelte
-│   │   ├── QuickOpen.svelte
-│   │   ├── DiffViewer.svelte
-│   │   ├── GitView.svelte
-│   │   ├── SearchView.svelte
-│   │   ├── StatusBar.svelte
-│   │   └── ...
-│   ├── stores/                    # Svelte stores (state management)
-│   │   ├── editor.ts
-│   │   ├── git.ts
-│   │   ├── windowPrompt.ts
-│   │   ├── appError.ts
-│   │   └── ...
-│   └── lib/                       # Shared logic
-│       ├── app-shell/            # App shell controller
-│       ├── command-dispatcher.ts  # Command registry
-│       ├── contracts/            # TypeScript interfaces
-│       └── wasm-tokenizer.ts     # WASM syntax highlighting
+├── monaco-wasm/                   # Monaco WASM bindings
 ├── extension-host/                # Node.js extension runtime
-│   ├── src/
-│   │   ├── main.ts               # Extension host entry point
-│   │   ├── nng-ipc.ts            # NNG IPC with worker thread
-│   │   ├── bridge.ts             # Request/response handlers
-│   │   ├── api/
-│   │   │   ├── vscode.ts         # vscode.* API implementation
-│   │   │   └── languages.ts      # Language provider registry
-│   │   └── extensions/
-│   │       └── manager.ts        # Extension lifecycle management
-│   └── package.json
+├── src/                           # Svelte frontend
+│   ├── components/                # 38 Svelte components
+│   ├── stores/                    # State management
+│   └── lib/                       # Shared logic
 └── docs/                          # Documentation
 ```
 
@@ -167,9 +187,9 @@ dscode/
 ### Prerequisites
 
 - Rust 1.75+ (with cargo)
-- Node.js 18+ and npm
+- Node.js 20+ and npm
 - Platform-specific dependencies:
-  - **Linux**: `libwebkit2gtk-4.0-dev`, `libssl-dev`, `libgtk-3-dev`
+  - **Linux**: `libwebkit2gtk-4.1-dev`, `libssl-dev`, `libgtk-3-dev`, `librsvg2-dev`, `patchelf`
   - **macOS**: Xcode Command Line Tools
   - **Windows**: Microsoft Visual C++ Build Tools
 
@@ -177,7 +197,7 @@ dscode/
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/dscode.git
+git clone https://github.com/dscode-dev/dscode.git
 cd dscode
 
 # Install frontend dependencies
@@ -188,6 +208,20 @@ npm run tauri:dev
 
 # Build for production
 npm run tauri:build
+```
+
+### Running Tests
+
+```bash
+# All workspace tests
+cargo test --workspace
+
+# Specific crate tests
+cargo test -p dscode-core
+cargo test -p dscode-lsp
+
+# Clippy lint
+cargo clippy --workspace -- -D warnings
 ```
 
 ### Running
@@ -227,9 +261,12 @@ The extension host supports full two-way IPC for: Hover, Completion, Diagnostics
 - **Deny-by-default sandbox**: Extensions start with no permissions
 - **Path validation**: All filesystem access validated against workspace allowlist
 - **Zip Slip prevention**: VSIX extraction validates paths
+- **VSIX manifest verification**: SHA256 hash check + package.json cross-validation
 - **OS keyring**: Extension secrets stored via OS-native keyring
-- **Platform sandboxes**: macOS (sandbox-exec), Linux (bubblewrap), planned Windows (Job Objects)
+- **Platform sandboxes**: macOS (sandbox-exec), Linux (bubblewrap), Windows (Job Objects)
 - **Crash recovery**: Extension host restarts with exponential backoff (max 3 attempts)
+- **Stale IPC cleanup**: Orphaned socket files and pending requests cleaned up automatically
+- **Node.js verification**: Binary hash verification on startup
 
 ## Documentation
 
@@ -238,23 +275,11 @@ The extension host supports full two-way IPC for: Hover, Completion, Diagnostics
 - [Extension System](docs/architecture/extension-system.md)
 - [UI System](docs/architecture/ui-system.md)
 - [LSP Integration](docs/architecture/lsp-integration.md)
+- [Roadmap](docs/roadmap.md)
 
 ## Contributing
 
-```bash
-# Install dependencies
-npm install
-
-# Run type checks
-npm run check          # Svelte component type check
-cd src-tauri && cargo check  # Rust type check
-
-# Run linter
-npm run lint
-
-# Development with hot reload
-npm run tauri:dev
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines including workspace build instructions, code style, and PR process.
 
 ## License
 

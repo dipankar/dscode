@@ -190,7 +190,7 @@
   });
 </script>
 
-<div class="search-view">
+<div class="search-view" role="search" aria-label="Search">
   <div class="search-header">
     <h3>SEARCH</h3>
     <button

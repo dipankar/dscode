@@ -1,8 +1,10 @@
+use dscode_core::CoreError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
+use tracing::{error, info};
 
 /// Color theme type
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -119,33 +121,44 @@ impl ThemeRegistry {
     // ===== Color Themes =====
 
     /// Register color theme
-    pub fn register_color_theme(&self, theme: ColorTheme) -> Result<String, String> {
-        let mut themes = self.color_themes.write().map_err(|e| e.to_string())?;
+    pub fn register_color_theme(&self, theme: ColorTheme) -> Result<String, CoreError> {
+        let mut themes = self.color_themes.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let id = theme.id.clone();
         themes.insert(id.clone(), theme.clone());
 
-        println!("[Theme] Registered color theme: {} ({})", theme.label, theme.id);
+        info!("Registered color theme: {} ({})", theme.label, theme.id);
 
         Ok(id)
     }
 
     /// Unregister color theme
-    pub fn unregister_color_theme(&self, theme_id: &str) -> Result<(), String> {
-        let mut themes = self.color_themes.write().map_err(|e| e.to_string())?;
+    pub fn unregister_color_theme(&self, theme_id: &str) -> Result<(), CoreError> {
+        let mut themes = self.color_themes.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        themes.remove(theme_id).ok_or_else(|| format!("Color theme not found: {}", theme_id))?;
+        themes
+            .remove(theme_id)
+            .ok_or_else(|| CoreError::Config(format!("Color theme not found: {}", theme_id)))?;
 
-        println!("[Theme] Unregistered color theme: {}", theme_id);
+        info!("Unregistered color theme: {}", theme_id);
 
         Ok(())
     }
 
     /// Get color theme
-    pub fn get_color_theme(&self, theme_id: &str) -> Result<ColorTheme, String> {
-        let themes = self.color_themes.read().map_err(|e| e.to_string())?;
+    pub fn get_color_theme(&self, theme_id: &str) -> Result<ColorTheme, CoreError> {
+        let themes = self.color_themes.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        themes.get(theme_id).cloned().ok_or_else(|| format!("Color theme not found: {}", theme_id))
+        themes
+            .get(theme_id)
+            .cloned()
+            .ok_or_else(|| CoreError::Config(format!("Color theme not found: {}", theme_id)))
     }
 
     /// Get all color themes
@@ -165,27 +178,31 @@ impl ThemeRegistry {
     }
 
     /// Set active color theme
-    pub fn set_active_color_theme(&self, theme_id: String) -> Result<(), String> {
+    pub fn set_active_color_theme(&self, theme_id: String) -> Result<(), CoreError> {
         // Verify theme exists
-        let themes = self.color_themes.read().map_err(|e| e.to_string())?;
+        let themes = self.color_themes.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
         if !themes.contains_key(&theme_id) {
-            return Err(format!("Color theme not found: {}", theme_id));
+            return Err(CoreError::Config(format!("Color theme not found: {}", theme_id)));
         }
         drop(themes);
 
         // Update settings
-        let mut settings = self.theme_settings.write().map_err(|e| e.to_string())?;
+        let mut settings = self.theme_settings.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
         settings.active_color_theme = Some(theme_id.clone());
         drop(settings);
 
-        println!("[Theme] Set active color theme: {}", theme_id);
+        info!("Set active color theme: {}", theme_id);
 
         // Emit event
         if let Err(e) = self
             .app_handle
             .emit("theme-changed", ThemeChangeEvent { theme_id, theme_type: "color".to_string() })
         {
-            eprintln!("[Theme] Failed to emit theme changed event: {}", e);
+            error!("Failed to emit theme changed event: {}", e);
         }
 
         Ok(())
@@ -203,33 +220,44 @@ impl ThemeRegistry {
     // ===== Icon Themes =====
 
     /// Register icon theme
-    pub fn register_icon_theme(&self, theme: IconTheme) -> Result<String, String> {
-        let mut themes = self.icon_themes.write().map_err(|e| e.to_string())?;
+    pub fn register_icon_theme(&self, theme: IconTheme) -> Result<String, CoreError> {
+        let mut themes = self.icon_themes.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let id = theme.id.clone();
         themes.insert(id.clone(), theme.clone());
 
-        println!("[Theme] Registered icon theme: {} ({})", theme.label, theme.id);
+        info!("Registered icon theme: {} ({})", theme.label, theme.id);
 
         Ok(id)
     }
 
     /// Unregister icon theme
-    pub fn unregister_icon_theme(&self, theme_id: &str) -> Result<(), String> {
-        let mut themes = self.icon_themes.write().map_err(|e| e.to_string())?;
+    pub fn unregister_icon_theme(&self, theme_id: &str) -> Result<(), CoreError> {
+        let mut themes = self.icon_themes.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        themes.remove(theme_id).ok_or_else(|| format!("Icon theme not found: {}", theme_id))?;
+        themes
+            .remove(theme_id)
+            .ok_or_else(|| CoreError::Config(format!("Icon theme not found: {}", theme_id)))?;
 
-        println!("[Theme] Unregistered icon theme: {}", theme_id);
+        info!("Unregistered icon theme: {}", theme_id);
 
         Ok(())
     }
 
     /// Get icon theme
-    pub fn get_icon_theme(&self, theme_id: &str) -> Result<IconTheme, String> {
-        let themes = self.icon_themes.read().map_err(|e| e.to_string())?;
+    pub fn get_icon_theme(&self, theme_id: &str) -> Result<IconTheme, CoreError> {
+        let themes = self.icon_themes.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        themes.get(theme_id).cloned().ok_or_else(|| format!("Icon theme not found: {}", theme_id))
+        themes
+            .get(theme_id)
+            .cloned()
+            .ok_or_else(|| CoreError::Config(format!("Icon theme not found: {}", theme_id)))
     }
 
     /// Get all icon themes
@@ -243,27 +271,31 @@ impl ThemeRegistry {
     }
 
     /// Set active icon theme
-    pub fn set_active_icon_theme(&self, theme_id: String) -> Result<(), String> {
+    pub fn set_active_icon_theme(&self, theme_id: String) -> Result<(), CoreError> {
         // Verify theme exists
-        let themes = self.icon_themes.read().map_err(|e| e.to_string())?;
+        let themes = self.icon_themes.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
         if !themes.contains_key(&theme_id) {
-            return Err(format!("Icon theme not found: {}", theme_id));
+            return Err(CoreError::Config(format!("Icon theme not found: {}", theme_id)));
         }
         drop(themes);
 
         // Update settings
-        let mut settings = self.theme_settings.write().map_err(|e| e.to_string())?;
+        let mut settings = self.theme_settings.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
         settings.active_icon_theme = Some(theme_id.clone());
         drop(settings);
 
-        println!("[Theme] Set active icon theme: {}", theme_id);
+        info!("Set active icon theme: {}", theme_id);
 
         // Emit event
         if let Err(e) = self
             .app_handle
             .emit("theme-changed", ThemeChangeEvent { theme_id, theme_type: "icon".to_string() })
         {
-            eprintln!("[Theme] Failed to emit theme changed event: {}", e);
+            error!("Failed to emit theme changed event: {}", e);
         }
 
         Ok(())
@@ -281,38 +313,46 @@ impl ThemeRegistry {
     // ===== Product Icon Themes =====
 
     /// Register product icon theme
-    pub fn register_product_icon_theme(&self, theme: ProductIconTheme) -> Result<String, String> {
-        let mut themes = self.product_icon_themes.write().map_err(|e| e.to_string())?;
+    pub fn register_product_icon_theme(&self, theme: ProductIconTheme) -> Result<String, CoreError> {
+        let mut themes = self.product_icon_themes.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         let id = theme.id.clone();
         themes.insert(id.clone(), theme.clone());
 
-        println!("[Theme] Registered product icon theme: {} ({})", theme.label, theme.id);
+        info!("Registered product icon theme: {} ({})", theme.label, theme.id);
 
         Ok(id)
     }
 
     /// Unregister product icon theme
-    pub fn unregister_product_icon_theme(&self, theme_id: &str) -> Result<(), String> {
-        let mut themes = self.product_icon_themes.write().map_err(|e| e.to_string())?;
+    pub fn unregister_product_icon_theme(&self, theme_id: &str) -> Result<(), CoreError> {
+        let mut themes = self.product_icon_themes.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         themes
             .remove(theme_id)
-            .ok_or_else(|| format!("Product icon theme not found: {}", theme_id))?;
+            .ok_or_else(|| CoreError::Config(format!("Product icon theme not found: {}", theme_id)))?;
 
-        println!("[Theme] Unregistered product icon theme: {}", theme_id);
+        info!("Unregistered product icon theme: {}", theme_id);
 
         Ok(())
     }
 
     /// Get product icon theme
-    pub fn get_product_icon_theme(&self, theme_id: &str) -> Result<ProductIconTheme, String> {
-        let themes = self.product_icon_themes.read().map_err(|e| e.to_string())?;
+    pub fn get_product_icon_theme(&self, theme_id: &str) -> Result<ProductIconTheme, CoreError> {
+        let themes = self.product_icon_themes.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
 
         themes
             .get(theme_id)
             .cloned()
-            .ok_or_else(|| format!("Product icon theme not found: {}", theme_id))
+            .ok_or_else(|| {
+                CoreError::Config(format!("Product icon theme not found: {}", theme_id))
+            })
     }
 
     /// Get all product icon themes
@@ -326,27 +366,34 @@ impl ThemeRegistry {
     }
 
     /// Set active product icon theme
-    pub fn set_active_product_icon_theme(&self, theme_id: String) -> Result<(), String> {
+    pub fn set_active_product_icon_theme(&self, theme_id: String) -> Result<(), CoreError> {
         // Verify theme exists
-        let themes = self.product_icon_themes.read().map_err(|e| e.to_string())?;
+        let themes = self.product_icon_themes.read().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
         if !themes.contains_key(&theme_id) {
-            return Err(format!("Product icon theme not found: {}", theme_id));
+            return Err(CoreError::Config(format!(
+                "Product icon theme not found: {}",
+                theme_id
+            )));
         }
         drop(themes);
 
         // Update settings
-        let mut settings = self.theme_settings.write().map_err(|e| e.to_string())?;
+        let mut settings = self.theme_settings.write().map_err(|e| {
+            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?;
         settings.active_product_icon_theme = Some(theme_id.clone());
         drop(settings);
 
-        println!("[Theme] Set active product icon theme: {}", theme_id);
+        info!("Set active product icon theme: {}", theme_id);
 
         // Emit event
         if let Err(e) = self.app_handle.emit(
             "theme-changed",
             ThemeChangeEvent { theme_id, theme_type: "product-icon".to_string() },
         ) {
-            eprintln!("[Theme] Failed to emit theme changed event: {}", e);
+            error!("Failed to emit theme changed event: {}", e);
         }
 
         Ok(())
@@ -376,7 +423,7 @@ impl ThemeRegistry {
             themes.retain(|_, t| t.owner != owner);
             let removed = before - themes.len();
             if removed > 0 {
-                println!("[Theme] Cleared {} color theme(s) for owner: {}", removed, owner);
+                info!("Cleared {} color theme(s) for owner: {}", removed, owner);
             }
         }
 
@@ -388,7 +435,7 @@ impl ThemeRegistry {
             themes.retain(|_, t| t.owner != owner);
             let removed = before - themes.len();
             if removed > 0 {
-                println!("[Theme] Cleared {} icon theme(s) for owner: {}", removed, owner);
+                info!("Cleared {} icon theme(s) for owner: {}", removed, owner);
             }
         }
 
@@ -402,7 +449,7 @@ impl ThemeRegistry {
             themes.retain(|_, t| t.owner != owner);
             let removed = before - themes.len();
             if removed > 0 {
-                println!("[Theme] Cleared {} product icon theme(s) for owner: {}", removed, owner);
+                info!("Cleared {} product icon theme(s) for owner: {}", removed, owner);
             }
         }
     }

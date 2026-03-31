@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::info;
 
 use tauri::{AppHandle, Manager, State, Window};
 
@@ -9,7 +10,7 @@ use crate::session::SessionManager;
 #[tauri::command]
 pub fn minimize_to_tray(window: Window) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())?;
-    println!("[WindowPersistence] Window hidden");
+    info!("[WindowPersistence] Window hidden");
     Ok(())
 }
 
@@ -19,7 +20,7 @@ pub fn restore_from_tray(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
-        println!("[WindowPersistence] Window restored");
+        info!("[WindowPersistence] Window restored");
     }
     Ok(())
 }

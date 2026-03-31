@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use sysinfo::{Pid, System};
+use tracing::{debug, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceMetrics {
@@ -48,14 +49,14 @@ impl ResourceMonitor {
     pub fn set_extension_host_pid(&self, pid: u32) {
         let mut ext_pid = self.extension_host_pid.lock().expect("extension_host_pid lock poisoned");
         *ext_pid = Some(Pid::from(pid as usize));
-        println!("[ResourceMonitor] Tracking extension host PID: {}", pid);
+        info!("[ResourceMonitor] Tracking extension host PID: {}", pid);
     }
 
     /**
      * Get current resource metrics
      */
     pub fn get_metrics(&self) -> ResourceMetrics {
-        println!("[ResourceMonitor] get_metrics called");
+        debug!("[ResourceMonitor] get_metrics called");
 
         // Create a minimal System instance - don't call new_all() which crashes
         let mut system = System::new();
@@ -72,7 +73,7 @@ impl ResourceMonitor {
         }
         drop(ext_host_pid);
 
-        println!("[ResourceMonitor] System info refreshed");
+        debug!("[ResourceMonitor] System info refreshed");
 
         // Get main process metrics
         let main_process = system

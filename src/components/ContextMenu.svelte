@@ -40,6 +40,8 @@
   let wasVisible = false;
   let adjustedX = x;
   let adjustedY = y;
+  let focusedItemIndex = -1;
+  let previouslyFocused: HTMLElement | null = null;
   const explorerResourceCommands = new Set([
     'explorer.newFile',
     'explorer.newFolder',
@@ -117,6 +119,43 @@
     }
   }
 
+  function getMenuItemElements(): HTMLButtonElement[] {
+    if (!menuElement) return [];
+    return Array.from(menuElement.querySelectorAll<HTMLButtonElement>('.context-menu-item'));
+  }
+
+  function handleMenuKeydown(event: KeyboardEvent) {
+    const items = getMenuItemElements();
+    if (items.length === 0) return;
+
+    switch (event.key) {
+      case 'ArrowDown': {
+        event.preventDefault();
+        focusedItemIndex = (focusedItemIndex + 1) % items.length;
+        items[focusedItemIndex]?.focus();
+        break;
+      }
+      case 'ArrowUp': {
+        event.preventDefault();
+        focusedItemIndex = (focusedItemIndex - 1 + items.length) % items.length;
+        items[focusedItemIndex]?.focus();
+        break;
+      }
+      case 'Home': {
+        event.preventDefault();
+        focusedItemIndex = 0;
+        items[focusedItemIndex]?.focus();
+        break;
+      }
+      case 'End': {
+        event.preventDefault();
+        focusedItemIndex = items.length - 1;
+        items[focusedItemIndex]?.focus();
+        break;
+      }
+    }
+  }
+
   // Group menu items by group
   function groupMenuItems(items: MenuItem[]): Map<string, MenuItem[]> {
     const groups = new Map<string, MenuItem[]>();
@@ -144,6 +183,8 @@
 
   $: if (visible) {
     loadMenuItems();
+    previouslyFocused = document.activeElement as HTMLElement;
+    focusedItemIndex = -1;
 
     // Position menu within viewport
     setTimeout(() => {
@@ -163,6 +204,13 @@
         } else {
           adjustedY = y;
         }
+
+        // Focus the first menu item
+        const firstItem = menuElement.querySelector<HTMLButtonElement>('.context-menu-item');
+        if (firstItem) {
+          focusedItemIndex = 0;
+          firstItem.focus();
+        }
       }
     }, 0);
   }
@@ -171,6 +219,10 @@
 
   $: if (!visible && wasVisible) {
     wasVisible = false;
+    if (previouslyFocused) {
+      previouslyFocused.focus();
+      previouslyFocused = null;
+    }
   }
 
   onMount(() => {
@@ -188,17 +240,21 @@
   <div
     bind:this={menuElement}
     class="context-menu"
+    role="menu"
+    aria-label="Context menu"
+    tabindex="-1"
     style="left: {adjustedX}px; top: {adjustedY}px;"
+    on:keydown={handleMenuKeydown}
   >
     {#if menuItems.length === 0}
-      <div class="context-menu-empty">No actions available</div>
+      <div class="context-menu-empty" role="menuitem">No actions available</div>
     {:else}
       {#each Array.from(groupedItems.entries()) as [groupName, items], groupIndex}
         {#if groupIndex > 0}
-          <div class="context-menu-separator"></div>
+          <div class="context-menu-separator" role="separator"></div>
         {/if}
         {#each items as item}
-          <button class="context-menu-item" on:click={() => executeMenuItem(item)}>
+          <button class="context-menu-item" role="menuitem" on:click={() => executeMenuItem(item)}>
             {#if item.icon}
               <span class="context-menu-icon">{item.icon}</span>
             {/if}

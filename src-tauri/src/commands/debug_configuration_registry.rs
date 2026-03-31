@@ -3,6 +3,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::AppHandle;
+use tracing::info;
 
 /// Debug configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,8 +95,8 @@ impl DebugConfigurationRegistry {
         let id = provider.id.clone();
         providers.push(provider.clone());
 
-        println!(
-            "[DebugConfig] Registered configuration provider: {} (type: {})",
+        info!(
+            "Registered configuration provider: {} (type: {})",
             id, provider.debug_type
         );
 
@@ -113,7 +114,7 @@ impl DebugConfigurationRegistry {
             return Err(format!("Configuration provider not found: {}", provider_id));
         }
 
-        println!("[DebugConfig] Unregistered configuration provider: {}", provider_id);
+        info!("Unregistered configuration provider: {}", provider_id);
 
         Ok(())
     }
@@ -138,8 +139,8 @@ impl DebugConfigurationRegistry {
         let id = factory.id.clone();
         factories.push(factory.clone());
 
-        println!(
-            "[DebugConfig] Registered adapter descriptor factory: {} (type: {})",
+        info!(
+            "Registered adapter descriptor factory: {} (type: {})",
             id, factory.debug_type
         );
 
@@ -159,7 +160,7 @@ impl DebugConfigurationRegistry {
             return Err(format!("Adapter descriptor factory not found: {}", factory_id));
         }
 
-        println!("[DebugConfig] Unregistered adapter descriptor factory: {}", factory_id);
+        info!("Unregistered adapter descriptor factory: {}", factory_id);
 
         Ok(())
     }
@@ -184,7 +185,7 @@ impl DebugConfigurationRegistry {
 
         launch_configurations.insert(workspace_uri.clone(), configuration);
 
-        println!("[DebugConfig] Set launch configuration for workspace: {}", workspace_uri);
+        info!("Set launch configuration for workspace: {}", workspace_uri);
 
         Ok(())
     }
@@ -221,8 +222,8 @@ impl DebugConfigurationRegistry {
             providers.retain(|p| p.owner != owner);
             let removed = before - providers.len();
             if removed > 0 {
-                println!(
-                    "[DebugConfig] Cleared {} configuration provider(s) for owner: {}",
+                info!(
+                    "Cleared {} configuration provider(s) for owner: {}",
                     removed, owner
                 );
             }
@@ -238,8 +239,8 @@ impl DebugConfigurationRegistry {
             factories.retain(|f| f.owner != owner);
             let removed = before - factories.len();
             if removed > 0 {
-                println!(
-                    "[DebugConfig] Cleared {} adapter descriptor factory(ies) for owner: {}",
+                info!(
+                    "Cleared {} adapter descriptor factory(ies) for owner: {}",
                     removed, owner
                 );
             }

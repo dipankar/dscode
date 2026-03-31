@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
   import { clearInputBox, type InputBoxState } from '../stores/inputBox';
+  import { focusTrap } from '../lib/focus-trap';
 
   export let request: InputBoxState;
 
@@ -78,7 +79,7 @@
   }
 </script>
 
-<div class="inputbox-overlay" role="dialog" aria-modal="true">
+<div class="inputbox-overlay" role="dialog" aria-modal="true" use:focusTrap>
   <div class="inputbox-modal">
     {#if request.prompt}
       <header>

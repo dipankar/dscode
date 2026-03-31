@@ -1,16 +1,17 @@
 use super::textdocument_registry::*;
-use crate::extension_host::IpcManager;
+use dscode_extension_host::IpcManager;
 use crate::session::SessionManager;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
+use tracing::info;
 
 /// Register text document
 #[tauri::command]
 pub async fn register_text_document(
     document: TextDocument, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<(), String> {
-    registry.register_text_document(document)
+    registry.register_text_document(document).map_err(|e| e.to_string())
 }
 
 /// Unregister text document
@@ -18,7 +19,7 @@ pub async fn register_text_document(
 pub async fn unregister_text_document(
     uri: String, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<(), String> {
-    registry.unregister_text_document(&uri)
+    registry.unregister_text_document(&uri).map_err(|e| e.to_string())
 }
 
 /// Update text document and forward changes to extension host
@@ -27,7 +28,7 @@ pub async fn update_text_document(
     uri: String, version: u64, content_changes: Vec<TextDocumentContentChange>,
     registry: State<'_, TextDocumentRegistry>, session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<(), String> {
-    registry.update_text_document(&uri, version, content_changes.clone())?;
+    registry.update_text_document(&uri, version, content_changes.clone()).map_err(|e| e.to_string())?;
 
     let sm = session.read().await;
     let _ = sm.forward_document_change(&uri, version, &content_changes).await;
@@ -40,7 +41,7 @@ pub async fn update_text_document(
 pub async fn mark_document_saved(
     uri: String, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<(), String> {
-    registry.mark_document_saved(&uri)
+    registry.mark_document_saved(&uri).map_err(|e| e.to_string())
 }
 
 /// Get text document
@@ -48,7 +49,7 @@ pub async fn mark_document_saved(
 pub async fn get_text_document(
     uri: String, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<TextDocument, String> {
-    registry.get_text_document(&uri)
+    registry.get_text_document(&uri).map_err(|e| e.to_string())
 }
 
 /// Get all text documents
@@ -64,7 +65,7 @@ pub async fn get_all_text_documents(
 pub async fn register_text_editor(
     editor: TextEditor, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<(), String> {
-    registry.register_text_editor(editor)
+    registry.register_text_editor(editor).map_err(|e| e.to_string())
 }
 
 /// Unregister text editor
@@ -72,7 +73,7 @@ pub async fn register_text_editor(
 pub async fn unregister_text_editor(
     editor_id: String, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<(), String> {
-    registry.unregister_text_editor(&editor_id)
+    registry.unregister_text_editor(&editor_id).map_err(|e| e.to_string())
 }
 
 /// Update editor selections
@@ -80,7 +81,7 @@ pub async fn unregister_text_editor(
 pub async fn update_text_editor_selections(
     editor_id: String, selections: Vec<Selection>, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<(), String> {
-    registry.update_editor_selections(&editor_id, selections)
+    registry.update_editor_selections(&editor_id, selections).map_err(|e| e.to_string())
 }
 
 /// Update editor visible ranges
@@ -88,7 +89,7 @@ pub async fn update_text_editor_selections(
 pub async fn update_text_editor_visible_ranges(
     editor_id: String, visible_ranges: Vec<Range>, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<(), String> {
-    registry.update_editor_visible_ranges(&editor_id, visible_ranges)
+    registry.update_editor_visible_ranges(&editor_id, visible_ranges).map_err(|e| e.to_string())
 }
 
 /// Get text editor
@@ -96,7 +97,7 @@ pub async fn update_text_editor_visible_ranges(
 pub async fn get_text_editor(
     editor_id: String, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<TextEditor, String> {
-    registry.get_text_editor(&editor_id)
+    registry.get_text_editor(&editor_id).map_err(|e| e.to_string())
 }
 
 /// Get all text editors
@@ -112,7 +113,7 @@ pub async fn get_all_text_editors(
 pub async fn create_text_editor_decoration_type(
     decoration_type: DecorationType, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<String, String> {
-    registry.create_decoration_type(decoration_type)
+    registry.create_decoration_type(decoration_type).map_err(|e| e.to_string())
 }
 
 /// Dispose decoration type
@@ -120,7 +121,7 @@ pub async fn create_text_editor_decoration_type(
 pub async fn dispose_text_editor_decoration_type(
     decoration_type_id: String, registry: State<'_, TextDocumentRegistry>,
 ) -> Result<(), String> {
-    registry.dispose_decoration_type(&decoration_type_id)
+    registry.dispose_decoration_type(&decoration_type_id).map_err(|e| e.to_string())
 }
 
 /// Set editor decorations
@@ -129,7 +130,7 @@ pub async fn set_text_editor_decorations(
     editor_id: String, decoration_type_id: String, ranges: Vec<Range>, owner: String,
     registry: State<'_, TextDocumentRegistry>,
 ) -> Result<(), String> {
-    registry.set_editor_decorations(&editor_id, &decoration_type_id, ranges, &owner)
+    registry.set_editor_decorations(&editor_id, &decoration_type_id, ranges, &owner).map_err(|e| e.to_string())
 }
 
 /// Get editor decorations
@@ -151,7 +152,7 @@ pub async fn apply_text_edits(uri: String, edits: Vec<TextEdit>) -> Result<(), S
         return Ok(());
     }
 
-    println!("[TextDocument] Applying {} text edit(s) to: {}", edits.len(), uri);
+    info!("[TextDocument] Applying {} text edit(s) to: {}", edits.len(), uri);
 
     Ok(())
 }

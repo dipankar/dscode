@@ -1,0 +1,46 @@
+[package]
+name = "dscode-session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Session manager, extension lifecycle, workspace, and configuration for DSCode"
+readme = "README.md"
+keywords = ["dscode", "ide", "session", "extension"]
+categories = ["development-tools"]
+
+[dependencies]
+dscode-core = { path = "../dscode-core" }
+dscode-extension-host = { path = "../dscode-extension-host" }
+dscode-lsp = { path = "../dscode-lsp" }
+dscode-dap = { path = "../dscode-dap" }
+dscode-terminal = { path = "../dscode-terminal" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+notify = "6.1"
+globset = "0.4"
+ignore = "0.4"
+semver = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1.10"
+zip = "2.1"
+reqwest = { version = "0.11", features = ["json"] }
+once_cell = "1"
+tempfile = "3.8"
+
+# Tauri is optional — the session crate can be used without it in headless/testing
+tauri = { version = "2.1", optional = true }
+
+[features]
+default = []
+tauri = ["dep:tauri", "dscode-extension-host/tauri", "dscode-terminal/tauri"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

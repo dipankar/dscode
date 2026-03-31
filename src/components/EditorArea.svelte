@@ -681,7 +681,7 @@
   }
 </script>
 
-<div class="editor-area">
+<div class="editor-area" role="main" aria-label="Editor">
   <div class="editor-tabs" bind:this={editorTabsContainer}>
     {#if tabs.length === 0}
       <div class="empty-tabs">

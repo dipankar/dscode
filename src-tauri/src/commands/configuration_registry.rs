@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
+use tracing::{error, info};
 
 /// Configuration scope
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -84,7 +85,7 @@ impl ConfigurationRegistry {
         // Load user settings
         self.load_user_settings()?;
 
-        println!("[Configuration] Set settings path: {:?}", path);
+        info!("Set settings path: {:?}", path);
         Ok(())
     }
 
@@ -96,7 +97,7 @@ impl ConfigurationRegistry {
         // Load workspace settings
         self.load_workspace_settings()?;
 
-        println!("[Configuration] Set workspace path: {:?}", path);
+        info!("Set workspace path: {:?}", path);
         Ok(())
     }
 
@@ -113,7 +114,7 @@ impl ConfigurationRegistry {
             schemas.insert(property.key.clone(), property);
         }
 
-        println!("[Configuration] Registered {} schema(s) from: {}", count, extension_id);
+        info!("Registered {} schema(s) from: {}", count, extension_id);
 
         Ok(())
     }
@@ -219,7 +220,7 @@ impl ConfigurationRegistry {
             "configuration-changed",
             ConfigurationChangeEvent { affected_keys: vec![key], scope },
         ) {
-            eprintln!("[Configuration] Failed to emit change event: {}", e);
+            error!("Failed to emit change event: {}", e);
         }
 
         Ok(())
@@ -272,7 +273,7 @@ impl ConfigurationRegistry {
                 let mut user_settings = self.user_settings.write().map_err(|e| e.to_string())?;
                 *user_settings = settings;
 
-                println!("[Configuration] Loaded user settings from: {:?}", path);
+                info!("Loaded user settings from: {:?}", path);
             }
         }
 
@@ -297,7 +298,7 @@ impl ConfigurationRegistry {
                     self.workspace_settings.write().map_err(|e| e.to_string())?;
                 *workspace_settings = settings;
 
-                println!("[Configuration] Loaded workspace settings from: {:?}", settings_file);
+                info!("Loaded workspace settings from: {:?}", settings_file);
             }
         }
 
@@ -323,7 +324,7 @@ impl ConfigurationRegistry {
             fs::write(path, content)
                 .map_err(|e| format!("Failed to write user settings: {}", e))?;
 
-            println!("[Configuration] Saved user settings to: {:?}", path);
+            info!("Saved user settings to: {:?}", path);
         }
 
         Ok(())
@@ -350,7 +351,7 @@ impl ConfigurationRegistry {
             fs::write(&settings_file, content)
                 .map_err(|e| format!("Failed to write workspace settings: {}", e))?;
 
-            println!("[Configuration] Saved workspace settings to: {:?}", settings_file);
+            info!("Saved workspace settings to: {:?}", settings_file);
         }
 
         Ok(())
@@ -396,7 +397,7 @@ impl ConfigurationRegistry {
         let removed = before - schemas.len();
 
         if removed > 0 {
-            println!("[Configuration] Cleared {} schema(s) for owner: {}", removed, owner);
+            info!("Cleared {} schema(s) for owner: {}", removed, owner);
         }
     }
 }

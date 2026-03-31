@@ -106,30 +106,33 @@
     <div class="problems-header">
       <div class="problems-title">
         <span>PROBLEMS</span>
-        <div class="problem-counts">
+        <div class="problem-counts" aria-live="polite" aria-atomic="true">
           {#if errorCount > 0}
             <span class="count error-count">
               <AlertCircle size={14} />
-              {errorCount}
+              {errorCount} error{errorCount !== 1 ? 's' : ''}
             </span>
           {/if}
           {#if warningCount > 0}
             <span class="count warning-count">
               <AlertTriangle size={14} />
-              {warningCount}
+              {warningCount} warning{warningCount !== 1 ? 's' : ''}
             </span>
           {/if}
           {#if infoCount > 0}
             <span class="count info-count">
               <Info size={14} />
-              {infoCount}
+              {infoCount} info
             </span>
+          {/if}
+          {#if errorCount === 0 && warningCount === 0 && infoCount === 0}
+            <span class="count">No problems</span>
           {/if}
         </div>
       </div>
     </div>
 
-    <div class="problems-list">
+    <div class="problems-list" role="list" aria-label="Problems list">
       {#if problems.length === 0}
         <div class="no-problems">
           <p>No problems detected</p>

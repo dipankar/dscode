@@ -1,13 +1,17 @@
 use super::contributions::ExtensionContributes;
 use super::{ExtensionInfo, SessionEvent, SessionManager, SessionState};
 use crate::marketplace;
+use quick_xml::events::Event;
+use quick_xml::Reader;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::collections::{HashSet, VecDeque};
 use std::fs;
-use std::io::{self, ErrorKind};
+use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
+use tracing::{error, info, warn};
 use zip::ZipArchive;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -56,7 +60,7 @@ pub struct ExtensionContribution {
 
 impl SessionManager {
     pub(super) async fn scan_extensions(&self) -> Result<(), String> {
-        println!("[SessionManager] Scanning extensions directory...");
+        info!("Scanning extensions directory...");
 
         if !self.app_dirs.extensions_dir.exists() {
             std::fs::create_dir_all(&self.app_dirs.extensions_dir)
@@ -75,8 +79,8 @@ impl SessionManager {
             if path.is_dir() {
                 match self.read_extension_manifest(&path) {
                     Ok(info) => extensions.push(info),
-                    Err(e) => eprintln!(
-                        "[SessionManager] Failed to read extension manifest at {:?}: {}",
+                    Err(e) => warn!(
+                        "Failed to read extension manifest at {:?}: {}",
                         path, e
                     ),
                 }
@@ -91,7 +95,7 @@ impl SessionManager {
         self.rebuild_command_index(&extensions).await;
         self.publish_command_list().await;
 
-        println!("[SessionManager] Found {} installed extensions", extensions.len());
+        info!("Found {} installed extensions", extensions.len());
 
         self.emit_event(SessionEvent::ExtensionsChanged { extensions });
 
@@ -325,7 +329,7 @@ impl SessionManager {
 
         for ext_info in extensions {
             if let Err(e) = self.load_extension_internal(&ext_info.id).await {
-                eprintln!("[SessionManager] Failed to load extension {}: {}", ext_info.id, e);
+                warn!("Failed to load extension {}: {}", ext_info.id, e);
             }
         }
 
@@ -378,7 +382,7 @@ impl SessionManager {
             return Err(format!("Extension directory not found: {:?}", extension_path));
         }
 
-        println!("[SessionManager] Loading extension: {}", extension_id);
+        info!("Loading extension: {}", extension_id);
 
         let payload = json!({ "extensionId": extension_id });
         self.ipc_manager.request("main", "activate-extension", payload).await?;
@@ -411,7 +415,7 @@ impl SessionManager {
     ///   TODO: Consider using a cleanup-on-best-effort pattern instead of early
     ///   return, so that status bar items are always cleaned up even if IPC fails.
     pub async fn unload_extension(&self, extension_id: &str) -> Result<(), String> {
-        println!("[SessionManager] Unloading extension: {}", extension_id);
+        info!("Unloading extension: {}", extension_id);
 
         let payload = json!({ "extensionId": extension_id });
         self.ipc_manager.request("main", "deactivate-extension", payload).await?;
@@ -448,7 +452,7 @@ impl SessionManager {
     ///   Consider: delete state first, then files. If files fail to delete,
     ///   at least the state is clean and a re-install won't conflict.
     pub async fn delete_extension(&self, extension_id: &str) -> Result<(), String> {
-        println!("[SessionManager] Deleting extension: {}", extension_id);
+        info!("[SessionManager] Deleting extension: {}", extension_id);
 
         let _ = self.unload_extension(extension_id).await;
 
@@ -466,7 +470,7 @@ impl SessionManager {
 
         let extension_path = self.app_dirs.extensions_dir.join(extension_id);
         if let Err(e) = remove_dir_if_exists(&extension_path) {
-            eprintln!(
+            error!(
                 "[SessionManager] Failed to delete extension directory {:?}: {}",
                 extension_path, e
             );
@@ -474,7 +478,7 @@ impl SessionManager {
 
         let storage_dir = self.app_dirs.storage_dir.join(extension_id);
         if let Err(e) = remove_dir_if_exists(&storage_dir) {
-            eprintln!(
+            error!(
                 "[SessionManager] Failed to delete storage directory {:?}: {}",
                 storage_dir, e
             );
@@ -482,7 +486,7 @@ impl SessionManager {
 
         let logs_dir = self.app_dirs.logs_dir.join(extension_id);
         if let Err(e) = remove_dir_if_exists(&logs_dir) {
-            eprintln!("[SessionManager] Failed to delete log directory {:?}: {}", logs_dir, e);
+            error!("[SessionManager] Failed to delete log directory {:?}: {}", logs_dir, e);
         }
 
         let mut state = self.state.write().await;
@@ -551,7 +555,7 @@ impl SessionManager {
 
         if !dependency_installs.is_empty() {
             let ids: Vec<String> = dependency_installs.iter().map(|ext| ext.id.clone()).collect();
-            println!("[Extensions] Installed dependencies for {}: {:?}", installed.id, ids);
+            info!("[Extensions] Installed dependencies for {}: {:?}", installed.id, ids);
         }
 
         self.reload_extensions_after_install().await?;
@@ -569,7 +573,7 @@ impl SessionManager {
 
         if let Err(err) = fs::remove_file(&vsix_path) {
             if err.kind() != ErrorKind::NotFound {
-                eprintln!("[Extensions] Failed to delete temporary VSIX {:?}: {}", vsix_path, err);
+                warn!("[Extensions] Failed to delete temporary VSIX {:?}: {}", vsix_path, err);
             }
         }
 
@@ -597,7 +601,7 @@ impl SessionManager {
 
                 match Self::scan_extension_dir(&path) {
                     Ok(extension) => extensions.push(extension),
-                    Err(err) => eprintln!(
+                    Err(err) => warn!(
                         "[SessionManager] Failed to read installed extension at {:?}: {}",
                         path, err
                     ),
@@ -766,7 +770,7 @@ impl SessionManager {
 
     async fn reload_extensions_after_install(&self) -> Result<(), String> {
         if let Err(err) = self.ipc_manager.request("main", "reload-extensions", json!({})).await {
-            eprintln!("[Extensions] Failed to request extension host reload: {}", err);
+            error!("[Extensions] Failed to request extension host reload: {}", err);
         }
 
         self.scan_and_emit_extensions().await
@@ -810,7 +814,138 @@ fn remove_dir_if_exists(path: &Path) -> Result<(), std::io::Error> {
     }
 }
 
+/// Computes the SHA256 hash of a file and returns the hex-encoded digest.
+fn compute_file_hash(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path).map_err(|e| format!("Failed to open file for hashing: {}", e))?;
+    let mut hasher = Sha256::new();
+    io::copy(&mut file, &mut hasher).map_err(|e| format!("Failed to compute hash: {}", e))?;
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Parsed identity fields extracted from `extension.vsixmanifest`.
+struct VsixManifestIdentity {
+    id: String,
+    version: String,
+    publisher: String,
+}
+
+/// Parses the `extension.vsixmanifest` XML content and extracts the `<Identity>` element
+/// attributes (Id, Version, Publisher).
+fn parse_vsix_manifest_xml(xml: &str) -> Result<VsixManifestIdentity, String> {
+    let mut reader = Reader::from_str(xml);
+
+    let mut id = None;
+    let mut version = None;
+    let mut publisher = None;
+
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+                let local_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+
+                if current_name_matches(&local_name, "Identity") {
+                    for attr_result in e.attributes() {
+                        let attr = attr_result.map_err(|e| format!("Failed to parse XML attribute: {}", e))?;
+                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+                        let value = String::from_utf8_lossy(&attr.value).to_string();
+                        match key.as_str() {
+                            "Id" => id = Some(value),
+                            "Version" => version = Some(value),
+                            "Publisher" => publisher = Some(value),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Ok(Event::End(_)) | Ok(Event::Eof) => break,
+            Err(e) => return Err(format!("XML parse error: {}", e)),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    let id = id.ok_or("Missing 'Id' attribute in Identity element of vsixmanifest")?;
+    let version = version.ok_or("Missing 'Version' attribute in Identity element of vsixmanifest")?;
+    let publisher = publisher.ok_or("Missing 'Publisher' attribute in Identity element of vsixmanifest")?;
+
+    Ok(VsixManifestIdentity { id, version, publisher })
+}
+
+/// Checks whether a tag name matches an expected local name, ignoring any namespace prefix.
+fn current_name_matches(tag: &str, expected: &str) -> bool {
+    // Handle namespace-prefixed names like "ns:Identity"
+    tag.rsplit(':').next().map_or(false, |local| local == expected)
+}
+
+/// Verifies the integrity of a VSIX archive by checking:
+/// 1. That `extension.vsixmanifest` exists in the archive
+/// 2. That the manifest XML contains a valid `<Identity>` element with publisher, id, version
+/// 3. That the extracted `package.json` matches the manifest identity
+fn verify_vsix_manifest(
+    archive: &mut ZipArchive<fs::File>,
+    extracted_dir: &Path,
+) -> Result<(), String> {
+    // 1. Locate and read extension.vsixmanifest from the archive
+    let manifest_xml = {
+        let mut manifest_file = archive
+            .by_name("extension.vsixmanifest")
+            .map_err(|e| format!("extension.vsixmanifest not found in archive: {}", e))?;
+        let mut contents = String::new();
+        manifest_file.read_to_string(&mut contents)
+            .map_err(|e| format!("Failed to read extension.vsixmanifest: {}", e))?;
+        contents
+    };
+
+    // 2. Parse the manifest XML and extract Identity
+    let identity = parse_vsix_manifest_xml(&manifest_xml)?;
+    info!(
+        "VSIX manifest identity: publisher={}, id={}, version={}",
+        identity.publisher, identity.id, identity.version
+    );
+
+    // 3. Read package.json from extracted directory and compare
+    let pkg_path = extracted_dir.join("package.json");
+    let pkg_content = fs::read_to_string(&pkg_path)
+        .map_err(|e| format!("Failed to read extracted package.json at {:?}: {}", pkg_path, e))?;
+    let pkg: serde_json::Value = serde_json::from_str(&pkg_content)
+        .map_err(|e| format!("Failed to parse extracted package.json: {}", e))?;
+
+    let pkg_name = pkg.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let pkg_version = pkg.get("version").and_then(|v| v.as_str()).unwrap_or("");
+    let pkg_publisher = pkg.get("publisher").and_then(|v| v.as_str()).unwrap_or("");
+
+    if pkg_name != identity.id {
+        return Err(format!(
+            "Package name mismatch: package.json says '{}', vsixmanifest says '{}'",
+            pkg_name, identity.id
+        ));
+    }
+    if pkg_version != identity.version {
+        return Err(format!(
+            "Package version mismatch: package.json says '{}', vsixmanifest says '{}'",
+            pkg_version, identity.version
+        ));
+    }
+    if pkg_publisher != identity.publisher {
+        return Err(format!(
+            "Package publisher mismatch: package.json says '{}', vsixmanifest says '{}'",
+            pkg_publisher, identity.publisher
+        ));
+    }
+
+    info!("VSIX manifest verification passed for {}.{}", identity.publisher, identity.id);
+    Ok(())
+}
+
 fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<InstalledExtension, String> {
+    // Compute SHA256 hash of the VSIX file before any processing
+    let vsix_hash = compute_file_hash(Path::new(&vsix_path))?;
+    info!("VSIX file SHA256: {}", vsix_hash);
+
+    let skip_verify = std::env::var("DSCODE_SKIP_VSX_VERIFY").is_ok();
+
     let file =
         fs::File::open(&vsix_path).map_err(|e| format!("Failed to open .vsix file: {}", e))?;
 
@@ -895,8 +1030,8 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
                 if parent.exists() {
                     if let Ok(canonical_parent) = fs::canonicalize(parent) {
                         if !canonical_parent.starts_with(&canonical_install) {
-                            eprintln!(
-                                "[Extensions] Skipping path outside install dir: {}",
+                            warn!(
+                                "Skipping path outside install dir: {}",
                                 relative_path
                             );
                             continue;
@@ -911,8 +1046,8 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
                             std::path::Component::ParentDir => {
                                 depth -= 1;
                                 if depth < 0 {
-                                    eprintln!(
-                                        "[Extensions] Skipping path with traversal: {}",
+                                    warn!(
+                                        "Skipping path with traversal: {}",
                                         relative_path
                                     );
                                     continue;
@@ -935,8 +1070,8 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
                 // Enforce maximum single file size of 500MB
                 const MAX_SINGLE_FILE_SIZE: u64 = 500 * 1024 * 1024;
                 if file.size() > MAX_SINGLE_FILE_SIZE {
-                    eprintln!(
-                        "[Extensions] Skipping oversized file: {} ({} bytes)",
+                    warn!(
+                        "Skipping oversized file: {} ({} bytes)",
                         relative_path,
                         file.size()
                     );
@@ -952,6 +1087,22 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
         }
     }
 
+    // VSIX manifest verification (skip if DSCODE_SKIP_VSX_VERIFY is set)
+    if skip_verify {
+        warn!(
+            "Skipping VSIX manifest verification for {} (DSCODE_SKIP_VSX_VERIFY is set)",
+            extension_id
+        );
+    } else {
+        // Re-open the archive for manifest verification (the previous archive was consumed during extraction)
+        let verify_file =
+            fs::File::open(&vsix_path).map_err(|e| format!("Failed to reopen .vsix for verification: {}", e))?;
+        let mut verify_archive =
+            ZipArchive::new(verify_file).map_err(|e| format!("Failed to read .vsix archive for verification: {}", e))?;
+
+        verify_vsix_manifest(&mut verify_archive, &install_path)?;
+    }
+
     let mut dependency_list = manifest.extension_dependencies.clone().unwrap_or_default();
     if let Some(pack) = manifest.extension_pack.clone() {
         dependency_list.extend(pack);
@@ -961,6 +1112,11 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
 
     let categories = manifest.categories.clone().unwrap_or_default();
     let repository = manifest.repository.as_ref().and_then(extract_repository_url);
+
+    info!(
+        "Successfully installed extension {} v{} (SHA256: {})",
+        extension_id, manifest.version, vsix_hash
+    );
 
     Ok(InstalledExtension {
         id: extension_id,
@@ -1027,7 +1183,7 @@ fn extract_repository_url(value: &serde_json::Value) -> Option<String> {
 }
 
 async fn ensure_extension_dependencies(
-    dependencies: &[String], app_dirs: &crate::config::AppDirectories,
+    dependencies: &[String], app_dirs: &dscode_core::AppDirectories,
 ) -> Result<Vec<InstalledExtension>, String> {
     if dependencies.is_empty() {
         return Ok(Vec::new());
@@ -1054,12 +1210,12 @@ async fn ensure_extension_dependencies(
         let (publisher, name) = match parse_extension_id(&dep_id) {
             Some(parts) => parts,
             None => {
-                eprintln!("[Extensions] Invalid dependency identifier '{}'", dep_id);
+                warn!("[Extensions] Invalid dependency identifier '{}'", dep_id);
                 continue;
             }
         };
 
-        println!("[Extensions] Auto-installing dependency {}", dep_id);
+        info!("[Extensions] Auto-installing dependency {}", dep_id);
 
         let details = marketplace::get_extension_details(publisher.clone(), name.clone()).await?;
         let vsix_path =
@@ -1074,7 +1230,7 @@ async fn ensure_extension_dependencies(
 
         if let Err(err) = fs::remove_file(&vsix_path) {
             if err.kind() != ErrorKind::NotFound {
-                eprintln!("[Extensions] Failed to delete temporary VSIX {:?}: {}", vsix_path, err);
+                warn!("[Extensions] Failed to delete temporary VSIX {:?}: {}", vsix_path, err);
             }
         }
 

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
+use tracing::info;
 
 use super::configuration_registry::{ConfigurationRegistry, ConfigurationScope};
 
@@ -42,7 +43,7 @@ impl SettingsUIRegistry {
         // Sort categories by order
         categories.sort_by_key(|c| c.order);
 
-        println!("[SettingsUI] Registered category: {}", category_id);
+        info!("Registered category: {}", category_id);
 
         Ok(category_id)
     }
@@ -73,7 +74,7 @@ impl SettingsUIRegistry {
 
         ui_schemas.insert(key.clone(), schema);
 
-        println!("[SettingsUI] Registered UI schema: {}", key);
+        info!("Registered UI schema: {}", key);
 
         Ok(())
     }
@@ -332,7 +333,7 @@ impl SettingsUIRegistry {
         let mut categories = self.categories.write().await;
         categories.retain(|c| c.owner != owner);
 
-        println!("[SettingsUI] Cleared settings UI data for owner: {}", owner);
+        info!("Cleared settings UI data for owner: {}", owner);
     }
 }
 

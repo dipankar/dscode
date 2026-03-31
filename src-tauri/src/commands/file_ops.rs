@@ -1,4 +1,4 @@
-use crate::extension_host::path_validator::PathValidator;
+use dscode_extension_host::PathValidator;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;

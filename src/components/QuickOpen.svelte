@@ -3,6 +3,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { editorStore } from '../stores/editor';
   import { workspaceStore } from '../stores/workspace';
+  import { focusTrap } from '../lib/focus-trap';
 
   interface FileSearchResult {
     name: string;
@@ -182,6 +183,7 @@
       role="dialog"
       aria-modal="true"
       aria-label="Quick open"
+      use:focusTrap
     >
       <div class="search-container">
         <input

@@ -22,6 +22,8 @@ pnpm-debug.log*
 .env.*
 
 # Tauri
+/target/
+/Cargo.lock
 /src-tauri/target/
 /src-tauri/Cargo.lock
 /src-tauri/gen/

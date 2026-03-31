@@ -1,6 +1,7 @@
 <script lang="ts">
   import { resolveLocalInputBox } from '../stores/windowPrompt';
   import type { InputBoxPrompt } from '../stores/windowPrompt';
+  import { focusTrap } from '../lib/focus-trap';
 
   export let request: InputBoxPrompt;
 
@@ -43,7 +44,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="input-overlay" on:click={handleCancel} role="presentation" tabindex="-1">
+<div class="input-overlay" on:click={handleCancel} role="presentation" tabindex="-1" use:focusTrap>
   <div class="input-modal" role="dialog" aria-modal="true" on:click|stopPropagation>
     <div class="input-header">
       <h2>{request.prompt}</h2>

@@ -1,0 +1,29 @@
+[package]
+name = "dscode-terminal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Terminal manager and PTY lifecycle for DSCode"
+readme = "README.md"
+keywords = ["terminal", "pty", "dscode", "ide"]
+categories = ["development-tools"]
+
+[dependencies]
+portable-pty = "0.8"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+tauri = { version = "2.1", optional = true }
+
+[features]
+default = []
+tauri = ["dep:tauri"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

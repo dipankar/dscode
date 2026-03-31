@@ -1,0 +1,23 @@
+[package]
+name = "dscode-dap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Debug Adapter Protocol client, manager, and pool for DSCode"
+readme = "README.md"
+keywords = ["dap", "debug", "dscode", "ide"]
+categories = ["development-tools"]
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

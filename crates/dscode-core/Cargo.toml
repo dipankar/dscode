@@ -1,0 +1,27 @@
+[package]
+name = "dscode-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Core types, text buffer, and configuration for DSCode"
+readme = "README.md"
+keywords = ["dscode", "ide", "text-buffer", "config"]
+categories = ["development-tools", "text-editors"]
+
+[dependencies]
+ropey = "1.6"
+tree-sitter = "0.20"
+serde = { workspace = true }
+serde_json = { workspace = true }
+directories = "5.0"
+tracing = { workspace = true }
+thiserror = { workspace = true }
+
+[features]
+default = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

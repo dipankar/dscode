@@ -1,0 +1,41 @@
+[package]
+name = "dscode-extension-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Extension host process management, IPC, sandbox, and security for DSCode"
+readme = "README.md"
+keywords = ["extension", "sandbox", "ipc", "dscode", "ide"]
+categories = ["development-tools"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+keyring = "2.3"
+governor = "0.6"
+which = "6.0"
+sha2 = "0.10"
+tempfile = "3.8"
+libc = "0.2"
+tauri = { version = "2.1", optional = true }
+
+[features]
+default = []
+tauri = ["dep:tauri"]
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_System_JobObjects",
+    "Win32_Foundation",
+    "Win32_System_Threading",
+]}
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

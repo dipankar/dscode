@@ -3,6 +3,7 @@
   import * as monaco from 'monaco-editor';
   import { editorStore } from '../stores/editor';
   import { Hash, FileText } from 'lucide-svelte';
+  import { focusTrap } from '../lib/focus-trap';
 
   export let visible = false;
   export let onClose: () => void;
@@ -148,7 +149,7 @@
     role="presentation"
     tabindex="-1"
   >
-    <div class="symbol-search-container" role="dialog" aria-modal="true" aria-label="Symbol search">
+    <div class="symbol-search-container" role="dialog" aria-modal="true" aria-label="Symbol search" use:focusTrap>
       <input
         bind:this={searchInput}
         bind:value={searchQuery}

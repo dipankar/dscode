@@ -14,20 +14,14 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod bootstrap;
 mod commands;
-mod config;
-mod core;
-mod debug;
-mod extension_host;
 mod logging;
-mod lsp;
 mod marketplace;
 mod monitoring;
 mod session;
-mod terminal;
 mod watcher;
 
 use commands::*;
-use lsp::LspManager;
+use dscode_lsp::LspManager;
 
 fn main() {
     crate::logging::init();

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
+use tracing::warn;
 
 /// A single keybinding contribution
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -323,8 +324,8 @@ impl KeybindingRegistry {
             if existing.command == keybinding.command && existing.when == keybinding.when {
                 // Same binding already exists
                 if existing.owner != keybinding.owner {
-                    eprintln!(
-                        "[KeybindingRegistry] Warning: Keybinding conflict for '{}': '{}' (owner: {}) vs '{}' (owner: {})",
+                    warn!(
+                        "Keybinding conflict for '{}': '{}' (owner: {}) vs '{}' (owner: {})",
                         keybinding.key, existing.command, existing.owner, keybinding.command, keybinding.owner
                     );
                 }

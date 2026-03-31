@@ -6,6 +6,7 @@
   import { executeCommand as dispatchCommand } from '../lib/command-dispatcher';
   import { registryCommands } from '../lib/contracts/commands';
   import { evaluateWhenClause } from '../lib/when-clause';
+  import { focusTrap } from '../lib/focus-trap';
 
   export let visible: boolean = false;
   export let onClose: () => void;
@@ -217,6 +218,7 @@
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
+      use:focusTrap
     >
       <div class="search-container">
         <input

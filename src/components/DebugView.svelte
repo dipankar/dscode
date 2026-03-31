@@ -7,7 +7,7 @@
   let selectedPanel: 'variables' | 'callstack' | 'console' = 'variables';
 </script>
 
-<div class="debug-view">
+<div class="debug-view" role="region" aria-label="Debug">
   <div class="debug-header">
     <h3>RUN AND DEBUG</h3>
   </div>

@@ -35,13 +35,16 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/anthropics/dscode.git",
+    "url": "https://github.com/dipankar/dscode.git",
     "directory": "extension-host"
   },
   "bugs": {
-    "url": "https://github.com/anthropics/dscode/issues"
+    "url": "https://github.com/dipankar/dscode/issues"
   },
-  "homepage": "https://github.com/anthropics/dscode#readme",
+  "homepage": "https://github.com/dipankar/dscode#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18.0.0"
   },

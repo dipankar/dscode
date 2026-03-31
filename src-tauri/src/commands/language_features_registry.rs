@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
+use tracing::{error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentFilter {
@@ -420,7 +421,7 @@ impl LanguageFeaturesRegistry {
         let mut providers = providers.write().map_err(|e| e.to_string())?;
         providers.push(provider);
 
-        println!("[LanguageFeatures] Registered {} provider: {}", label, id);
+        info!("Registered {} provider: {}", label, id);
 
         Ok(id)
     }
@@ -655,7 +656,7 @@ impl LanguageFeaturesRegistry {
 
         // Emit event to frontend
         if let Err(e) = self.app_handle.emit("diagnostics-changed", &(uri, diagnostics)) {
-            eprintln!("[LanguageFeatures] Failed to emit diagnostics event: {}", e);
+            error!("Failed to emit diagnostics event: {}", e);
         }
 
         Ok(())
@@ -685,7 +686,7 @@ impl LanguageFeaturesRegistry {
 
         // Emit event to frontend
         if let Err(e) = self.app_handle.emit("diagnostics-cleared", owner) {
-            eprintln!("[LanguageFeatures] Failed to emit diagnostics cleared event: {}", e);
+            error!("Failed to emit diagnostics cleared event: {}", e);
         }
 
         Ok(())
@@ -717,7 +718,7 @@ impl LanguageFeaturesRegistry {
         // Also clear diagnostics
         self.clear_diagnostics(owner)?;
 
-        println!("[LanguageFeatures] Cleared all providers for owner: {}", owner);
+        info!("Cleared all providers for owner: {}", owner);
 
         Ok(())
     }

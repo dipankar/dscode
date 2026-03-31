@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
+use tracing::error;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileChangeEvent {
@@ -41,7 +42,7 @@ pub fn watch_file(app_handle: AppHandle, file_path: String) -> Result<(), String
                     let _ = app_handle_clone.emit("file-changed", change_event);
                 }
             }
-            Err(e) => eprintln!("File watch error: {:?}", e),
+            Err(e) => error!("File watch error: {:?}", e),
         }
     })
     .map_err(|e| format!("Failed to create watcher: {}", e))?;

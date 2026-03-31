@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
+use tracing::{error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceFolder {
@@ -110,10 +111,10 @@ impl WorkspaceRegistry {
         if let Err(e) =
             self.app_handle.emit("workspace-folders-changed", &self.get_workspace_folders())
         {
-            eprintln!("[Workspace] Failed to emit workspace folders changed event: {}", e);
+            error!("Failed to emit workspace folders changed event: {}", e);
         }
 
-        println!("[Workspace] Added workspace folder: {}", folder.name);
+        info!("Added workspace folder: {}", folder.name);
         Ok(())
     }
 
@@ -138,10 +139,10 @@ impl WorkspaceRegistry {
         if let Err(e) =
             self.app_handle.emit("workspace-folders-changed", &self.get_workspace_folders())
         {
-            eprintln!("[Workspace] Failed to emit workspace folders changed event: {}", e);
+            error!("Failed to emit workspace folders changed event: {}", e);
         }
 
-        println!("[Workspace] Removed workspace folder: {}", uri);
+        info!("Removed workspace folder: {}", uri);
         Ok(())
     }
 
@@ -176,10 +177,10 @@ impl WorkspaceRegistry {
         if let Err(e) =
             self.app_handle.emit("configuration-changed", &(section.clone(), scope.clone()))
         {
-            eprintln!("[Workspace] Failed to emit configuration changed event: {}", e);
+            error!("Failed to emit configuration changed event: {}", e);
         }
 
-        println!("[Workspace] Updated configuration: {}.{}", section, key);
+        info!("Updated configuration: {}.{}", section, key);
         Ok(())
     }
 
@@ -191,7 +192,7 @@ impl WorkspaceRegistry {
         let id = provider.id.clone();
         providers.push(provider);
 
-        println!("[Workspace] Registered file decoration provider: {}", id);
+        info!("Registered file decoration provider: {}", id);
         Ok(id)
     }
 
@@ -206,7 +207,7 @@ impl WorkspaceRegistry {
 
         // Emit event to frontend
         if let Err(e) = self.app_handle.emit("file-decorations-changed", &provider_id) {
-            eprintln!("[Workspace] Failed to emit file decorations changed event: {}", e);
+            error!("Failed to emit file decorations changed event: {}", e);
         }
 
         Ok(())
@@ -248,7 +249,7 @@ impl WorkspaceRegistry {
             });
         }
 
-        println!("[Workspace] Cleared all data for owner: {}", owner);
+        info!("Cleared all data for owner: {}", owner);
         Ok(())
     }
 
