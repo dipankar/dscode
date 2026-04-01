@@ -153,7 +153,7 @@ impl MarketplaceUIRegistry {
             page,
             page_size,
             total,
-            total_pages: (total + page_size - 1) / page_size,
+            total_pages: total.div_ceil(page_size),
         }
     }
 
@@ -276,6 +276,7 @@ impl MarketplaceUIRegistry {
     // ===== Search & Filter =====
 
     /// Search extensions with filters
+    #[allow(unused_variables)]
     pub async fn search_extensions(
         &self, query: &str, category: Option<String>, sort_by: SortBy,
     ) -> Vec<ExtensionSearchResult> {

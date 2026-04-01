@@ -315,9 +315,12 @@ impl KeybindingRegistry {
 
         let normalized_key = keybinding.normalized_key();
         let mut keybindings =
-            self.keybindings.write().expect("keybinding_registry write lock poisoned");
+            self.keybindings.write().unwrap_or_else(|e| {
+                warn!("keybinding_registry write lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
 
-        let bindings = keybindings.entry(normalized_key).or_insert_with(Vec::new);
+        let bindings = keybindings.entry(normalized_key).or_default();
 
         // Check for conflicts (same key + same when clause)
         for existing in bindings.iter_mut() {
@@ -361,27 +364,39 @@ impl KeybindingRegistry {
     /// Get all keybindings for a specific key
     pub fn get_keybindings_for_key(&self, key: &str) -> Vec<Keybinding> {
         let normalized_key = Keybinding::normalize_key(key);
-        let keybindings = self.keybindings.read().expect("keybinding_registry read lock poisoned");
+        let keybindings = self.keybindings.read().unwrap_or_else(|e| {
+            warn!("keybinding_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
 
         keybindings.get(&normalized_key).cloned().unwrap_or_default()
     }
 
     /// Get all keybindings
     pub fn get_all_keybindings(&self) -> Vec<Keybinding> {
-        let keybindings = self.keybindings.read().expect("keybinding_registry read lock poisoned");
+        let keybindings = self.keybindings.read().unwrap_or_else(|e| {
+            warn!("keybinding_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         keybindings.values().flatten().cloned().collect()
     }
 
     /// Get keybindings for a specific command
     pub fn get_keybindings_for_command(&self, command: &str) -> Vec<Keybinding> {
-        let keybindings = self.keybindings.read().expect("keybinding_registry read lock poisoned");
+        let keybindings = self.keybindings.read().unwrap_or_else(|e| {
+            warn!("keybinding_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         keybindings.values().flatten().filter(|kb| kb.command == command).cloned().collect()
     }
 
     /// Remove all keybindings from a specific owner
     pub fn clear_keybindings_by_owner(&self, owner: &str) {
         let mut keybindings =
-            self.keybindings.write().expect("keybinding_registry write lock poisoned");
+            self.keybindings.write().unwrap_or_else(|e| {
+                warn!("keybinding_registry write lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
 
         for bindings in keybindings.values_mut() {
             bindings.retain(|kb| kb.owner != owner);

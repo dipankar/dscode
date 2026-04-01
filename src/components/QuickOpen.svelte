@@ -20,26 +20,6 @@
   let inputElement: HTMLInputElement;
   let searchTimeout: ReturnType<typeof setTimeout> | null = null;
   let isSearching = false;
-  let modalContainer: HTMLDivElement;
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== 'Tab' || !modalContainer) return;
-    const focusable = Array.from(
-      modalContainer.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      )
-    ).filter((el) => el.offsetParent !== null);
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
 
   $: rootPath = $workspaceStore.rootPath;
 
@@ -81,10 +61,6 @@
     if (!visible) return;
 
     switch (e.key) {
-      case 'Escape':
-        e.preventDefault();
-        onClose();
-        break;
       case 'ArrowDown':
         e.preventDefault();
         selectedIndex = Math.min(selectedIndex + 1, filteredFiles.length - 1);
@@ -157,12 +133,10 @@
 
   onMount(() => {
     window.addEventListener('keydown', handleKeydown);
-    window.addEventListener('keydown', trapFocus);
   });
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleKeydown);
-    window.removeEventListener('keydown', trapFocus);
     if (searchTimeout) {
       clearTimeout(searchTimeout);
     }
@@ -173,17 +147,15 @@
   <div
     class="quick-open-overlay"
     on:click={handleOverlayClick}
-    on:keydown={handleKeydown}
     role="presentation"
     tabindex="-1"
+    use:focusTrap={{ onEscape: onClose }}
   >
     <div
-      bind:this={modalContainer}
       class="quick-open"
       role="dialog"
       aria-modal="true"
       aria-label="Quick open"
-      use:focusTrap
     >
       <div class="search-container">
         <input

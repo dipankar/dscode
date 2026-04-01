@@ -23,6 +23,7 @@
   import { createAppShellController, createDefaultAppShellState } from './lib/app-shell/controller';
   import { workspaceStore } from './stores/workspace';
   import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { sessionLoading } from './stores/session';
 
   $: theme = $settingsStore.theme.colorTheme;
 
@@ -41,6 +42,30 @@
 
   let shellState = createDefaultAppShellState();
 
+  // Track session initialization lifecycle to hide the loading screen.
+  // sessionLoading starts false, goes true during init, then false when done.
+  // We wait until it has been true at least once before dismissing the splash.
+  let hasSessionLoaded = false;
+
+  function hideLoadingScreen() {
+    const el = document.querySelector('.loading-screen');
+    if (el && !el.classList.contains('loading-screen--fade-out')) {
+      el.classList.add('loading-screen--fade-out');
+      el.addEventListener('transitionend', () => el.remove(), { once: true });
+      // Fallback removal in case transitionend never fires (e.g. prefers-reduced-motion)
+      setTimeout(() => { if (el.parentNode) el.remove(); }, 1000);
+    }
+  }
+
+  $: {
+    if ($sessionLoading) {
+      hasSessionLoaded = true;
+    }
+    if (hasSessionLoaded && !$sessionLoading) {
+      hideLoadingScreen();
+    }
+  }
+
   const appShellController = createAppShellController({
     getState: () => shellState,
     setState: (nextState) => {
@@ -58,6 +83,9 @@
 
   onMount(() => {
     appShellController.initialize();
+
+    // Safety: hide loading screen after 10s even if session init stalls
+    setTimeout(hideLoadingScreen, 10000);
 
     const handleWindowError = (event: ErrorEvent) => {
       setAppError(event.error ?? new Error(event.message));

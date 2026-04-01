@@ -1,4 +1,3 @@
-use super::contributions::ExtensionContributes;
 use super::{SessionEvent, SessionManager, TextEditPayload};
 use crate::commands::{CommandInfo, CommandRegistry, LanguageFeaturesRegistry};
 use dscode_extension_host::PathValidator;
@@ -144,7 +143,7 @@ impl SessionManager {
     /// Start the Extension Host with bidirectional NNG IPC
     pub(super) async fn start_extension_host(&self) -> Result<(), String> {
         {
-            let mut manager = self.extension_host.lock().await;
+            let manager = self.extension_host.lock().await;
             if manager.state() == dscode_extension_host::ExtensionHostState::Running {
                 debug!("[SessionManager] Extension Host already running, skipping");
                 return Ok(());
@@ -1197,8 +1196,7 @@ impl SessionManager {
                     Ok(result)
                 })
                 .await
-                .map_err(|e| format!("Unavailable: {}", e))?
-                .map_err(|e| e)?;
+                .map_err(|e| format!("Unavailable: {}", e))??;
 
                 Ok(json!({ "entries": entries }))
             }

@@ -54,7 +54,10 @@ impl RateLimiter {
 
     /// Get or create a rate limiter for an extension
     fn get_or_create_limiter(&self, extension_id: &str) -> GovernorLimiter {
-        let mut limiters = self.limiters.lock().expect("rate_limiter lock poisoned");
+        let mut limiters = self.limiters.lock().unwrap_or_else(|e| {
+            tracing::warn!("Rate limiter lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
 
         limiters
             .entry(extension_id.to_string())
@@ -64,7 +67,10 @@ impl RateLimiter {
 
     /// Remove rate limiter for an extension (called when extension unloads)
     pub fn remove_limiter(&self, extension_id: &str) {
-        let mut limiters = self.limiters.lock().expect("rate_limiter lock poisoned");
+        let mut limiters = self.limiters.lock().unwrap_or_else(|e| {
+            tracing::warn!("Rate limiter lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         limiters.remove(extension_id);
     }
 }
@@ -139,5 +145,83 @@ mod tests {
         let result = limiter.check_rate_limit("over-limit-ext");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Rate limit exceeded"));
+    }
+
+    #[test]
+    fn test_rate_limiter_default() {
+        let limiter = RateLimiter::default();
+        // Default allows 100 requests per second, so the first few should pass
+        for _ in 0..10 {
+            assert!(limiter.check_rate_limit("default-ext").is_ok());
+        }
+    }
+
+    #[test]
+    fn test_rate_limiter_new() {
+        let limiter = RateLimiter::new();
+        // Same as default: 100 rps
+        assert!(limiter.check_rate_limit("new-ext").is_ok());
+    }
+
+    #[test]
+    fn test_rate_limiter_window_refill() {
+        // After the quota window passes, the limiter should allow requests again
+        let limiter = RateLimiter::with_quota(3);
+        for _ in 0..3 {
+            limiter.check_rate_limit("window-ext").unwrap();
+        }
+        assert!(limiter.check_rate_limit("window-ext").is_err());
+
+        // Wait for the bucket to refill (1 second + small buffer)
+        thread::sleep(Duration::from_millis(1100));
+        assert!(limiter.check_rate_limit("window-ext").is_ok());
+    }
+
+    #[test]
+    fn test_rate_limiter_per_extension_isolation() {
+        let limiter = RateLimiter::with_quota(2);
+
+        // Exhaust quota for ext-a
+        limiter.check_rate_limit("ext-a").unwrap();
+        limiter.check_rate_limit("ext-a").unwrap();
+        assert!(limiter.check_rate_limit("ext-a").is_err());
+
+        // ext-b should still have its own independent quota
+        assert!(limiter.check_rate_limit("ext-b").is_ok());
+        assert!(limiter.check_rate_limit("ext-b").is_ok());
+        assert!(limiter.check_rate_limit("ext-b").is_err());
+
+        // ext-c is also independent
+        assert!(limiter.check_rate_limit("ext-c").is_ok());
+    }
+
+    #[test]
+    fn test_rate_limiter_remove_limiter() {
+        let limiter = RateLimiter::with_quota(2);
+
+        // Use up quota for ext-rm
+        limiter.check_rate_limit("ext-rm").unwrap();
+        limiter.check_rate_limit("ext-rm").unwrap();
+        assert!(limiter.check_rate_limit("ext-rm").is_err());
+
+        // Remove the limiter; next check creates a fresh one
+        limiter.remove_limiter("ext-rm");
+        assert!(limiter.check_rate_limit("ext-rm").is_ok());
+    }
+
+    #[test]
+    fn test_rate_limiter_with_quota_zero_uses_default() {
+        // with_quota(0) should fall back to 100 since NonZeroU32::new(0) is None
+        let limiter = RateLimiter::with_quota(0);
+        // Should still work (default of 100)
+        assert!(limiter.check_rate_limit("zero-ext").is_ok());
+    }
+
+    #[test]
+    fn test_rate_limiter_error_contains_extension_id() {
+        let limiter = RateLimiter::with_quota(1);
+        limiter.check_rate_limit("error-ext").unwrap();
+        let err = limiter.check_rate_limit("error-ext").unwrap_err();
+        assert!(err.contains("error-ext"), "Error message should contain extension id");
     }
 }

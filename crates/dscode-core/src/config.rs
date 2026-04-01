@@ -6,12 +6,19 @@ use tracing::warn;
 
 /// Application directories derived from configuration.
 ///
-/// Resolves platform-appropriate directories for extensions, storage, and logs.
-/// Supports environment variable overrides and user configuration files.
+/// `AppDirectories` holds the resolved filesystem paths that DSCode uses to
+/// store extensions, persistent data, and log files. Paths are resolved at
+/// construction time from a priority chain of environment variables, user
+/// configuration, and platform defaults.
 ///
-/// # Environment Variables
+/// # Resolution priority (highest to lowest)
 ///
-/// - `DSCODE_EXTENSIONS_DIR` — Override the extensions directory
+/// 1. **Environment variable override** — e.g. `DSCODE_EXTENSIONS_DIR` for the
+///    extensions directory.
+/// 2. **User config file** — `~/.dscode/config.json`, which may specify
+///    custom paths under a `"paths"` object.
+/// 3. **Platform default** — `~/.dscode/extensions`, `~/.dscode/storage`, and
+///    `~/.dscode/logs` respectively.
 ///
 /// # User Configuration
 ///
@@ -26,23 +33,54 @@ use tracing::warn;
 ///   }
 /// }
 /// ```
+///
+/// Both `camelCase` and `snake_case` keys are accepted.
+///
+/// # Invariants
+///
+/// - All three directory paths exist on disk after [`AppDirectories::resolve`]
+///   returns `Ok`. Directories are created automatically if they do not exist.
+/// - Tilde (`~`) prefixes in user-configured paths are expanded to the home
+///   directory.
+/// - Paths are canonicalised when possible; if canonicalisation fails (e.g.
+///   the path does not yet exist on some platforms), the original path is
+///   kept unchanged.
 #[derive(Debug, Clone)]
 pub struct AppDirectories {
-    /// Directory for installed extensions
+    /// Directory where installed extensions are stored.
+    ///
+    /// Can be overridden by the `DSCODE_EXTENSIONS_DIR` environment variable.
     pub extensions_dir: PathBuf,
-    /// Directory for persistent storage
+    /// Directory for persistent application storage (e.g. workspace state,
+    /// user preferences).
     pub storage_dir: PathBuf,
-    /// Directory for log files
+    /// Directory where log files are written.
     pub logs_dir: PathBuf,
 }
 
 impl AppDirectories {
     /// Resolve directories from user configuration and environment overrides.
     ///
-    /// Priority order for each directory:
-    /// 1. Environment variable override (e.g., `DSCODE_EXTENSIONS_DIR`)
-    /// 2. User config file (`~/.dscode/config.json`)
-    /// 3. Platform default (`~/.dscode/extensions`, `~/.dscode/storage`, `~/.dscode/logs`)
+    /// The method applies the priority chain (environment variable > user
+    /// config > platform default) for each of the three directory paths,
+    /// expands `~` prefixes, creates directories that do not yet exist, and
+    /// canonicalises the resulting paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(String)` if:
+    /// - A `~` path cannot be expanded because the home directory is
+    ///   unavailable.
+    /// - A directory cannot be created due to a filesystem permission error.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use dscode_core::AppDirectories;
+    ///
+    /// let dirs = AppDirectories::resolve().expect("failed to resolve dirs");
+    /// println!("Extensions: {:?}", dirs.extensions_dir);
+    /// ```
     pub fn resolve() -> Result<Self, String> {
         let user_paths = resolve_user_config_dirs();
 
@@ -178,6 +216,10 @@ fn extract_path(value: &Value, keys: &[&str], scoped: Option<&str>) -> Option<Pa
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Mutex to serialize env-override tests since std::env::set_var is process-global.
+    static ENV_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_app_directories_resolve() {
@@ -193,15 +235,84 @@ mod tests {
 
     #[test]
     fn test_env_override_extensions_dir() {
-        // Set the environment variable
-        let custom_dir = std::env::temp_dir().join("dscode-test-extensions");
-        std::env::set_var("DSCODE_EXTENSIONS_DIR", &custom_dir);
+        let _lock = ENV_TEST_MUTEX.lock().unwrap();
+        let custom_dir = std::env::temp_dir().join(format!("dscode-test-ext-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&custom_dir);
 
-        let dirs = AppDirectories::resolve().unwrap();
+        std::env::set_var("DSCODE_EXTENSIONS_DIR", &custom_dir);
+        let dirs = AppDirectories::resolve().expect("resolve should work with env override");
         assert!(dirs.extensions_dir.starts_with(&custom_dir) || dirs.extensions_dir == canonicalize_or_original(custom_dir.clone()));
 
-        // Clean up
         std::env::remove_var("DSCODE_EXTENSIONS_DIR");
         let _ = std::fs::remove_dir_all(&custom_dir);
+    }
+
+    #[test]
+    fn test_env_override_set_resolve_clear() {
+        let _lock = ENV_TEST_MUTEX.lock().unwrap();
+        let custom_dir = std::env::temp_dir().join(format!("dscode-test-cycle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&custom_dir);
+
+        std::env::set_var("DSCODE_EXTENSIONS_DIR", &custom_dir);
+        let dirs_with_env = AppDirectories::resolve().expect("resolve should work with env override");
+        assert!(
+            dirs_with_env.extensions_dir.starts_with(&custom_dir)
+                || dirs_with_env.extensions_dir == canonicalize_or_original(custom_dir.clone()),
+            "Extensions dir should use env override"
+        );
+
+        std::env::remove_var("DSCODE_EXTENSIONS_DIR");
+        let dirs_without_env = AppDirectories::resolve().expect("resolve should work without env override");
+        assert!(
+            !dirs_without_env.extensions_dir.starts_with(&custom_dir),
+            "Extensions dir should revert to default after clearing env"
+        );
+
+        let _ = std::fs::remove_dir_all(&custom_dir);
+    }
+
+    #[test]
+    fn test_resolve_creates_directories() {
+        // resolve() should create the directories if they don't exist
+        let dirs = AppDirectories::resolve().unwrap();
+        assert!(dirs.extensions_dir.exists(), "extensions_dir should exist after resolve");
+        assert!(dirs.storage_dir.exists(), "storage_dir should exist after resolve");
+        assert!(dirs.logs_dir.exists(), "logs_dir should exist after resolve");
+    }
+
+    #[test]
+    fn test_normalize_path_tilde() {
+        // Tilde should expand to the home directory
+        let expanded = normalize_path(PathBuf::from("~")).unwrap();
+        assert!(!expanded.to_string_lossy().starts_with('~'), "Tilde should be expanded");
+
+        let expanded_prefix = normalize_path(PathBuf::from("~/subdir")).unwrap();
+        assert!(!expanded_prefix.to_string_lossy().starts_with('~'), "Tilde prefix should be expanded");
+        assert!(expanded_prefix.to_string_lossy().contains("subdir"));
+    }
+
+    #[test]
+    fn test_extract_path_from_nested_json() {
+        // extract_path should find keys in scoped objects
+        let value: Value = serde_json::from_str(r#"{"paths": {"extensionsDir": "/custom/ext"}}"#).unwrap();
+        let result = extract_path(&value, &["extensionsDir", "extensions_dir"], Some("paths"));
+        assert_eq!(result, Some(PathBuf::from("/custom/ext")));
+
+        // Fallback to top-level key if not in scope
+        let value2: Value = serde_json::from_str(r#"{"extensionsDir": "/top/ext"}"#).unwrap();
+        let result2 = extract_path(&value2, &["extensionsDir", "extensions_dir"], Some("paths"));
+        assert_eq!(result2, Some(PathBuf::from("/top/ext")));
+
+        // Missing key returns None
+        let value3: Value = serde_json::from_str(r#"{"paths": {}}"#).unwrap();
+        let result3 = extract_path(&value3, &["extensionsDir", "extensions_dir"], Some("paths"));
+        assert_eq!(result3, None);
+    }
+
+    #[test]
+    fn test_default_base_dir_contains_dscode() {
+        let base = default_base_dir();
+        let base_str = base.to_string_lossy();
+        assert!(base_str.contains("dscode"), "Default base dir should contain 'dscode': {:?}", base);
     }
 }

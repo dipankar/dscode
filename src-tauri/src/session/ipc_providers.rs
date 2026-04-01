@@ -2,7 +2,7 @@ use crate::commands::{
     CodeActionProvider, CodeLensProvider, ColorProvider, CompletionProvider, DefinitionProvider,
     DocumentFormattingProvider, DocumentHighlightProvider, DocumentSelector,
     DocumentSymbolsProvider, FoldingRangeProvider, HoverProvider, LanguageFeaturesRegistry,
-    LinkedEditingRangeProvider, OnTypeFormattingProvider, RangeFormattingProvider,
+    OnTypeFormattingProvider, RangeFormattingProvider,
     ReferencesProvider, RenameProvider, SelectionRangeProvider, SemanticTokensLegend,
     SemanticTokensProvider, SignatureHelpProvider, WorkspaceSymbolsProvider,
 };
@@ -193,9 +193,7 @@ pub(super) fn handle_register_provider(
         }
         "semanticTokens" => {
             let legend_val = payload.get("legend");
-            let legend = legend_val
-                .and_then(|l| {
-                    Some(SemanticTokensLegend {
+            let legend = legend_val.map(|l| SemanticTokensLegend {
                         token_types: l
                             .get("tokenTypes")
                             .and_then(|v| v.as_array())
@@ -215,7 +213,6 @@ pub(super) fn handle_register_provider(
                             })
                             .unwrap_or_default(),
                     })
-                })
                 .unwrap_or(SemanticTokensLegend {
                     token_types: Vec::new(),
                     token_modifiers: Vec::new(),

@@ -24,15 +24,13 @@ use ignore::WalkBuilder;
 use notify::event::{CreateKind, ModifyKind, RemoveKind};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::env;
-use std::fs;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tokio::sync::{oneshot, RwLock};
 use tokio::time::Duration;
 
@@ -42,7 +40,7 @@ use dscode_extension_host::PathValidator;
 use dscode_extension_host::{ExtensionHostManager, IpcManager, SecretStorage};
 use dscode_lsp::{LspServerPool, LspServerStrategy};
 use configuration::ConfigurationStore;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 /// STATE MACHINE: SessionLifecycle
 ///
@@ -575,6 +573,17 @@ impl SessionManager {
     pub async fn initialize(&self) -> Result<(), String> {
         if self.initialized.get().is_some() {
             info!("Already initialized, skipping");
+            return Ok(());
+        }
+
+        // Skip if already initializing or beyond
+        let current = *self.lifecycle.read().await;
+        if current == SessionLifecycle::Initializing {
+            info!("Already initializing, waiting...");
+            return Ok(());
+        }
+        if current == SessionLifecycle::Ready {
+            info!("Already ready, skipping initialization");
             return Ok(());
         }
 

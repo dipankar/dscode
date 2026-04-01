@@ -210,7 +210,10 @@ impl CommandRegistry {
             },
         ];
 
-        let mut commands = self.commands.write().expect("command_registry write lock poisoned");
+        let mut commands = self.commands.write().unwrap_or_else(|e| {
+            warn!("command_registry write lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         for cmd in builtins {
             commands.insert(cmd.id.clone(), cmd);
         }
@@ -218,7 +221,10 @@ impl CommandRegistry {
 
     /// Register a command from an extension
     pub fn register_command(&self, command: CommandInfo) -> Result<(), String> {
-        let mut commands = self.commands.write().expect("command_registry write lock poisoned");
+        let mut commands = self.commands.write().unwrap_or_else(|e| {
+            warn!("command_registry write lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
 
         // Check for conflicts
         if let Some(existing) = commands.get(&command.id) {
@@ -240,7 +246,10 @@ impl CommandRegistry {
 
     /// Unregister a command
     pub fn unregister_command(&self, command_id: &str, owner: &str) -> Result<(), String> {
-        let mut commands = self.commands.write().expect("command_registry write lock poisoned");
+        let mut commands = self.commands.write().unwrap_or_else(|e| {
+            warn!("command_registry write lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
 
         if let Some(existing) = commands.get(command_id) {
             // Only allow owner to unregister their own commands
@@ -264,19 +273,28 @@ impl CommandRegistry {
 
     /// Get all registered commands
     pub fn get_all_commands(&self) -> Vec<CommandInfo> {
-        let commands = self.commands.read().expect("command_registry read lock poisoned");
+        let commands = self.commands.read().unwrap_or_else(|e| {
+            warn!("command_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         commands.values().cloned().collect()
     }
 
     /// Get a specific command
     pub fn get_command(&self, command_id: &str) -> Option<CommandInfo> {
-        let commands = self.commands.read().expect("command_registry read lock poisoned");
+        let commands = self.commands.read().unwrap_or_else(|e| {
+            warn!("command_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         commands.get(command_id).cloned()
     }
 
     /// Search commands by query
     pub fn search_commands(&self, query: &str) -> Vec<CommandInfo> {
-        let commands = self.commands.read().expect("command_registry read lock poisoned");
+        let commands = self.commands.read().unwrap_or_else(|e| {
+            warn!("command_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         let query_lower = query.to_lowercase();
 
         let mut results: Vec<CommandInfo> = commands
@@ -324,7 +342,10 @@ impl CommandRegistry {
 
     /// Clear all commands from a specific owner (used when extension deactivates)
     pub fn clear_commands_by_owner(&self, owner: &str) {
-        let mut commands = self.commands.write().expect("command_registry write lock poisoned");
+        let mut commands = self.commands.write().unwrap_or_else(|e| {
+            warn!("command_registry write lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         commands.retain(|_, cmd| cmd.owner != owner);
 
         // Emit event to frontend

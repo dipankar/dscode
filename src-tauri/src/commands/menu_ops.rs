@@ -1,5 +1,4 @@
 use crate::commands::{MenuContext, MenuItem, MenuRegistry};
-use serde_json::Value;
 use tauri::State;
 
 /// Get menu items for a specific location

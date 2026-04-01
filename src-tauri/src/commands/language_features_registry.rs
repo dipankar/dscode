@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentFilter {
@@ -429,7 +429,10 @@ impl LanguageFeaturesRegistry {
     fn get_matching_providers<T: SelectableProvider + Clone>(
         &self, providers: &Arc<RwLock<Vec<T>>>, language: &str, uri: &str,
     ) -> Vec<T> {
-        let providers = providers.read().expect("language_features_providers read lock poisoned");
+        let providers = providers.read().unwrap_or_else(|e| {
+            warn!("language_features_providers read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         providers
             .iter()
             .filter(|provider| provider.matches_document(language, uri))
@@ -438,7 +441,10 @@ impl LanguageFeaturesRegistry {
     }
 
     fn get_all_providers<T: Clone>(&self, providers: &Arc<RwLock<Vec<T>>>) -> Vec<T> {
-        let providers = providers.read().expect("language_features_providers read lock poisoned");
+        let providers = providers.read().unwrap_or_else(|e| {
+            warn!("language_features_providers read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         providers.iter().cloned().collect()
     }
 
@@ -664,13 +670,19 @@ impl LanguageFeaturesRegistry {
 
     /// Get diagnostics for a document
     pub fn get_diagnostics(&self, uri: &str) -> Vec<Diagnostic> {
-        let all_diagnostics = self.diagnostics.read().expect("diagnostics read lock poisoned");
+        let all_diagnostics = self.diagnostics.read().unwrap_or_else(|e| {
+            warn!("diagnostics read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         all_diagnostics.get(uri).cloned().unwrap_or_default()
     }
 
     /// Get all diagnostics
     pub fn get_all_diagnostics(&self) -> HashMap<String, Vec<Diagnostic>> {
-        let all_diagnostics = self.diagnostics.read().expect("diagnostics read lock poisoned");
+        let all_diagnostics = self.diagnostics.read().unwrap_or_else(|e| {
+            warn!("diagnostics read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         all_diagnostics.clone()
     }
 
@@ -680,7 +692,7 @@ impl LanguageFeaturesRegistry {
 
         // Remove diagnostics that belong to this owner
         all_diagnostics.retain(|_, diagnostics| {
-            diagnostics.retain(|d| d.source.as_ref().map(|s| s.as_str()) != Some(owner));
+            diagnostics.retain(|d| d.source.as_deref() != Some(owner));
             !diagnostics.is_empty()
         });
 

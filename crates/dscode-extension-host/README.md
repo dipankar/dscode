@@ -1,6 +1,17 @@
 # dscode-extension-host
 
+[![docs.rs](https://img.shields.io/docsrs/dscode-extension-host)](https://docs.rs/dscode-extension-host)
+[![crates.io](https://img.shields.io/crates/v/dscode-extension-host.svg)](https://crates.io/crates/dscode-extension-host)
+[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Extension host process management, IPC, sandbox, and security for DSCode.
+
+## Install
+
+```bash
+cargo add dscode-extension-host
+```
 
 ## Features
 
@@ -132,6 +143,10 @@ host.shutdown();
 - **Restarting**: Waiting for exponential backoff (1s, 2s, 4s) before re-spawn
 - **Stopping**: Graceful shutdown in progress
 - **Crashed**: Terminal state after 3 failed restart attempts
+
+## Full API Docs
+
+<https://docs.rs/dscode-extension-host>
 
 ## License
 

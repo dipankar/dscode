@@ -3,6 +3,10 @@
 //! Debug Adapter Protocol client, manager, and pool for DSCode.
 //!
 //! This crate provides a complete DAP client implementation with:
+
+#![warn(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![warn(dead_code)]
 //! - [`DebugAdapter`] — State-machine-based DAP client that manages a debug adapter process
 //! - [`DebugManager`] — Registry for debug sessions and breakpoints
 //! - [`DebugAdapterPool`] — Connection pool with one adapter per debug session

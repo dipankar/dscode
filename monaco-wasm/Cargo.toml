@@ -6,6 +6,9 @@ license = "MIT"
 repository = "https://github.com/dscode-dev/dscode"
 description = "WASM-based fast syntax tokenizer for Monaco Editor"
 authors = ["DSCode Contributors"]
+readme = "README.md"
+keywords = ["wasm", "tokenizer", "monaco", "syntax"]
+categories = ["development-tools", "wasm"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-O", "--enable-bulk-memory"]

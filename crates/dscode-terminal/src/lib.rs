@@ -3,6 +3,10 @@
 //! Terminal manager and PTY lifecycle management for DSCode.
 //!
 //! This crate provides a portable PTY-backed terminal manager that can be used
+
+#![warn(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![warn(dead_code)]
 //! independently of any UI framework. Event forwarding is abstracted behind the
 //! [`TerminalEventSender`] trait, with an optional Tauri implementation gated
 //! behind the `tauri` feature flag.

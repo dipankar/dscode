@@ -153,3 +153,101 @@ pub struct DebugPoolStats {
     pub total_sessions: usize,
     pub states: HashMap<DebugState, usize>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_pool_new() {
+        let pool = DebugAdapterPool::new();
+        let sessions = pool.list_sessions().await;
+        assert!(sessions.is_empty(), "New pool should have no sessions");
+    }
+
+    #[tokio::test]
+    async fn test_pool_stats_empty() {
+        let pool = DebugAdapterPool::new();
+        let stats = pool.get_stats().await;
+        assert_eq!(stats.total_sessions, 0, "Empty pool should have 0 sessions");
+        assert!(stats.states.is_empty(), "Empty pool should have no state counts");
+    }
+
+    #[tokio::test]
+    async fn test_pool_register_adapter() {
+        let pool = DebugAdapterPool::new();
+        pool.register_adapter("cppdbg".to_string(), "/usr/bin/gdb".to_string(), vec![])
+            .await;
+
+        // Registering a config does not create a running session
+        let sessions = pool.list_sessions().await;
+        assert!(sessions.is_empty(), "Registering config should not create a session");
+
+        let stats = pool.get_stats().await;
+        assert_eq!(stats.total_sessions, 0);
+    }
+
+    #[tokio::test]
+    async fn test_pool_get_adapter_nonexistent() {
+        let pool = DebugAdapterPool::new();
+        let result = pool.get_adapter("nonexistent-session").await;
+        assert!(result.is_none(), "Getting nonexistent adapter should return None");
+    }
+
+    #[tokio::test]
+    async fn test_pool_create_session_unconfigured() {
+        let pool = DebugAdapterPool::new();
+        let session = DebugSession {
+            id: "test-session".to_string(),
+            name: "Test".to_string(),
+            state: DebugState::Stopped,
+            adapter_type: "nonexistent".to_string(),
+        };
+        let result = pool.create_session(session).await;
+        assert!(result.is_err(), "Should fail when no adapter config registered");
+        assert!(result.unwrap_err().contains("No configuration found"));
+    }
+
+    #[tokio::test]
+    async fn test_pool_stop_session_nonexistent() {
+        let pool = DebugAdapterPool::new();
+        let result = pool.stop_session("nonexistent").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_pool_update_state_nonexistent() {
+        let pool = DebugAdapterPool::new();
+        let result = pool.update_state("nonexistent", DebugState::Running).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_pool_register_multiple_configs() {
+        let pool = DebugAdapterPool::new();
+        pool.register_adapter("cppdbg".to_string(), "/usr/bin/gdb".to_string(), vec![])
+            .await;
+        pool.register_adapter("python".to_string(), "debugpy".to_string(), vec!["--listen".to_string()])
+            .await;
+        pool.register_adapter("go".to_string(), "dlv".to_string(), vec![])
+            .await;
+
+        // Configs registered but no sessions started
+        assert!(pool.list_sessions().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_pool_list_sessions_empty() {
+        let pool = DebugAdapterPool::new();
+        let sessions = pool.list_sessions().await;
+        assert!(sessions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_pool_default_trait() {
+        let pool = DebugAdapterPool::default();
+        assert!(pool.list_sessions().await.is_empty());
+    }
+}

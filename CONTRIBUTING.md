@@ -218,6 +218,15 @@ cd extension-host && npm test
 npm run check
 ```
 
+## Release Process
+
+All workspace crates share the same version (currently `0.1.0`).
+
+- **Version bump process**: update `workspace.package.version` in the root `Cargo.toml`, then run `npm version` in each JS package to match.
+- **Tag format**: `v0.1.0`
+- **Release cadence**: bi-weekly patch releases, monthly minor releases during active development.
+- **Before release**: ensure `cargo publish --dry-run` passes for every crate in the workspace.
+
 ## Questions?
 
 Open an issue on [GitHub](https://github.com/dscode-dev/dscode/issues) or start a discussion.

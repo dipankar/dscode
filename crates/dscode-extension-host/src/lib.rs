@@ -3,6 +3,10 @@
 //! Extension host process management, IPC, sandbox, and security for DSCode.
 //!
 //! This crate provides the infrastructure for running and communicating with
+
+#![warn(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![warn(dead_code)]
 //! extension host processes, including:
 //!
 //! - **Process lifecycle management** with a state machine ([`manager::ExtensionHostManager`])

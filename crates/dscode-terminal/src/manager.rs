@@ -497,12 +497,18 @@ impl TerminalManager {
     }
 
     pub fn list_terminals(&self) -> Vec<TerminalInfo> {
-        let terminals = self.terminals.lock().expect("terminals lock poisoned");
+        let terminals = self.terminals.lock().unwrap_or_else(|e| {
+            tracing::warn!("Terminals lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         terminals.values().map(|t| t.info.clone()).collect()
     }
 
     pub fn start_reading(&self, id: &str) -> Result<(), String> {
-        let mut terminals = self.terminals.lock().expect("terminals lock poisoned");
+        let mut terminals = self.terminals.lock().unwrap_or_else(|e| {
+            tracing::warn!("Terminals lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         let terminal = terminals
             .get_mut(id)
             .ok_or_else(|| format!("Terminal {} not found", id))?;
@@ -519,7 +525,10 @@ impl TerminalManager {
 
     /// Close all terminals (for shutdown)
     pub fn close_all(&self) {
-        let mut terminals = self.terminals.lock().expect("terminals lock poisoned");
+        let mut terminals = self.terminals.lock().unwrap_or_else(|e| {
+            tracing::warn!("Terminals lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         let ids: Vec<String> = terminals.keys().cloned().collect();
 
         for id in ids {
@@ -585,6 +594,21 @@ mod tests {
         let manager = make_manager();
         assert!(manager.list_terminals().is_empty());
         assert!(manager.list_profiles().is_empty());
+    }
+
+    #[test]
+    fn test_list_terminals_on_empty_manager() {
+        let manager = make_manager();
+        let terminals = manager.list_terminals();
+        assert!(terminals.is_empty(), "list_terminals on empty manager should return empty vec");
+    }
+
+    #[test]
+    fn test_close_nonexistent_terminal() {
+        let manager = make_manager();
+        let result = manager.close_terminal("nonexistent-id");
+        assert!(result.is_err(), "Closing a nonexistent terminal should fail");
+        assert!(result.unwrap_err().contains("not found"));
     }
 
     #[test]

@@ -1,9 +1,9 @@
+use dscode_core::CoreError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceFolder {
@@ -89,18 +89,23 @@ impl WorkspaceRegistry {
 
     /// Get all workspace folders
     pub fn get_workspace_folders(&self) -> Vec<WorkspaceFolder> {
-        let folders = self.folders.read().expect("workspace_folders read lock poisoned");
+        let folders = self.folders.read().unwrap_or_else(|e| {
+            warn!("workspace_folders read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         folders.clone()
     }
 
     /// Add a workspace folder
-    pub fn add_workspace_folder(&self, folder: WorkspaceFolder) -> Result<(), String> {
+    pub fn add_workspace_folder(&self, folder: WorkspaceFolder) -> Result<(), CoreError> {
         {
-            let mut folders = self.folders.write().map_err(|e| e.to_string())?;
+            let mut folders = self.folders.write().map_err(|e| {
+                CoreError::Io(std::io::Error::other(e.to_string()))
+            })?;
 
             // Check if folder already exists
             if folders.iter().any(|f| f.uri == folder.uri) {
-                return Err("Workspace folder already exists".to_string());
+                return Err(CoreError::Config("Workspace folder already exists".to_string()));
             }
 
             folders.push(folder.clone());
@@ -119,14 +124,16 @@ impl WorkspaceRegistry {
     }
 
     /// Remove a workspace folder
-    pub fn remove_workspace_folder(&self, uri: &str) -> Result<(), String> {
+    pub fn remove_workspace_folder(&self, uri: &str) -> Result<(), CoreError> {
         {
-            let mut folders = self.folders.write().map_err(|e| e.to_string())?;
+            let mut folders = self.folders.write().map_err(|e| {
+                CoreError::Io(std::io::Error::other(e.to_string()))
+            })?;
             let initial_len = folders.len();
             folders.retain(|f| f.uri != uri);
 
             if folders.len() == initial_len {
-                return Err("Workspace folder not found".to_string());
+                return Err(CoreError::PathResolution("Workspace folder not found".to_string()));
             }
 
             // Reindex remaining folders
@@ -151,7 +158,10 @@ impl WorkspaceRegistry {
         &self, section: &str, scope: Option<&str>,
     ) -> Option<WorkspaceConfiguration> {
         let configs =
-            self.configurations.read().expect("workspace_configurations read lock poisoned");
+            self.configurations.read().unwrap_or_else(|e| {
+                warn!("workspace_configurations read lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
         let key = self.config_key(section, scope);
         configs.get(&key).cloned()
     }
@@ -159,9 +169,11 @@ impl WorkspaceRegistry {
     /// Update workspace configuration
     pub fn update_configuration(
         &self, section: String, scope: Option<String>, key: String, value: serde_json::Value,
-    ) -> Result<(), String> {
+    ) -> Result<(), CoreError> {
         {
-            let mut configs = self.configurations.write().map_err(|e| e.to_string())?;
+            let mut configs = self.configurations.write().map_err(|e| {
+                CoreError::Io(std::io::Error::other(e.to_string()))
+            })?;
             let config_key = self.config_key(&section, scope.as_deref());
 
             let config = configs.entry(config_key).or_insert_with(|| WorkspaceConfiguration {
@@ -187,8 +199,10 @@ impl WorkspaceRegistry {
     /// Register a file decoration provider
     pub fn register_file_decoration_provider(
         &self, provider: FileDecorationProvider,
-    ) -> Result<String, String> {
-        let mut providers = self.file_decoration_providers.write().map_err(|e| e.to_string())?;
+    ) -> Result<String, CoreError> {
+        let mut providers = self.file_decoration_providers.write().map_err(|e| {
+            CoreError::Io(std::io::Error::other(e.to_string()))
+        })?;
         let id = provider.id.clone();
         providers.push(provider);
 
@@ -199,9 +213,11 @@ impl WorkspaceRegistry {
     /// Update file decorations for a provider
     pub fn update_file_decorations(
         &self, provider_id: String, decorations: Vec<FileDecoration>,
-    ) -> Result<(), String> {
+    ) -> Result<(), CoreError> {
         {
-            let mut all_decorations = self.file_decorations.write().map_err(|e| e.to_string())?;
+            let mut all_decorations = self.file_decorations.write().map_err(|e| {
+                CoreError::Io(std::io::Error::other(e.to_string()))
+            })?;
             all_decorations.insert(provider_id.clone(), decorations.clone());
         }
 
@@ -216,7 +232,10 @@ impl WorkspaceRegistry {
     /// Get file decorations for a URI
     pub fn get_file_decorations(&self, uri: &str) -> Vec<FileDecoration> {
         let all_decorations =
-            self.file_decorations.read().expect("workspace_file_decorations read lock poisoned");
+            self.file_decorations.read().unwrap_or_else(|e| {
+                warn!("workspace_file_decorations read lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
         let mut result = Vec::new();
 
         for decorations in all_decorations.values() {
@@ -231,20 +250,27 @@ impl WorkspaceRegistry {
     }
 
     /// Clear all providers and configurations for an owner
-    pub fn clear_owner_data(&self, owner: &str) -> Result<(), String> {
+    pub fn clear_owner_data(&self, owner: &str) -> Result<(), CoreError> {
         {
             let mut providers =
-                self.file_decoration_providers.write().map_err(|e| e.to_string())?;
+                self.file_decoration_providers.write().map_err(|e| {
+                    CoreError::Io(std::io::Error::other(e.to_string()))
+                })?;
             providers.retain(|p| p.owner != owner);
         }
 
         {
-            let mut decorations = self.file_decorations.write().map_err(|e| e.to_string())?;
+            let mut decorations = self.file_decorations.write().map_err(|e| {
+                CoreError::Io(std::io::Error::other(e.to_string()))
+            })?;
             decorations.retain(|provider_id, _| {
                 let providers = self
                     .file_decoration_providers
                     .read()
-                    .expect("workspace_file_decoration_providers read lock poisoned");
+                    .unwrap_or_else(|e| {
+                        warn!("workspace_file_decoration_providers read lock poisoned, recovering: {}", e);
+                        e.into_inner()
+                    });
                 providers.iter().any(|p| &p.id == provider_id)
             });
         }

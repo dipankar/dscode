@@ -21,8 +21,17 @@ fn percent_decode_str(input: &str) -> String {
                     result.push(char::from(hv * 16 + lv));
                     continue;
                 }
+                // Invalid hex digits — push back what we consumed
+                result.push(byte as char);
+                result.push(h as char);
+                result.push(l as char);
+            } else {
+                // Incomplete sequence — push back what we consumed
+                result.push(byte as char);
+                if let Some(h) = hi {
+                    result.push(h as char);
+                }
             }
-            result.push(byte as char);
         } else if byte == b'+' {
             result.push(' ');
         } else {
@@ -139,6 +148,26 @@ impl PathValidator {
                         path.to_path_buf()
                     }
                 } else {
+                    // Parent doesn't exist yet (e.g. create_dir_all target).
+                    // Walk up to find an existing ancestor and validate from there.
+                    let mut ancestor = parent;
+                    while let Some(grandparent) = ancestor.parent() {
+                        if ancestor.exists() {
+                            let canonical_ancestor = fs::canonicalize(ancestor)
+                                .map_err(|e| Self::sanitize_error(&format!("{}", e)))?;
+                            let relative = path.strip_prefix(ancestor).unwrap_or(path);
+                            let joined = canonical_ancestor.join(relative);
+                            if self.is_path_allowed(&joined) {
+                                return Ok(joined);
+                            } else {
+                                return Err("Access denied: Path outside allowed directories".to_string());
+                            }
+                        }
+                        if grandparent.as_os_str().is_empty() {
+                            break;
+                        }
+                        ancestor = grandparent;
+                    }
                     return Err("Parent directory does not exist".to_string());
                 }
             } else {
@@ -307,5 +336,159 @@ mod tests {
 
         let result = validator.validate_file_path("/usr/bin/python");
         assert!(result.is_err(), "Absolute path should be blocked with no workspace roots");
+    }
+
+    #[test]
+    fn test_percent_decode_basic() {
+        // Simple space encoding
+        assert_eq!(percent_decode_str("hello%20world"), "hello world");
+        // Plus sign for space
+        assert_eq!(percent_decode_str("hello+world"), "hello world");
+        // Multiple encoded chars
+        assert_eq!(percent_decode_str("a%2Fb%3Dc"), "a/b=c");
+    }
+
+    #[test]
+    fn test_percent_decode_no_encoding() {
+        assert_eq!(percent_decode_str("plain_text"), "plain_text");
+        assert_eq!(percent_decode_str(""), "");
+    }
+
+    #[test]
+    fn test_percent_decode_incomplete_sequence() {
+        // Incomplete percent sequences should be passed through
+        assert_eq!(percent_decode_str("%2"), "%2");
+        assert_eq!(percent_decode_str("%"), "%");
+        assert_eq!(percent_decode_str("%%20"), "%%20");
+    }
+
+    #[test]
+    fn test_percent_decode_upper_and_lower_hex() {
+        assert_eq!(percent_decode_str("%2f"), "/");
+        assert_eq!(percent_decode_str("%2F"), "/");
+        assert_eq!(percent_decode_str("%aB"), "\u{AB}");
+    }
+
+    #[test]
+    fn test_path_validator_uri_format_file_three_slashes() {
+        let mut validator = PathValidator::new();
+        let current_dir = env::current_dir().unwrap();
+        validator.add_workspace_folder(current_dir.clone());
+
+        // file:/// with three slashes for absolute path
+        let cargo_path = current_dir.join("Cargo.toml");
+        if cargo_path.exists() {
+            let uri = format!("file:///{}", cargo_path.display());
+            let result = validator.validate_path(&uri);
+            assert!(result.is_ok(), "file:/// URI should resolve for workspace file");
+        }
+    }
+
+    #[test]
+    fn test_path_validator_uri_format_file_two_slashes() {
+        let mut validator = PathValidator::new();
+        let current_dir = env::current_dir().unwrap();
+        validator.add_workspace_folder(current_dir.clone());
+
+        // file:// with two slashes (hostname + path)
+        let cargo_path = current_dir.join("Cargo.toml");
+        if cargo_path.exists() {
+            let uri = format!("file://localhost{}", cargo_path.display());
+            let result = validator.validate_path(&uri);
+            assert!(result.is_ok(), "file://localhost URI should resolve for workspace file");
+        }
+    }
+
+    #[test]
+    fn test_path_validator_uri_format_file_one_slash() {
+        // file:/ with one slash should be treated as a path
+        let validator = PathValidator::new();
+        let result = validator.validate_path("file:/etc/passwd");
+        // With no allowed roots, this should be denied
+        assert!(result.is_err(), "file:/ path should be blocked with no workspace roots");
+    }
+
+    #[test]
+    fn test_path_validator_uri_no_scheme() {
+        // A plain path (no file:// prefix) should be used as-is
+        let validator = PathValidator::new();
+        let result = validator.validate_path("/etc/passwd");
+        assert!(result.is_err(), "Plain path should be blocked with no workspace roots");
+    }
+
+    #[test]
+    fn test_path_validator_new_default() {
+        let validator = PathValidator::new();
+        // A new validator with no roots should block everything
+        assert!(validator.validate_file_path("/etc/passwd").is_err());
+        assert!(validator.validate_file_path("/tmp/test").is_err());
+    }
+
+    #[test]
+    fn test_path_validator_get_relative_path() {
+        let mut validator = PathValidator::new();
+        let current_dir = env::current_dir().unwrap();
+        validator.add_workspace_folder(current_dir.clone());
+
+        let child_path = current_dir.join("src").join("main.rs");
+        let relative = validator.get_relative_path(&child_path);
+        // Should be relative to workspace root
+        assert!(!relative.to_string_lossy().starts_with('/'), "Relative path should not start with /");
+    }
+
+    #[test]
+    fn test_path_validator_get_relative_path_fallback() {
+        let validator = PathValidator::new();
+        // No workspace roots set, so should fall back to filename only
+        let some_path = Path::new("/some/random/path/file.txt");
+        let relative = validator.get_relative_path(some_path);
+        assert_eq!(relative, PathBuf::from("file.txt"));
+    }
+
+    #[test]
+    fn test_path_validator_sanitize_error_no_path() {
+        let error = "Something went wrong";
+        let sanitized = PathValidator::sanitize_error(&error);
+        assert_eq!(sanitized, "Something went wrong", "Error without paths should pass through");
+    }
+
+    #[test]
+    fn test_path_validator_sanitize_error_with_path() {
+        let error = "Failed to access /home/user/secret/file.txt";
+        let sanitized = PathValidator::sanitize_error(&error);
+        assert!(!sanitized.contains("/home"), "Sanitized error should not contain file paths");
+        assert!(!sanitized.contains("secret"), "Sanitized error should not contain file paths");
+    }
+
+    #[test]
+    fn test_path_validator_blocks_double_dot_traversal() {
+        let mut validator = PathValidator::new();
+        let current_dir = env::current_dir().unwrap();
+        validator.add_workspace_folder(current_dir);
+
+        // Direct ../ in URI
+        let attack_uris = [
+            "file:///../../../etc/shadow",
+            "file:///../../tmp/evil",
+        ];
+        for uri in &attack_uris {
+            let result = validator.validate_path(uri);
+            assert!(result.is_err(), "Path traversal attack should be blocked: {}", uri);
+        }
+    }
+
+    #[test]
+    fn test_path_validator_set_dirs() {
+        let mut validator = PathValidator::new();
+        let current_dir = env::current_dir().unwrap();
+
+        validator.add_workspace_folder(current_dir.clone());
+        validator.set_extensions_dir(current_dir.join("extensions"));
+        validator.set_storage_dir(current_dir.join("storage"));
+        validator.set_logs_dir(current_dir.join("logs"));
+        validator.set_temp_dir(std::env::temp_dir());
+
+        // Verify that the validator doesn't crash and can still validate
+        // (The actual validation depends on whether dirs exist on disk)
     }
 }

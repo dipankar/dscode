@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use sysinfo::{Pid, System};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceMetrics {
@@ -47,7 +47,10 @@ impl ResourceMonitor {
      * Set the extension host PID for tracking
      */
     pub fn set_extension_host_pid(&self, pid: u32) {
-        let mut ext_pid = self.extension_host_pid.lock().expect("extension_host_pid lock poisoned");
+        let mut ext_pid = self.extension_host_pid.lock().unwrap_or_else(|e| {
+            warn!("extension_host_pid lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         *ext_pid = Some(Pid::from(pid as usize));
         info!("[ResourceMonitor] Tracking extension host PID: {}", pid);
     }
@@ -67,7 +70,10 @@ impl ResourceMonitor {
         system.refresh_process(self.main_pid);
 
         let ext_host_pid =
-            self.extension_host_pid.lock().expect("extension_host_pid lock poisoned");
+            self.extension_host_pid.lock().unwrap_or_else(|e| {
+                warn!("extension_host_pid lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
         if let Some(pid) = *ext_host_pid {
             system.refresh_process(pid);
         }
@@ -81,22 +87,25 @@ impl ResourceMonitor {
             .map(|p| ProcessMetrics {
                 cpu_percent: p.cpu_usage(),
                 memory_mb: p.memory() as f64 / 1024.0 / 1024.0,
-                pid: self.main_pid.as_u32() as u32,
+                pid: self.main_pid.as_u32(),
             })
             .unwrap_or(ProcessMetrics {
                 cpu_percent: 0.0,
                 memory_mb: 0.0,
-                pid: self.main_pid.as_u32() as u32,
+                pid: self.main_pid.as_u32(),
             });
 
         // Get extension host metrics if available
         let ext_host_pid =
-            self.extension_host_pid.lock().expect("extension_host_pid lock poisoned");
+            self.extension_host_pid.lock().unwrap_or_else(|e| {
+                warn!("extension_host_pid lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
         let extension_host = ext_host_pid.and_then(|pid| {
             system.process(pid).map(|p| ProcessMetrics {
                 cpu_percent: p.cpu_usage(),
                 memory_mb: p.memory() as f64 / 1024.0 / 1024.0,
-                pid: pid.as_u32() as u32,
+                pid: pid.as_u32(),
             })
         });
 

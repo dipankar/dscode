@@ -75,7 +75,7 @@
   }
 </script>
 
-<div class="panel-area" role="region" aria-label="Bottom panel">
+<div class="panel-area" role="region" aria-label="Panel">
   <div class="panel-tabs">
     {#each panels as panel}
       <button

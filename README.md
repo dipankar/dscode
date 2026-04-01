@@ -8,6 +8,18 @@
 [![Tauri](https://img.shields.io/badge/tauri-%2324C8DB.svg?style=flat&logo=tauri&logoColor=white)](https://tauri.app/)
 [![Svelte](https://img.shields.io/badge/svelte-%23f1413d.svg?style=flat&logo=svelte&logoColor=white)](https://svelte.dev/)
 
+**Ecosystem**
+
+[![crates.io: dscode-core](https://img.shields.io/crates/v/dscode-core?label=dscode-core)](https://crates.io/crates/dscode-core)
+[![crates.io: dscode-lsp](https://img.shields.io/crates/v/dscode-lsp?label=dscode-lsp)](https://crates.io/crates/dscode-lsp)
+[![crates.io: dscode-dap](https://img.shields.io/crates/v/dscode-dap?label=dscode-dap)](https://crates.io/crates/dscode-dap)
+[![crates.io: dscode-extension-host](https://img.shields.io/crates/v/dscode-extension-host?label=dscode-extension-host)](https://crates.io/crates/dscode-extension-host)
+[![crates.io: dscode-terminal](https://img.shields.io/crates/v/dscode-terminal?label=dscode-terminal)](https://crates.io/crates/dscode-terminal)
+[![crates.io: dscode-session](https://img.shields.io/crates/v/dscode-session?label=dscode-session)](https://crates.io/crates/dscode-session)
+[![npm: @dscode/monaco-wasm](https://img.shields.io/npm/v/@dscode/monaco-wasm?label=monaco-wasm)](https://www.npmjs.com/package/@dscode/monaco-wasm)
+[![npm: dscode-extension-host](https://img.shields.io/npm/v/dscode-extension-host?label=extension-host)](https://www.npmjs.com/package/dscode-extension-host)
+[![PyPI: dscode-core](https://img.shields.io/pypi/v/dscode-core?label=dscode-core%20python)](https://pypi.org/project/dscode-core/)
+
 ## Overview
 
 DSCode is a code editor built with a **Rust backend** (Tauri 2.1) and **Svelte 4 frontend**, designed as a drop-in replacement for Visual Studio Code. It maintains near-100% compatibility with VS Code's extension ecosystem while delivering superior performance through native Rust architecture.
@@ -277,7 +289,25 @@ The extension host supports full two-way IPC for: Hover, Completion, Diagnostics
 - [LSP Integration](docs/architecture/lsp-integration.md)
 - [Roadmap](docs/roadmap.md)
 
-## Contributing
+## Architecture for Hackers
+
+DSCode is designed to be disassembled and reassembled. Every major subsystem is a separate crate with a minimal public API:
+
+- **Replace the editor**: Swap Monaco for your own renderer while keeping `dscode-core::TextBuffer` and `dscode-lsp`.
+- **Headless CI runner**: Use `dscode-session` without the `tauri` feature to scan workspaces and run extensions in CI.
+- **Custom terminal UI**: Implement `TerminalEventSender` from `dscode-terminal` to forward PTY output to a web socket, log file, or custom UI.
+- **Embed in your own Tauri app**: Import `dscode-session` with the `tauri` feature to get the full IDE session in your application.
+- **Write a new LSP client**: `dscode-lsp` exposes `LspClient` directly if you want to build your own manager instead of using `LspManager`.
+
+See [docs/library-guide.md](docs/library-guide.md) for concrete recipes.
+
+## Contributing a New Crate
+
+1. Create `crates/my-crate/` with a `Cargo.toml` that inherits `[workspace.package]`.
+2. Add `"crates/my-crate"` to the `[workspace].members` array in root `Cargo.toml`.
+3. Write a `README.md` with badges, install instructions, and a usage example.
+4. Add an `examples/` directory with at least one runnable example.
+5. Open a PR. CI will check formatting, clippy, tests, docs, and `cargo publish --dry-run`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines including workspace build instructions, code style, and PR process.
 

@@ -44,3 +44,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PathValidator enforces workspace allowlist for all filesystem IPC
 - Zip Slip prevention during VSIX extraction
 - OS keyring integration for extension secret storage
+
+## Deprecation Policy
+
+DSCode follows Semantic Versioning. As a `0.x` project:
+
+- **Minor releases** (`0.x.0`) may introduce breaking API changes.
+- **Patch releases** (`0.x.y`) are backwards-compatible bug fixes.
+- Public APIs marked with `#[deprecated]` will be kept for at least one minor release cycle before removal.
+- Migration notes for breaking changes will be added to this changelog under the relevant version.
+
+## Migration Notes
+
+This is the initial release — no prior versions exist to migrate from.

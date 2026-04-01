@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/dscode-core",
+    "crates/dscode-core/python",
     "crates/dscode-lsp",
     "crates/dscode-dap",
     "crates/dscode-extension-host",
@@ -14,8 +15,11 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.78"
 license = "MIT"
 repository = "https://github.com/dscode-dev/dscode"
+homepage = "https://github.com/dscode-dev/dscode"
+documentation = "https://docs.rs/dscode-core"
 authors = ["DSCode Contributors"]
 
 [workspace.dependencies]

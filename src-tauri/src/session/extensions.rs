@@ -302,7 +302,7 @@ impl SessionManager {
         });
 
         let contributes: Option<ExtensionContributes> =
-            manifest.get("contributes").map(|v| ExtensionContributes::from_json(v));
+            manifest.get("contributes").map(ExtensionContributes::from_json);
 
         Ok(ExtensionInfo {
             id: extension_id,
@@ -794,7 +794,7 @@ impl SessionManager {
             publisher: manifest.publisher,
             description: manifest.description,
             path: extension_path.to_string_lossy().to_string(),
-            contributes: manifest.contributes.as_ref().map(|v| ExtensionContributes::from_json(v)),
+            contributes: manifest.contributes.as_ref().map(ExtensionContributes::from_json),
             dependencies,
             categories: manifest.categories.unwrap_or_default(),
             repository: manifest.repository.as_ref().and_then(extract_repository_url),
@@ -876,7 +876,7 @@ fn parse_vsix_manifest_xml(xml: &str) -> Result<VsixManifestIdentity, String> {
 /// Checks whether a tag name matches an expected local name, ignoring any namespace prefix.
 fn current_name_matches(tag: &str, expected: &str) -> bool {
     // Handle namespace-prefixed names like "ns:Identity"
-    tag.rsplit(':').next().map_or(false, |local| local == expected)
+    tag.rsplit(':').next() == Some(expected)
 }
 
 /// Verifies the integrity of a VSIX archive by checking:
@@ -1125,7 +1125,7 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
         publisher: manifest.publisher,
         description: manifest.description,
         path: install_path.to_string_lossy().to_string(),
-        contributes: manifest.contributes.as_ref().map(|v| ExtensionContributes::from_json(v)),
+        contributes: manifest.contributes.as_ref().map(ExtensionContributes::from_json),
         dependencies: dependency_list,
         categories,
         repository,

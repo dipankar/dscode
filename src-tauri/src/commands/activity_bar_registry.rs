@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
-use tracing::error;
+use tracing::{error, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityBarItem {
@@ -97,7 +97,10 @@ impl ActivityBarRegistry {
             },
         ];
 
-        let mut items = self.items.write().expect("activity_bar_registry write lock poisoned");
+        let mut items = self.items.write().unwrap_or_else(|e| {
+            warn!("activity_bar_registry write lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         for item in built_in_items {
             items.insert(item.id.clone(), item);
         }
@@ -212,7 +215,10 @@ impl ActivityBarRegistry {
 
     /// Get all visible activity bar items sorted by priority
     pub fn get_visible_items(&self) -> Vec<ActivityBarItem> {
-        let items = self.items.read().expect("activity_bar_registry read lock poisoned");
+        let items = self.items.read().unwrap_or_else(|e| {
+            warn!("activity_bar_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
 
         let mut visible_items: Vec<ActivityBarItem> =
             items.values().filter(|item| item.visible).cloned().collect();
@@ -225,7 +231,10 @@ impl ActivityBarRegistry {
 
     /// Get a specific activity bar item
     pub fn get_item(&self, key: &str) -> Option<ActivityBarItem> {
-        let items = self.items.read().expect("activity_bar_registry read lock poisoned");
+        let items = self.items.read().unwrap_or_else(|e| {
+            warn!("activity_bar_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         items.get(key).cloned()
     }
 

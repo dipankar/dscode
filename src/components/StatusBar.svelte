@@ -155,7 +155,7 @@
   }
 </script>
 
-<div class="status-bar" role="status">
+<div class="status-bar" role="status" aria-label="Status bar" aria-live="polite">
   <div class="status-left">
     {#if transientMessage}
       <div class="status-message" aria-live="polite" aria-atomic="true">

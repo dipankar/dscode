@@ -32,7 +32,7 @@
   }
 </script>
 
-<div class="toast-container" role="status" aria-live="assertive" aria-atomic="true">
+<div class="toast-container" role="status" aria-live="polite" aria-atomic="true">
   {#each toasts as toast (toast.id)}
     <div class="toast toast-{toast.type}" transition:fly={{ y: 20, duration: 300 }}>
       <div class="toast-icon" style="color: {getIconColor(toast.type)}">

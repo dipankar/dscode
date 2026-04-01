@@ -23,6 +23,8 @@ which = "6.0"
 sha2 = "0.10"
 tempfile = "3.8"
 libc = "0.2"
+aes-gcm = "0.10"
+zeroize = { version = "1.8", features = ["derive"] }
 tauri = { version = "2.1", optional = true }
 
 [features]

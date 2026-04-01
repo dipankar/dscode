@@ -82,6 +82,25 @@ The bundled Node.js binary is verified on startup:
 - **Pending request timeout**: Stale pending IPC requests (>5 minutes) are cleaned up periodically to prevent memory leaks
 - **Session guard**: IPC requests are rejected when the session is not in `Ready` or `Initializing` state
 
+## Extension Sandbox Model for Authors
+
+Extension authors should understand the deny-by-default security model:
+
+1. **No permissions by default** — Your extension cannot read files, make network requests, access the clipboard, or use the terminal unless explicitly declared in `package.json` under `dscode.permissions`.
+
+2. **Path validation** — All filesystem paths are canonicalized and checked against the workspace allowlist. Attempts to access files outside the workspace, extension directory, or system temp folders are rejected.
+
+3. **Rate limiting** — Extensions are limited to 100 IPC requests/second by default. Batch operations instead of sending many individual requests.
+
+4. **Sandbox per platform**:
+   - **macOS**: `sandbox-exec` (seatbelt) restricts filesystem and network access.
+   - **Linux**: `bubblewrap` (bwrap) creates namespace isolation for mount, PID, and network.
+   - **Windows**: Job Objects enforce memory limits and UI restrictions.
+
+5. **Secrets only via keyring** — Do not store credentials in `globalState` or settings. Use the provided `SecretStorage` API backed by the OS keychain.
+
+6. **Crash recovery** — If your extension crashes the host process, it will be restarted up to 3 times with exponential backoff. Persistent crashes will mark the extension as disabled.
+
 ## Audit Schedule
 
 | Component | Frequency | Scope |

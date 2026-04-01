@@ -93,6 +93,8 @@
     class="node-item"
     class:selected={isSelected}
     class:directory={node.node_type === 'directory'}
+    role="treeitem"
+    aria-selected={isSelected}
     on:click={() => onFileClick(node)}
     on:contextmenu={handleContextMenu}
   >

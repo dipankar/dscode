@@ -21,8 +21,8 @@
       body, html, #app {
         width: 100%;
         height: 100%;
-        background-color: #1e1e1e;
-        color: #cccccc;
+        background-color: var(--color-bg, #1e1e1e);
+        color: var(--color-text, #cccccc);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
         overflow: hidden;
       }
@@ -33,101 +33,155 @@
         inset: 0;
         z-index: 9999;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        background-color: #1e1e1e;
-        transition: opacity 0.5s ease-out, visibility 0.5s ease-out;
+        background-color: var(--color-bg, #1e1e1e);
+        transition: opacity 0.6s ease-out, visibility 0.6s ease-out;
       }
 
-      /* Fade out when Svelte app is ready */
-      #app[data-app-ready] + .loading-screen,
-      #app[data-app-ready] ~ .loading-screen {
+      /* Fade out when Svelte app signals session is ready */
+      .loading-screen--fade-out {
         opacity: 0;
         visibility: hidden;
       }
 
-      /* Logo icon */
-      .loading-logo {
-        width: 80px;
-        height: 80px;
-        margin-bottom: 24px;
+      /* Entrance animation for loading content */
+      .loading-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        animation: loading-entrance 0.4s ease-out;
       }
 
-      /* App name */
+      @keyframes loading-entrance {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Logo icon - CSS-only rounded square with "DS" monogram */
+      .loading-logo-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #007acc, #0098ff);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 16px rgba(0, 122, 204, 0.25);
+        animation: logo-glow 2.5s ease-in-out infinite;
+      }
+
+      .loading-logo-text {
+        font-size: 26px;
+        font-weight: 700;
+        color: #ffffff;
+        letter-spacing: 1px;
+        line-height: 1;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+
+      @keyframes logo-glow {
+        0%, 100% {
+          box-shadow: 0 4px 16px rgba(0, 122, 204, 0.2);
+        }
+        50% {
+          box-shadow: 0 6px 24px rgba(0, 122, 204, 0.4);
+        }
+      }
+
+      /* App name with accent on "DS" */
       .loading-title {
-        font-size: 28px;
+        font-size: 22px;
         font-weight: 300;
         letter-spacing: 4px;
-        color: #e0e0e0;
-        margin-bottom: 6px;
+        margin: 0 0 4px 0;
+        color: var(--color-text, #cccccc);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
 
-      /* Version */
+      .loading-title-ds {
+        font-weight: 600;
+        color: var(--color-accent, #007acc);
+      }
+
+      .loading-title-code {
+        font-weight: 300;
+        color: var(--color-text, #cccccc);
+      }
+
+      /* Version label */
       .loading-version {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 400;
-        color: #6e6e6e;
-        letter-spacing: 1px;
-        margin-bottom: 32px;
+        color: var(--color-text-secondary, #6e6e6e);
+        letter-spacing: 1.5px;
+        margin: 0 0 32px 0;
       }
 
-      /* Animated dots indicator */
-      .loading-dots {
+      /* Spinner - rotating ring */
+      .loading-spinner {
         display: flex;
-        gap: 8px;
         align-items: center;
         justify-content: center;
       }
 
-      .loading-dots span {
-        display: block;
-        width: 6px;
-        height: 6px;
+      .loading-spinner-ring {
+        width: 24px;
+        height: 24px;
+        border: 2px solid var(--color-border, #3e3e42);
+        border-top-color: var(--color-accent, #007acc);
         border-radius: 50%;
-        background-color: #007acc;
-        animation: dot-pulse 1.4s ease-in-out infinite;
+        animation: loading-spin 0.9s linear infinite;
       }
 
-      .loading-dots span:nth-child(1) {
-        animation-delay: 0s;
+      @keyframes loading-spin {
+        to { transform: rotate(360deg); }
       }
 
-      .loading-dots span:nth-child(2) {
-        animation-delay: 0.2s;
-      }
-
-      .loading-dots span:nth-child(3) {
-        animation-delay: 0.4s;
-      }
-
-      @keyframes dot-pulse {
-        0%, 80%, 100% {
-          opacity: 0.2;
-          transform: scale(0.8);
-        }
-        40% {
-          opacity: 1;
-          transform: scale(1.2);
-        }
-      }
-
-      /* Light theme detection for loading screen */
+      /* Light theme awareness (before JS/CSS custom properties load) */
       @media (prefers-color-scheme: light) {
         .loading-screen {
           background-color: #ffffff;
         }
 
-        .loading-title {
+        .loading-title,
+        .loading-title-code {
           color: #1e1e1e;
         }
 
-        .loading-version {
-          color: #999999;
+        .loading-title-ds {
+          color: #007acc;
         }
 
-        .loading-dots span {
-          background-color: #007acc;
+        .loading-version {
+          color: #616161;
+        }
+
+        .loading-spinner-ring {
+          border-color: #cccccc;
+          border-top-color: #007acc;
+        }
+      }
+
+      /* Respect reduced motion preference */
+      @media (prefers-reduced-motion: reduce) {
+        .loading-content {
+          animation: none;
+        }
+
+        .loading-logo-icon {
+          animation: none;
+        }
+
+        .loading-spinner-ring {
+          animation-duration: 3s;
         }
       }
     </style>
@@ -136,23 +190,18 @@
     <div id="app"></div>
 
     <!-- Branded loading screen - renders instantly before JS loads -->
-    <div class="loading-screen">
-      <svg class="loading-logo" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#007acc"/>
-            <stop offset="100%" stop-color="#0098ff"/>
-          </linearGradient>
-        </defs>
-        <rect width="128" height="128" rx="24" fill="url(#logo-grad)"/>
-        <text x="64" y="84" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="58" font-weight="700" fill="white" text-anchor="middle">DS</text>
-      </svg>
-      <div class="loading-title">DSCode</div>
-      <div class="loading-version">v0.1.0</div>
-      <div class="loading-dots">
-        <span></span>
-        <span></span>
-        <span></span>
+    <div class="loading-screen" aria-label="Loading DSCode">
+      <div class="loading-content">
+        <div class="loading-logo-icon">
+          <span class="loading-logo-text">DS</span>
+        </div>
+        <h1 class="loading-title">
+          <span class="loading-title-ds">DS</span><span class="loading-title-code">Code</span>
+        </h1>
+        <p class="loading-version">v0.1.0</p>
+        <div class="loading-spinner">
+          <div class="loading-spinner-ring"></div>
+        </div>
       </div>
     </div>
 

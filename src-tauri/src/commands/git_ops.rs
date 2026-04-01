@@ -291,7 +291,7 @@ pub async fn git_unstage_file(repo_path: String, file_path: String) -> Result<()
         let head = repo.head().map_err(GitError::from)?;
         let head_commit = head.peel_to_commit().map_err(GitError::from)?;
 
-        repo.reset_default(Some(&head_commit.into_object()), &[Path::new(&file_path)])
+        repo.reset_default(Some(&head_commit.into_object()), [Path::new(&file_path)])
             .map_err(GitError::from)?;
 
         Ok(())

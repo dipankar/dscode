@@ -26,16 +26,26 @@ use crate::extensions::ExtensionInfo;
 ///                     Initializing
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionLifecycle {
+    /// The session has not yet been created.
     Uninitialized,
+    /// The session is loading extensions and initializing subsystems.
     Initializing,
+    /// The session is fully initialized and ready for interaction.
     Ready,
+    /// The session is shutting down gracefully.
     ShuttingDown,
+    /// The session has completed shutdown.
     Shutdown,
+    /// An unrecoverable error occurred during initialization.
     Error,
 }
 
 impl SessionLifecycle {
     /// Validates whether a transition from the current state to `to` is allowed.
+    ///
+    /// # Arguments
+    ///
+    /// * `to` - The target lifecycle state to transition to.
     pub fn can_transition_to(&self, to: SessionLifecycle) -> bool {
         matches!(
             (self, to),
@@ -51,40 +61,55 @@ impl SessionLifecycle {
 }
 
 /// Application session state snapshot.
+///
+/// Captures the current state of the IDE session at a point in time,
+/// including open workspace folders, loaded extensions, and UI state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionState {
+    /// Paths of the currently open workspace folders.
     pub workspace_folders: Vec<PathBuf>,
+    /// Extensions that are currently loaded and active.
     pub active_extensions: Vec<ExtensionInfo>,
+    /// All extensions installed on disk.
     pub installed_extensions: Vec<ExtensionInfo>,
+    /// Command IDs contributed by active extensions.
     pub available_commands: Vec<String>,
+    /// Current status bar entries.
     pub status_bar_items: Vec<StatusBarItemState>,
 }
 
 /// Status bar item alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
-pub(crate) enum StatusBarAlignment {
+pub enum StatusBarAlignment {
+    /// Aligned to the left side of the status bar.
     Left,
+    /// Aligned to the right side of the status bar.
     Right,
 }
 
-#[allow(dead_code)]
 impl StatusBarAlignment {
-    pub(crate) fn from_i32(value: i32) -> Self {
+    /// Converts an integer value to a `StatusBarAlignment`.
+    ///
+    /// `2` maps to `Right`; all other values map to `Left`.
+    pub fn from_i32(value: i32) -> Self {
         match value {
             2 => StatusBarAlignment::Right,
             _ => StatusBarAlignment::Left,
         }
     }
 
-    pub(crate) fn as_str(&self) -> &'static str {
+    /// Returns the string representation of the alignment.
+    pub fn as_str(&self) -> &'static str {
         match self {
             StatusBarAlignment::Left => "left",
             StatusBarAlignment::Right => "right",
         }
     }
 
-    pub(crate) fn sort_value(&self) -> i32 {
+    /// Returns a numeric sort value for ordering status bar items.
+    ///
+    /// Left-aligned items sort before right-aligned items.
+    pub fn sort_value(&self) -> i32 {
         match self {
             StatusBarAlignment::Left => 0,
             StatusBarAlignment::Right => 1,
@@ -93,26 +118,42 @@ impl StatusBarAlignment {
 }
 
 /// Status bar item state for serialization.
+///
+/// Represents a single entry in the IDE status bar, including its
+/// text, alignment, optional tooltip, color, and click command.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusBarItemState {
+    /// Unique identifier for this status bar item.
     pub id: String,
+    /// Extension ID that owns this item.
     pub owner: String,
+    /// Text to display (may include icon codicons like `$(git-branch)`).
     pub text: String,
+    /// Optional tooltip shown on hover.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tooltip: Option<String>,
+    /// Optional CSS color for the item text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// Optional command to execute when the item is clicked.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<StatusBarCommand>,
+    /// Alignment within the status bar (`"left"` or `"right"`).
     pub alignment: String,
+    /// Optional priority controlling sort order within the alignment group.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<f64>,
 }
 
 /// A command attached to a status bar item.
+///
+/// When a status bar item is clicked, the referenced command is executed
+/// with the given arguments (if any).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusBarCommand {
+    /// The command identifier to execute.
     pub id: String,
+    /// Optional JSON arguments to pass to the command handler.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments: Option<Vec<serde_json::Value>>,
 }
@@ -252,6 +293,10 @@ pub enum SessionEvent {
 /// In headless/testing builds, a no-op or mock implementation can be used.
 pub trait EventEmitter: Send + Sync {
     /// Emit a session event.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - The event to emit to the UI layer.
     fn emit_event(&self, event: &SessionEvent);
 }
 

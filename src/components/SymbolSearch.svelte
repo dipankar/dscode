@@ -96,10 +96,6 @@
     if (!visible) return;
 
     switch (e.key) {
-      case 'Escape':
-        e.preventDefault();
-        onClose();
-        break;
       case 'ArrowDown':
         e.preventDefault();
         selectedIndex = Math.min(selectedIndex + 1, symbols.length - 1);
@@ -145,11 +141,11 @@
   <div
     class="symbol-search-overlay"
     on:click={handleOverlayClick}
-    on:keydown={handleKeydown}
     role="presentation"
     tabindex="-1"
+    use:focusTrap={{ onEscape: onClose }}
   >
-    <div class="symbol-search-container" role="dialog" aria-modal="true" aria-label="Symbol search" use:focusTrap>
+    <div class="symbol-search-container" role="dialog" aria-modal="true" aria-label="Symbol search">
       <input
         bind:this={searchInput}
         bind:value={searchQuery}

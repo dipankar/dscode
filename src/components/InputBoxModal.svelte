@@ -71,15 +71,10 @@
       event.preventDefault();
       void submit();
     }
-
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      void cancel();
-    }
   }
 </script>
 
-<div class="inputbox-overlay" role="dialog" aria-modal="true" use:focusTrap>
+<div class="inputbox-overlay" role="dialog" aria-modal="true" use:focusTrap={{ onEscape: () => void cancel() }}>
   <div class="inputbox-modal">
     {#if request.prompt}
       <header>

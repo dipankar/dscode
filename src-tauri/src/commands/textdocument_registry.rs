@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Text document representation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,7 +154,7 @@ impl TextDocumentRegistry {
     /// Register a text document
     pub fn register_text_document(&self, document: TextDocument) -> Result<(), CoreError> {
         let mut documents = self.documents.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let uri = document.uri.clone();
@@ -173,7 +173,7 @@ impl TextDocumentRegistry {
     /// Unregister a text document
     pub fn unregister_text_document(&self, uri: &str) -> Result<(), CoreError> {
         let mut documents = self.documents.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let document = documents
@@ -195,7 +195,7 @@ impl TextDocumentRegistry {
         &self, uri: &str, version: u64, content_changes: Vec<TextDocumentContentChange>,
     ) -> Result<(), CoreError> {
         let mut documents = self.documents.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let document = documents
@@ -218,7 +218,7 @@ impl TextDocumentRegistry {
     /// Mark document as saved
     pub fn mark_document_saved(&self, uri: &str) -> Result<(), CoreError> {
         let mut documents = self.documents.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let document = documents
@@ -238,7 +238,7 @@ impl TextDocumentRegistry {
     /// Get text document
     pub fn get_text_document(&self, uri: &str) -> Result<TextDocument, CoreError> {
         let documents = self.documents.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         documents
@@ -249,13 +249,17 @@ impl TextDocumentRegistry {
 
     /// Get all text documents
     pub fn get_all_text_documents(&self) -> Vec<TextDocument> {
-        self.documents.read().expect("documents read lock poisoned").values().cloned().collect()
+        let documents = self.documents.read().unwrap_or_else(|e| {
+            warn!("documents read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
+        documents.values().cloned().collect()
     }
 
     /// Register text editor
     pub fn register_text_editor(&self, editor: TextEditor) -> Result<(), CoreError> {
         let mut editors = self.editors.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let id = editor.id.clone();
@@ -274,7 +278,7 @@ impl TextDocumentRegistry {
     /// Unregister text editor
     pub fn unregister_text_editor(&self, editor_id: &str) -> Result<(), CoreError> {
         let mut editors = self.editors.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         editors
@@ -291,7 +295,7 @@ impl TextDocumentRegistry {
         &self, editor_id: &str, selections: Vec<Selection>,
     ) -> Result<(), CoreError> {
         let mut editors = self.editors.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let editor = editors
@@ -313,7 +317,7 @@ impl TextDocumentRegistry {
         &self, editor_id: &str, visible_ranges: Vec<Range>,
     ) -> Result<(), CoreError> {
         let mut editors = self.editors.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let editor = editors
@@ -334,7 +338,7 @@ impl TextDocumentRegistry {
     /// Get text editor
     pub fn get_text_editor(&self, editor_id: &str) -> Result<TextEditor, CoreError> {
         let editors = self.editors.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         editors
@@ -345,7 +349,11 @@ impl TextDocumentRegistry {
 
     /// Get all text editors
     pub fn get_all_text_editors(&self) -> Vec<TextEditor> {
-        self.editors.read().expect("editors read lock poisoned").values().cloned().collect()
+        let editors = self.editors.read().unwrap_or_else(|e| {
+            warn!("editors read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
+        editors.values().cloned().collect()
     }
 
     /// Create decoration type
@@ -353,7 +361,7 @@ impl TextDocumentRegistry {
         &self, decoration_type: DecorationType,
     ) -> Result<String, CoreError> {
         let mut decoration_types = self.decoration_types.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let id = decoration_type.id.clone();
@@ -367,7 +375,7 @@ impl TextDocumentRegistry {
     /// Dispose decoration type
     pub fn dispose_decoration_type(&self, decoration_type_id: &str) -> Result<(), CoreError> {
         let mut decoration_types = self.decoration_types.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         decoration_types.remove(decoration_type_id).ok_or_else(|| {
@@ -376,7 +384,7 @@ impl TextDocumentRegistry {
 
         // Also remove all decorations of this type
         let mut decorations = self.decorations.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
         for decoration_list in decorations.values_mut() {
             decoration_list.retain(|d| d.decoration_type != decoration_type_id);
@@ -392,7 +400,7 @@ impl TextDocumentRegistry {
         &self, editor_id: &str, decoration_type_id: &str, ranges: Vec<Range>, owner: &str,
     ) -> Result<(), CoreError> {
         let mut decorations = self.decorations.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let editor_decorations = decorations.entry(editor_id.to_string()).or_insert_with(Vec::new);
@@ -422,7 +430,10 @@ impl TextDocumentRegistry {
 
     /// Get editor decorations
     pub fn get_editor_decorations(&self, editor_id: &str) -> Vec<TextEditorDecoration> {
-        let decorations = self.decorations.read().expect("decorations read lock poisoned");
+        let decorations = self.decorations.read().unwrap_or_else(|e| {
+            warn!("decorations read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         decorations.get(editor_id).cloned().unwrap_or_default()
     }
 
@@ -431,7 +442,10 @@ impl TextDocumentRegistry {
         // Clear decoration types
         {
             let mut decoration_types =
-                self.decoration_types.write().expect("decoration_types write lock poisoned");
+                self.decoration_types.write().unwrap_or_else(|e| {
+                    warn!("decoration_types write lock poisoned, recovering: {}", e);
+                    e.into_inner()
+                });
             let before = decoration_types.len();
             decoration_types.retain(|_, dt| dt.owner != owner);
             let removed = before - decoration_types.len();
@@ -446,7 +460,10 @@ impl TextDocumentRegistry {
         // Clear decorations
         {
             let mut decorations =
-                self.decorations.write().expect("decorations write lock poisoned");
+                self.decorations.write().unwrap_or_else(|e| {
+                    warn!("decorations write lock poisoned, recovering: {}", e);
+                    e.into_inner()
+                });
             let mut total_removed = 0;
             for decoration_list in decorations.values_mut() {
                 let before = decoration_list.len();

@@ -7,10 +7,13 @@ use tracing::{error, info};
 /// Strategy for managing LSP server instances per language.
 #[derive(Debug, Clone)]
 pub enum LspServerStrategy {
-    /// One server instance per language (default)
+    /// Maintain a single server instance per language (default).
     OnePerLanguage,
-    /// Multiple server instances per language up to a maximum
-    MultiplePerLanguage { max_servers: usize },
+    /// Allow multiple server instances per language, up to `max_servers`.
+    MultiplePerLanguage {
+        /// Maximum number of server instances per language.
+        max_servers: usize,
+    },
 }
 
 /// Information about a running LSP server instance.
@@ -25,6 +28,10 @@ pub(crate) struct LspServerInfo {
 type ServerConfigMap = Arc<RwLock<HashMap<String, (String, Vec<String>)>>>;
 
 /// Pool of LSP server instances with configurable strategies.
+///
+/// Manages a collection of running language server instances, lazily starting
+/// them on first access via [`get_server`](LspServerPool::get_server).
+/// Selects the server with the fewest active requests for load balancing.
 pub struct LspServerPool {
     servers: Arc<RwLock<HashMap<String, Vec<Arc<LspServerInfo>>>>>,
     #[allow(dead_code)]
@@ -33,6 +40,7 @@ pub struct LspServerPool {
 }
 
 impl LspServerPool {
+    /// Creates a new pool with the given server strategy.
     pub fn new(strategy: LspServerStrategy) -> Self {
         Self {
             servers: Arc::new(RwLock::new(HashMap::new())),
@@ -41,6 +49,11 @@ impl LspServerPool {
         }
     }
 
+    /// Registers a server configuration for a language without starting it.
+    ///
+    /// - `language_id` — The language identifier.
+    /// - `server_command` — The command to spawn the language server.
+    /// - `server_args` — Arguments to pass to the server command.
     pub async fn register_server(
         &self, language_id: String, server_command: String, server_args: Vec<String>,
     ) {
@@ -49,6 +62,17 @@ impl LspServerPool {
         info!(language = %language_id, "Registered server configuration");
     }
 
+    /// Gets or starts an LSP server for the given language.
+    ///
+    /// Returns the server with the fewest active requests (least-loaded selection).
+    /// If no running server exists, starts a new one using the registered
+    /// configuration and initializes it with the given root URI.
+    ///
+    /// - `language_id` — The language to get a server for.
+    /// - `root_uri` — Optional root URI for LSP initialization.
+    ///
+    /// Returns a shared reference to the [`LspClient`], or an error if no
+    /// configuration is registered for the language or the start fails.
     pub async fn get_server(
         &self, language_id: &str, root_uri: Option<&str>,
     ) -> Result<Arc<LspClient>, String> {
@@ -116,6 +140,12 @@ impl LspServerPool {
         Ok(client)
     }
 
+    /// Stops all running servers for the given language and removes them from the pool.
+    ///
+    /// - `language_id` — The language whose servers should be stopped.
+    ///
+    /// Returns `Ok(())` if at least one server was stopped, or an error if
+    /// no server was found for the language.
     pub async fn stop_server(&self, language_id: &str) -> Result<(), String> {
         let mut servers = self.servers.write().await;
 
@@ -131,6 +161,9 @@ impl LspServerPool {
         }
     }
 
+    /// Stops all running LSP servers and clears the pool.
+    ///
+    /// Returns `Ok(())` if all servers shut down successfully.
     pub async fn stop_all(&self) -> Result<(), String> {
         let mut servers = self.servers.write().await;
 
@@ -146,11 +179,13 @@ impl LspServerPool {
         Ok(())
     }
 
+    /// Returns the language identifiers for all currently running servers.
     pub async fn list_servers(&self) -> Vec<String> {
         let servers = self.servers.read().await;
         servers.keys().cloned().collect()
     }
 
+    /// Returns statistics about the pool's current state.
     pub async fn get_stats(&self) -> LspPoolStats {
         let servers = self.servers.read().await;
         let total_servers: usize = servers.values().map(|list| list.len()).sum();
@@ -163,7 +198,9 @@ impl LspServerPool {
 /// Statistics about the LSP server pool.
 #[derive(Debug, Clone)]
 pub struct LspPoolStats {
+    /// Total number of running server instances across all languages.
     pub total_servers: usize,
+    /// Number of distinct languages with at least one running server.
     pub total_languages: usize,
 }
 
@@ -184,5 +221,91 @@ mod tests {
         let stats = pool.get_stats().await;
         assert_eq!(stats.total_servers, 0, "Empty pool should have 0 total servers");
         assert_eq!(stats.total_languages, 0, "Empty pool should have 0 total languages");
+    }
+
+    #[tokio::test]
+    async fn test_pool_register_server() {
+        let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
+        pool.register_server("rust".to_string(), "rust-analyzer".to_string(), vec![])
+            .await;
+
+        // After registering, list_servers should still be empty because
+        // register only stores the configuration, not a running server
+        let servers = pool.list_servers().await;
+        assert!(servers.is_empty(), "Registered config does not create a running server");
+
+        // Stats should still show 0
+        let stats = pool.get_stats().await;
+        assert_eq!(stats.total_servers, 0);
+        assert_eq!(stats.total_languages, 0);
+    }
+
+    #[tokio::test]
+    async fn test_pool_get_server_unconfigured() {
+        let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
+
+        // Trying to get a server for a language with no configuration should fail
+        let result = pool.get_server("rust", None).await;
+        assert!(result.is_err(), "Should fail when no configuration registered");
+        assert!(result.unwrap_err().contains("No configuration found"));
+    }
+
+    #[tokio::test]
+    async fn test_pool_list_servers_empty() {
+        let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
+        let servers = pool.list_servers().await;
+        assert!(servers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_pool_stats_after_register() {
+        let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
+
+        // Registering a configuration should not change stats until a server is started
+        pool.register_server("python".to_string(), "pyright".to_string(), vec![])
+            .await;
+
+        let stats = pool.get_stats().await;
+        assert_eq!(stats.total_servers, 0);
+        assert_eq!(stats.total_languages, 0);
+    }
+
+    #[tokio::test]
+    async fn test_pool_multiple_strategy() {
+        let pool = LspServerPool::new(LspServerStrategy::MultiplePerLanguage { max_servers: 3 });
+
+        // Pool should start empty
+        let servers = pool.list_servers().await;
+        assert!(servers.is_empty());
+
+        let stats = pool.get_stats().await;
+        assert_eq!(stats.total_servers, 0);
+        assert_eq!(stats.total_languages, 0);
+    }
+
+    #[tokio::test]
+    async fn test_pool_register_multiple_configs() {
+        let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
+
+        pool.register_server("rust".to_string(), "rust-analyzer".to_string(), vec![])
+            .await;
+        pool.register_server("python".to_string(), "pyright".to_string(), vec!["--stdio".to_string()])
+            .await;
+        pool.register_server("go".to_string(), "gopls".to_string(), vec![])
+            .await;
+
+        // All configs registered; servers list should still be empty
+        let servers = pool.list_servers().await;
+        assert!(servers.is_empty(), "Configs don't create running servers");
+    }
+
+    #[tokio::test]
+    async fn test_pool_stop_unregistered() {
+        let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
+
+        // Stopping a server that was never started should return an error
+        let result = pool.stop_server("rust").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No server found"));
     }
 }

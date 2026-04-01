@@ -102,7 +102,7 @@
 </script>
 
 {#if visible}
-  <div class="problems-panel">
+  <div class="problems-panel" role="alert" aria-live="polite">
     <div class="problems-header">
       <div class="problems-title">
         <span>PROBLEMS</span>

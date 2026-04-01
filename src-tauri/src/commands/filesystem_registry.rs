@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
-use tracing::{debug, error, info};
+use tracing::{error, info, warn};
 
 /// File system provider for custom file systems
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -157,7 +157,7 @@ impl FileSystemRegistry {
         &self, provider: FileSystemProvider,
     ) -> Result<String, CoreError> {
         let mut providers = self.providers.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         // Check for duplicate scheme
@@ -184,7 +184,7 @@ impl FileSystemRegistry {
     /// Unregister a file system provider
     pub fn unregister_file_system_provider(&self, scheme: &str) -> Result<(), CoreError> {
         let mut providers = self.providers.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let initial_len = providers.len();
@@ -210,7 +210,7 @@ impl FileSystemRegistry {
     /// Get file system provider for scheme
     pub fn get_file_system_provider(&self, scheme: &str) -> Result<FileSystemProvider, CoreError> {
         let providers = self.providers.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         providers
@@ -227,13 +227,17 @@ impl FileSystemRegistry {
 
     /// Get all file system providers
     pub fn get_all_file_system_providers(&self) -> Vec<FileSystemProvider> {
-        self.providers.read().expect("filesystem_providers read lock poisoned").clone()
+        let providers = self.providers.read().unwrap_or_else(|e| {
+            warn!("filesystem_providers read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
+        providers.clone()
     }
 
     /// Create a file watcher
     pub fn create_file_watcher(&self, watcher: FileWatcher) -> Result<String, CoreError> {
         let mut watchers = self.watchers.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let id = watcher.id.clone();
@@ -252,7 +256,7 @@ impl FileSystemRegistry {
     /// Dispose a file watcher
     pub fn dispose_file_watcher(&self, watcher_id: &str) -> Result<(), CoreError> {
         let mut watchers = self.watchers.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         if watchers.remove(watcher_id).is_none() {
@@ -275,7 +279,7 @@ impl FileSystemRegistry {
     /// Get file watcher by ID
     pub fn get_file_watcher(&self, watcher_id: &str) -> Result<FileWatcher, CoreError> {
         let watchers = self.watchers.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         watchers
@@ -288,18 +292,17 @@ impl FileSystemRegistry {
 
     /// Get all file watchers
     pub fn get_all_file_watchers(&self) -> Vec<FileWatcher> {
-        self.watchers
-            .read()
-            .expect("filesystem_watchers read lock poisoned")
-            .values()
-            .cloned()
-            .collect()
+        let watchers = self.watchers.read().unwrap_or_else(|e| {
+            warn!("filesystem_watchers read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
+        watchers.values().cloned().collect()
     }
 
     /// Emit file change event
     pub fn emit_file_change_event(&self, event: FileChangeEvent) -> Result<(), CoreError> {
         let watchers = self.watchers.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         // Find matching watchers
@@ -352,7 +355,10 @@ impl FileSystemRegistry {
         // Clear providers
         {
             let mut providers =
-                self.providers.write().expect("filesystem_providers write lock poisoned");
+                self.providers.write().unwrap_or_else(|e| {
+                    warn!("filesystem_providers write lock poisoned, recovering: {}", e);
+                    e.into_inner()
+                });
             let before = providers.len();
             providers.retain(|p| p.owner != owner);
             let removed = before - providers.len();
@@ -364,7 +370,10 @@ impl FileSystemRegistry {
         // Clear watchers
         {
             let mut watchers =
-                self.watchers.write().expect("filesystem_watchers write lock poisoned");
+                self.watchers.write().unwrap_or_else(|e| {
+                    warn!("filesystem_watchers write lock poisoned, recovering: {}", e);
+                    e.into_inner()
+                });
             let before = watchers.len();
             watchers.retain(|_, w| w.owner != owner);
             let removed = before - watchers.len();

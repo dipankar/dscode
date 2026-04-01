@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
-use tracing::error;
+use tracing::{error, warn};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileChangeEvent {
@@ -54,7 +54,10 @@ pub fn watch_file(app_handle: AppHandle, file_path: String) -> Result<(), String
 
     // Store watcher in state
     let state: tauri::State<FileWatcherState> = app_handle.state();
-    let mut watchers = state.watchers.lock().expect("watchers lock poisoned");
+    let mut watchers = state.watchers.lock().unwrap_or_else(|e| {
+        warn!("watchers lock poisoned, recovering: {}", e);
+        e.into_inner()
+    });
     watchers.insert(file_path.clone(), watcher);
 
     Ok(())
@@ -62,7 +65,10 @@ pub fn watch_file(app_handle: AppHandle, file_path: String) -> Result<(), String
 
 pub fn unwatch_file(app_handle: AppHandle, file_path: String) -> Result<(), String> {
     let state: tauri::State<FileWatcherState> = app_handle.state();
-    let mut watchers = state.watchers.lock().expect("watchers lock poisoned");
+    let mut watchers = state.watchers.lock().unwrap_or_else(|e| {
+        warn!("watchers lock poisoned, recovering: {}", e);
+        e.into_inner()
+    });
 
     if let Some(_watcher) = watchers.remove(&file_path) {
         // Watcher will be dropped automatically, stopping the watch

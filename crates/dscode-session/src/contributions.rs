@@ -1,167 +1,245 @@
+//! Extension contribution types parsed from `package.json` `contributes` fields.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// All contributions declared in an extension's `package.json`.
+///
+/// Each field corresponds to a top-level key under the `contributes` object
+/// and defaults to an empty collection when absent.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtensionContributes {
+    /// Commands the extension registers in the command palette.
     #[serde(default)]
     pub commands: Vec<CommandContribution>,
+    /// Language identifiers and file-association rules.
     #[serde(default)]
     pub languages: Vec<LanguageContribution>,
+    /// TextMate grammars for syntax highlighting.
     #[serde(default)]
     pub grammars: Vec<GrammarContribution>,
+    /// Color themes the extension provides.
     #[serde(default)]
     pub themes: Vec<ThemeContribution>,
+    /// File icon themes the extension provides.
     #[serde(default)]
     pub icon_themes: Vec<IconThemeContribution>,
+    /// Keyboard shortcut overrides contributed by the extension.
     #[serde(default)]
     pub keybindings: Vec<KeybindingContribution>,
+    /// Menu items contributed to specific menu contexts.
     #[serde(default)]
     pub menus: HashMap<String, Vec<MenuItemContribution>>,
+    /// Code snippet files contributed by the extension.
     #[serde(default)]
     pub snippets: Vec<SnippetContribution>,
+    /// Schema of configuration settings the extension exposes.
     #[serde(default)]
     pub configuration: Option<ConfigurationContribution>,
+    /// Default values for configuration settings.
     #[serde(default)]
     pub configuration_defaults: Option<Value>,
+    /// Debug adapter contributions.
     #[serde(default)]
     pub debuggers: Vec<DebuggerContribution>,
+    /// Breakpoint-type contributions per language.
     #[serde(default)]
     pub breakpoints: Vec<BreakpointContribution>,
+    /// View containers and their children, keyed by view location.
     #[serde(default)]
     pub views: HashMap<String, Vec<ViewContribution>>,
+    /// Welcome content shown inside view panels.
     #[serde(default)]
     pub views_welcome: Vec<ViewsWelcomeContribution>,
+    /// Terminal profiles the extension contributes.
     #[serde(default)]
     pub terminal_profiles: Vec<TerminalProfileContribution>,
 }
 
+/// A command contributed to the command palette.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandContribution {
+    /// Fully-qualified command identifier (e.g. `myExt.helloWorld`).
     pub command: String,
+    /// Human-readable title shown in the palette.
     #[serde(default)]
     pub title: String,
+    /// Optional category grouping (e.g. `"My Extension"`).
     #[serde(default)]
     pub category: Option<String>,
+    /// Optional icon (light/dark variants) for the command.
     #[serde(default)]
     pub icon: Option<IconDefinition>,
+    /// Optional enablement condition expression (e.g. `"editorFocus"`).
     #[serde(default)]
     pub enablement: Option<String>,
 }
 
+/// A language identifier and its file-association rules.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LanguageContribution {
+    /// Language identifier (e.g. `"rust"`, `"typescript"`).
     pub id: String,
+    /// File extensions that map to this language (e.g. `[".rs"]`).
     #[serde(default)]
     pub extensions: Vec<String>,
+    /// Exact filenames that map to this language (e.g. `["Makefile"]`).
     #[serde(default)]
     pub filenames: Vec<String>,
+    /// Glob patterns for filenames that map to this language.
     #[serde(default)]
     pub filename_patterns: Vec<String>,
+    /// Regex matched against the first line of a file to detect the language.
     #[serde(default)]
     pub first_line: Option<String>,
+    /// User-facing aliases for the language.
     #[serde(default)]
     pub aliases: Vec<String>,
+    /// Path to a TextMate language configuration JSON file.
     #[serde(default)]
     pub configuration: Option<String>,
+    /// Optional icon (light/dark variants) for files of this language.
     #[serde(default)]
     pub icon: Option<IconDefinition>,
 }
 
+/// A TextMate grammar contribution for syntax highlighting.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GrammarContribution {
+    /// Language identifier this grammar targets.
     pub language: String,
+    /// Top-level TextMate scope name (e.g. `source.rust`).
     pub scope_name: String,
+    /// Relative path to the grammar file (`.tmLanguage.json` or `.plist`).
     pub path: String,
+    /// Embedded language scope-name-to-id mappings.
     #[serde(default)]
     pub embedded_languages: HashMap<String, String>,
+    /// Custom token type mappings.
     #[serde(default)]
     pub token_types: HashMap<String, String>,
+    /// Custom token modifier mappings.
     #[serde(default)]
     pub token_modifiers: HashMap<String, String>,
+    /// Scope names into which this grammar should be injected.
     #[serde(default)]
     pub inject_to: Vec<String>,
 }
 
+/// A color theme contribution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThemeContribution {
+    /// Human-readable theme label.
     pub label: String,
+    /// Base UI theme identifier (e.g. `"vs-dark"`).
     pub ui_theme: Option<String>,
+    /// Relative path to the theme JSON file.
     pub path: String,
 }
 
+/// A file icon theme contribution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IconThemeContribution {
+    /// Unique identifier for the icon theme.
     pub id: String,
+    /// Human-readable label.
     pub label: String,
+    /// Relative path to the icon theme definition file.
     pub path: String,
 }
 
+/// A keyboard shortcut contribution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeybindingContribution {
+    /// Default keybinding (e.g. `"ctrl+shift+p"`).
     pub key: String,
+    /// Command identifier to invoke.
     #[serde(default)]
     pub command: String,
+    /// Optional condition expression controlling when the binding is active.
     #[serde(default)]
     pub when: Option<String>,
+    /// Optional arguments to pass to the command.
     #[serde(default)]
     pub args: Option<Value>,
+    /// macOS-specific keybinding override.
     #[serde(default)]
     pub mac: Option<String>,
+    /// Linux-specific keybinding override.
     #[serde(default)]
     pub linux: Option<String>,
+    /// Windows-specific keybinding override.
     #[serde(default)]
     pub win: Option<String>,
 }
 
+/// A menu item placed in a specific menu context.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MenuItemContribution {
+    /// Command identifier to invoke when the menu item is selected.
     pub command: String,
+    /// Optional condition expression controlling menu item visibility.
     #[serde(default)]
     pub when: Option<String>,
+    /// Optional sorting group within the menu.
     #[serde(default)]
     pub group: Option<String>,
+    /// Alternative command identifier for secondary-click behavior.
     #[serde(default)]
     pub alt: Option<String>,
 }
 
+/// A code snippet file contribution scoped to a language.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnippetContribution {
+    /// Language identifier the snippets apply to.
     pub language: String,
+    /// Relative path to the snippet definition file.
     pub path: String,
 }
 
+/// Schema of configuration settings the extension exposes to the IDE.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigurationContribution {
+    /// Human-readable title for this configuration section.
     #[serde(default)]
     pub title: String,
+    /// Property name to [`ConfigurationProperty`] map.
     #[serde(default)]
     pub properties: HashMap<String, ConfigurationProperty>,
 }
 
+/// A single configuration property declared by an extension.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigurationProperty {
+    /// JSON Schema type (e.g. `"string"`, `"number"`, `"boolean"`).
     #[serde(rename = "type")]
     pub prop_type: Option<String>,
+    /// Default value for the property.
     #[serde(default)]
     pub default: Option<Value>,
+    /// Human-readable description of the property.
     #[serde(default)]
     pub description: Option<String>,
+    /// Allowed enum values.
     #[serde(default)]
     pub enum_values: Option<Vec<Value>>,
+    /// Descriptions corresponding to each enum value.
     #[serde(default)]
     pub enum_descriptions: Option<Vec<String>>,
+    /// Scope of the setting (`"application"`, `"machine"`, `"window"`, `"resource"`).
     #[serde(default)]
     pub scope: Option<String>,
 }

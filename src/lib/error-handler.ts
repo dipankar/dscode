@@ -75,12 +75,12 @@ export function parseError(error: unknown): { message: string; details?: string 
 
     // Generic object
     return {
-      message: 'An error occurred',
+      message: 'An unexpected error occurred. Please try again or check the console for details.',
       details: JSON.stringify(err, null, 2),
     };
   }
 
-  return { message: 'An unknown error occurred' };
+  return { message: 'An unknown error occurred. Please try again or reload the application.' };
 }
 
 /**

@@ -53,6 +53,7 @@ pub async fn parse_and_register_extension_keybindings(
             }
         }
 
+        #[allow(unused_variables)]
         if let Some(win_key) = kb_obj.get("win").and_then(|v| v.as_str()) {
             #[cfg(target_os = "windows")]
             {
@@ -61,6 +62,7 @@ pub async fn parse_and_register_extension_keybindings(
             }
         }
 
+        #[allow(unused_variables)]
         if let Some(linux_key) = kb_obj.get("linux").and_then(|v| v.as_str()) {
             #[cfg(target_os = "linux")]
             {

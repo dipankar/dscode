@@ -1,16 +1,27 @@
 {
   "name": "@dscode/monaco-wasm",
   "version": "0.1.0",
-  "description": "Monaco Editor WASM bindings for DSCode",
-  "keywords": ["dscode", "monaco", "wasm", "editor"],
+  "description": "WASM-based fast syntax tokenizer for Monaco Editor, built for DSCode",
+  "keywords": ["dscode", "monaco", "wasm", "editor", "syntax", "tokenizer"],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dipankar/dscode",
+    "url": "https://github.com/dipankarsarkar/dscode",
     "directory": "monaco-wasm"
   },
+  "main": "pkg/monaco_wasm.js",
+  "types": "pkg/monaco_wasm.d.ts",
   "files": ["pkg/"],
   "publishConfig": {
     "access": "public"
+  },
+  "bugs": {
+    "url": "https://github.com/dipankarsarkar/dscode/issues"
+  },
+  "homepage": "https://github.com/dipankarsarkar/dscode#readme",
+  "scripts": {
+    "build": "wasm-pack build --release --target web --out-dir pkg",
+    "prepublishOnly": "npm run build",
+    "publish:dry-run": "wasm-pack build --release --target web --out-dir pkg && npm publish --dry-run"
   }
 }

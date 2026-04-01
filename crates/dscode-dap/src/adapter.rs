@@ -8,12 +8,13 @@ use tokio::process::{Child as TokioChild, Command as TokioCommand};
 use tokio::sync::{oneshot, Mutex};
 use tracing::{error, info, instrument};
 
-/// STATE MACHINE: DebugAdapter
+/// State machine for the DAP debug adapter lifecycle.
 ///
 /// Tracks the lifecycle of a Debug Adapter Protocol (DAP) adapter process.
 ///
-/// State Diagram:
+/// # State Diagram
 ///
+/// ```text
 ///   Stopped ──► Starting ──► Initializing ──► Configured ──► Running
 ///     ▲             │              │               │            │
 ///     │             │              │               │            │
@@ -26,64 +27,52 @@ use tracing::{error, info, instrument};
 ///     └────────────────────────────────────────────────┘       │
 ///                                                     ▲        │
 ///                                                     └────────┘
+/// ```
 ///
-/// Transitions:
-///   Stopped      -> Starting      (start() called)
-///   Starting     -> Initializing  (process spawned, DAP initialize sent)
-///   Starting     -> Crashed       (spawn failed)
-///   Initializing -> Configured    (initialize response received, configurationDone sent)
-///   Initializing -> Crashed       (initialize failed or timed out)
-///   Configured   -> Running       (launch/attach response received)
-///   Configured   -> Crashed       (launch/attach failed)
-///   Running      -> ShuttingDown  (disconnect/terminate requested)
-///   Running      -> Crashed       (adapter process exited unexpectedly)
-///   ShuttingDown -> Stopped       (adapter exited cleanly)
-///   Crashed      -> Starting      (restart attempt)
+/// # Transitions
 ///
-/// Concurrency Invariant:
-///   Same as LspClient -- state in Arc<Mutex<>>, separate from process/writer.
-///   Lock ordering: state -> process -> writer -> pending_responses.
-///
-/// Interruption Table:
-/// ┌──────────────┬────────────────────────────────────────────────────────────┐
-/// │ State        │ What happens + impact                                     │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Stopped      │ Safe. No resources.                                       │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Starting     │ Spawn fails -> Crashed. No debug session impact.          │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Initializing │ If adapter crashes: -> Crashed. Debug session cannot      │
-/// │              │ start. User sees: "failed to start debug session".        │
-/// │              │ Pending initialize request hangs FOREVER (BUG, now fixed  │
-/// │              │ with 30s timeout).                                        │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Configured   │ If adapter crashes: -> Crashed. Breakpoints lost.         │
-/// │              │ User sees: debug session disappears.                      │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Running      │ If adapter crashes: -> Crashed. Active debug session lost.│
-/// │              │ ALL pending requests (evaluate, stackTrace, etc.) were    │
-/// │              │ hanging FOREVER (BUG). After fix: timeout after 30s.     │
-/// │              │ User sees: debug controls stop responding, then error.    │
-/// │              │ Debug session state should transition to Terminated.      │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ ShuttingDown │ Normal cleanup. Pending requests drained/rejected.        │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Crashed      │ Debug session dead. No auto-restart for debug adapters.   │
-/// │              │ User must start a new debug session manually.             │
-/// └──────────────┴────────────────────────────────────────────────────────────┘
+/// - `Stopped` -> `Starting` (start() called)
+/// - `Starting` -> `Initializing` (process spawned, DAP initialize sent)
+/// - `Starting` -> `Crashed` (spawn failed)
+/// - `Initializing` -> `Configured` (initialize response received)
+/// - `Initializing` -> `Crashed` (initialize failed or timed out)
+/// - `Configured` -> `Running` (launch/attach response received)
+/// - `Configured` -> `Crashed` (launch/attach failed)
+/// - `Running` -> `ShuttingDown` (disconnect/terminate requested)
+/// - `Running` -> `Crashed` (adapter process exited unexpectedly)
+/// - `ShuttingDown` -> `Stopped` (adapter exited cleanly)
+/// - `Crashed` -> `Starting` (restart attempt)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DebugAdapterState {
+    /// No debug adapter process is running.
     Stopped,
+    /// The debug adapter process is being spawned.
     Starting,
+    /// The DAP initialize request has been sent and a response is pending.
     Initializing,
+    /// The adapter has been initialized and configured, ready for launch/attach.
     Configured,
+    /// The debug session is actively running with a live adapter.
     Running,
+    /// A disconnect request has been sent and the adapter is shutting down.
     ShuttingDown,
+    /// The adapter process exited unexpectedly or failed to start.
     Crashed,
 }
 
 type PendingResponseMap = Arc<Mutex<HashMap<i32, oneshot::Sender<Result<Value, String>>>>>;
 
+/// A state-machine-based DAP client that manages a debug adapter process.
+///
+/// Handles spawning the debug adapter, performing the DAP initialize and
+/// launch/attach handshakes, sending requests, and processing responses.
+/// All state transitions are validated to maintain the lifecycle invariant.
+///
+/// # Concurrency
+///
+/// Same as [`LspClient`](crate::LspClient) -- state in `Arc<Mutex<>>`,
+/// separate from process/writer. Lock ordering: state -> process -> writer
+/// -> pending_responses.
 pub struct DebugAdapter {
     state: Arc<Mutex<DebugAdapterState>>,
     session: DebugSession,
@@ -95,7 +84,22 @@ pub struct DebugAdapter {
     sequence: Arc<Mutex<i32>>,
 }
 
+impl std::fmt::Debug for DebugAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DebugAdapter")
+            .field("session", &self.session)
+            .field("adapter_command", &self.adapter_command)
+            .field("adapter_args", &self.adapter_args)
+            .finish_non_exhaustive()
+    }
+}
+
 impl DebugAdapter {
+    /// Creates a new debug adapter in the `Stopped` state.
+    ///
+    /// - `session` — The debug session this adapter belongs to.
+    /// - `adapter_command` — The command to spawn the debug adapter (e.g., "/usr/bin/gdb").
+    /// - `adapter_args` — Arguments to pass to the adapter command.
     pub fn new(session: DebugSession, adapter_command: String, adapter_args: Vec<String>) -> Self {
         Self {
             state: Arc::new(Mutex::new(DebugAdapterState::Stopped)),
@@ -155,11 +159,19 @@ impl DebugAdapter {
         }
     }
 
-    /// Returns the current state.
+    /// Returns the current state of the debug adapter.
     pub async fn get_state(&self) -> DebugAdapterState {
         *self.state.lock().await
     }
 
+    /// Spawns the debug adapter process and begins the initialization sequence.
+    ///
+    /// Transitions from `Stopped` to `Starting` to `Initializing`. If spawning
+    /// fails, transitions to `Crashed`. A background task is spawned to read
+    /// responses from the adapter's stdout.
+    ///
+    /// Returns `Ok(())` if the process was spawned successfully, or an error
+    /// describing the failure.
     #[instrument(skip(self))]
     pub async fn start(&self) -> Result<(), String> {
         self.transition(DebugAdapterState::Starting).await?;

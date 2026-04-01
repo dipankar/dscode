@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
+use tracing::warn;
 
 /// Menu contribution locations (matches VS Code menu IDs)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -44,19 +46,21 @@ impl MenuLocation {
             other => Self::Custom(other.to_string()),
         }
     }
+}
 
-    pub fn to_string(&self) -> String {
+impl fmt::Display for MenuLocation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EditorContext => "editor/context".to_string(),
-            Self::EditorTitle => "editor/title".to_string(),
-            Self::EditorTitleContext => "editor/title/context".to_string(),
-            Self::ExplorerContext => "explorer/context".to_string(),
-            Self::ScmTitle => "scm/title".to_string(),
-            Self::ScmResourceContext => "scm/resourceState/context".to_string(),
-            Self::ViewTitle => "view/title".to_string(),
-            Self::ViewItemContext => "view/item/context".to_string(),
-            Self::CommandPalette => "commandPalette".to_string(),
-            Self::Custom(s) => s.clone(),
+            Self::EditorContext => write!(f, "editor/context"),
+            Self::EditorTitle => write!(f, "editor/title"),
+            Self::EditorTitleContext => write!(f, "editor/title/context"),
+            Self::ExplorerContext => write!(f, "explorer/context"),
+            Self::ScmTitle => write!(f, "scm/title"),
+            Self::ScmResourceContext => write!(f, "scm/resourceState/context"),
+            Self::ViewTitle => write!(f, "view/title"),
+            Self::ViewItemContext => write!(f, "view/item/context"),
+            Self::CommandPalette => write!(f, "commandPalette"),
+            Self::Custom(s) => write!(f, "{}", s),
         }
     }
 }
@@ -217,13 +221,16 @@ impl MenuRegistry {
     pub fn register_menu_item(&self, item: MenuItem) -> Result<(), String> {
         let location = item.location.clone().unwrap_or_else(|| "commandPalette".to_string());
 
-        let mut menus = self.menus.write().expect("menu_registry write lock poisoned");
+        let mut menus = self.menus.write().unwrap_or_else(|e| {
+            warn!("menu_registry write lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
 
-        let items = menus.entry(location.clone()).or_insert_with(Vec::new);
+        let items = menus.entry(location.clone()).or_default();
         items.push(item.clone());
 
         // Sort by group and title
-        items.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
+        items.sort_by_key(|a| a.sort_key());
 
         drop(menus);
 
@@ -243,7 +250,10 @@ impl MenuRegistry {
 
     /// Get menu items for a specific location
     pub fn get_menu_items(&self, location: &str) -> Vec<MenuItem> {
-        let menus = self.menus.read().expect("menu_registry read lock poisoned");
+        let menus = self.menus.read().unwrap_or_else(|e| {
+            warn!("menu_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         menus.get(location).cloned().unwrap_or_default()
     }
 
@@ -284,7 +294,10 @@ impl MenuRegistry {
 
     /// Remove all menu items from a specific owner (when extension deactivates)
     pub fn clear_menu_items_by_owner(&self, owner: &str) {
-        let mut menus = self.menus.write().expect("menu_registry write lock poisoned");
+        let mut menus = self.menus.write().unwrap_or_else(|e| {
+            warn!("menu_registry write lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
 
         for items in menus.values_mut() {
             items.retain(|item| item.owner != owner);
@@ -296,7 +309,10 @@ impl MenuRegistry {
 
     /// Get all locations that have menu items
     pub fn get_locations(&self) -> Vec<String> {
-        let menus = self.menus.read().expect("menu_registry read lock poisoned");
+        let menus = self.menus.read().unwrap_or_else(|e| {
+            warn!("menu_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         menus.keys().cloned().collect()
     }
 }

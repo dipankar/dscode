@@ -35,26 +35,6 @@
   let allCommands: Command[] = [];
   let commandContext: CommandContext = getCommandContext();
   let wasVisible = false;
-  let modalContainer: HTMLDivElement;
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== 'Tab' || !modalContainer) return;
-    const focusable = Array.from(
-      modalContainer.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      )
-    ).filter((el) => el.offsetParent !== null);
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
 
   // Load commands from the command registry
   async function loadCommands(context: CommandContext = commandContext) {
@@ -134,10 +114,6 @@
     if (!visible) return;
 
     switch (e.key) {
-      case 'Escape':
-        e.preventDefault();
-        onClose();
-        break;
       case 'ArrowDown':
         e.preventDefault();
         selectedIndex = Math.min(selectedIndex + 1, filteredCommands.length - 1);
@@ -178,7 +154,6 @@
 
   onMount(async () => {
     window.addEventListener('keydown', handleKeydown);
-    window.addEventListener('keydown', trapFocus);
 
     await loadCommands();
 
@@ -193,7 +168,6 @@
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleKeydown);
-    window.removeEventListener('keydown', trapFocus);
 
     if (commandRegisteredUnlisten) {
       commandRegisteredUnlisten();
@@ -208,17 +182,15 @@
   <div
     class="command-palette-overlay"
     on:click={handleOverlayClick}
-    on:keydown={handleKeydown}
     role="presentation"
     tabindex="-1"
+    use:focusTrap={{ onEscape: onClose }}
   >
     <div
-      bind:this={modalContainer}
       class="command-palette"
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
-      use:focusTrap
     >
       <div class="search-container">
         <input
@@ -229,6 +201,7 @@
           class="search-input"
           aria-label="Search commands"
           aria-controls="command-palette-list"
+          autofocus
         />
       </div>
 

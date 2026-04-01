@@ -1,5 +1,4 @@
 use super::textdocument_registry::*;
-use dscode_extension_host::IpcManager;
 use crate::session::SessionManager;
 use std::sync::Arc;
 use tauri::State;

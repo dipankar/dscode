@@ -295,7 +295,7 @@ impl ExtensionContributes {
         }
 
         for view_welcome in &self.views_welcome {
-            if let Some(ref when) = view_welcome.when {
+            if let Some(ref _when) = view_welcome.when {
                 events.push(format!("onView:{}", view_welcome.view));
             }
         }

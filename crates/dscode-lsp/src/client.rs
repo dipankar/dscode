@@ -10,13 +10,14 @@ use tracing::{error, info, instrument, warn};
 
 static REQUEST_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-/// STATE MACHINE: LspClient
+/// State machine for the LSP client lifecycle.
 ///
 /// Tracks the lifecycle of a Language Server Protocol client connected to
 /// an external language server process (e.g., rust-analyzer, pyright).
 ///
-/// State Diagram:
+/// # State Diagram
 ///
+/// ```text
 ///   Stopped ──► Starting ──► Initializing ──► Ready
 ///     ▲             │              │             │
 ///     │  (spawn     │  (init       │   (stop()   │
@@ -29,76 +30,49 @@ static REQUEST_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 ///     │             └────────── Ready ───────────┘
 ///     │                                          │
 ///     └──────────────────────────────────────────┘
+/// ```
 ///
-/// Transitions:
-///   Stopped      -> Starting      (start() called, spawning process)
-///   Starting     -> Initializing  (process spawned, read loop started)
-///   Starting     -> Crashed       (Command::spawn() failed)
-///   Initializing -> Ready         (LSP initialize handshake completed)
-///   Initializing -> Crashed       (initialize request failed or timed out)
-///   Ready        -> ShuttingDown  (stop() called, sending shutdown request)
-///   Ready        -> Crashed       (process exited unexpectedly, read loop EOF)
-///   ShuttingDown -> Stopped       (exit notification sent, process exited)
-///   Crashed      -> Starting      (explicit restart attempt)
+/// # Transitions
 ///
-/// Concurrency Invariant:
-///   State is stored in Arc<Mutex<LspClientState>>. All state reads and
-///   transitions acquire the mutex. The process and writer fields use
-///   separate Arc<Mutex<Option<T>>> which can be locked independently.
-///   IMPORTANT: Never hold the state lock while also holding process/writer
-///   locks to avoid deadlock. Lock ordering: state -> process -> writer.
-///
-/// Interruption Table:
-/// ┌──────────────┬────────────────────────────────────────────────────────────┐
-/// │ State        │ What happens + impact on pending requests                 │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Stopped      │ Safe. No process, no resources, no pending requests.      │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Starting     │ If spawn fails: -> Crashed. No pending requests yet.      │
-/// │              │ If Tauri crashes: child process orphaned, OS reaps.       │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Initializing │ Initialize request is pending. If process exits:          │
-/// │              │ -> Crashed. Initialize caller gets timeout error (NEW).   │
-/// │              │ Previously: caller would hang FOREVER (no timeout).       │
-/// │              │ No language features available until Ready.               │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Ready        │ If process exits unexpectedly: -> Crashed.               │
-/// │              │ ALL pending requests (hover, completion, etc.) were       │
-/// │              │ hanging FOREVER (BUG). After fix: rejected after 30s.    │
-/// │              │ User sees: language features stop responding for 30s,     │
-/// │              │ then errors. No auto-restart (TODO).                      │
-/// │              │ Impact: hover shows nothing, completions empty,           │
-/// │              │ diagnostics stale, go-to-definition fails.               │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ ShuttingDown │ Shutdown request sent. If process ignores it: exit        │
-/// │              │ notification sent anyway, process may need force kill.    │
-/// │              │ Pending requests drained and rejected.                    │
-/// ├──────────────┼────────────────────────────────────────────────────────────┤
-/// │ Crashed      │ All pending requests rejected (via timeout). Pool should  │
-/// │              │ detect this and remove client from active pool.           │
-/// │              │ TODO: Implement auto-restart with exponential backoff.    │
-/// │              │ Until then: language features dead for this language.     │
-/// └──────────────┴────────────────────────────────────────────────────────────┘
-///
-/// Cross-Layer Impact:
-///   LSP is an internal subsystem — frontend doesn't directly know about
-///   individual LSP server states. When LSP crashes:
-///   - Diagnostics stop updating (frontend shows stale diagnostics)
-///   - Hover/completion requests return empty/error
-///   - User experience: editor feels "broken" for that language
-///   - No notification to user about LSP failure (TODO)
+/// - `Stopped` -> `Starting` (start() called, spawning process)
+/// - `Starting` -> `Initializing` (process spawned, read loop started)
+/// - `Starting` -> `Crashed` (Command::spawn() failed)
+/// - `Initializing` -> `Ready` (LSP initialize handshake completed)
+/// - `Initializing` -> `Crashed` (initialize request failed or timed out)
+/// - `Ready` -> `ShuttingDown` (stop() called, sending shutdown request)
+/// - `Ready` -> `Crashed` (process exited unexpectedly, read loop EOF)
+/// - `ShuttingDown` -> `Stopped` (exit notification sent, process exited)
+/// - `Crashed` -> `Starting` (explicit restart attempt)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LspClientState {
+    /// No language server process is running.
     Stopped,
+    /// The language server process is being spawned.
     Starting,
+    /// The LSP initialize handshake is in progress.
     Initializing,
+    /// The language server is fully initialized and ready to handle requests.
     Ready,
+    /// A shutdown request has been sent to the language server.
     ShuttingDown,
+    /// The language server process exited unexpectedly or failed to start.
     Crashed,
 }
 
 type PendingResponseMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<serde_json::Value, String>>>>>;
 
+/// A state-machine-based LSP client that manages a language server process.
+///
+/// Handles spawning the language server, performing the LSP initialize handshake,
+/// sending requests and notifications, and processing responses from the server.
+/// All state transitions are validated to maintain the lifecycle invariant.
+///
+/// # Concurrency
+///
+/// State is stored in `Arc<Mutex<LspClientState>>`. The process and writer fields
+/// use separate `Arc<Mutex<Option<T>>>` which can be locked independently.
+/// Lock ordering: state -> process -> writer. Never hold the state lock while
+/// also holding process/writer locks to avoid deadlock.
 #[derive(Debug)]
 pub struct LspClient {
     state: Arc<Mutex<LspClientState>>,
@@ -111,6 +85,11 @@ pub struct LspClient {
 }
 
 impl LspClient {
+    /// Creates a new LSP client in the `Stopped` state.
+    ///
+    /// - `language_id` — The language identifier (e.g., "rust", "python").
+    /// - `server_command` — The command to spawn the language server (e.g., "rust-analyzer").
+    /// - `server_args` — Arguments to pass to the language server command.
     pub fn new(language_id: String, server_command: String, server_args: Vec<String>) -> Self {
         Self {
             state: Arc::new(Mutex::new(LspClientState::Stopped)),
@@ -155,11 +134,19 @@ impl LspClient {
         }
     }
 
-    /// Returns the current state.
+    /// Returns the current state of the LSP client.
     pub async fn get_state(&self) -> LspClientState {
         *self.state.lock().await
     }
 
+    /// Spawns the language server process and begins the initialization sequence.
+    ///
+    /// Transitions from `Stopped` to `Starting` to `Initializing`. If spawning
+    /// fails, transitions to `Crashed`. A background task is spawned to read
+    /// responses from the server's stdout.
+    ///
+    /// Returns `Ok(())` if the process was spawned successfully, or an error
+    /// describing the failure.
     #[instrument(skip(self))]
     pub async fn start(&self) -> Result<(), String> {
         self.transition(LspClientState::Starting).await?;
@@ -297,6 +284,12 @@ impl LspClient {
         Ok(())
     }
 
+    /// Stops the language server process and releases resources.
+    ///
+    /// Transitions through `ShuttingDown` to `Stopped`. Kills the child process,
+    /// drops the stdin writer, and drains any pending responses.
+    ///
+    /// Returns `Ok(())` on success.
     pub async fn stop(&self) -> Result<(), String> {
         let _ = self.transition(LspClientState::ShuttingDown).await;
 
@@ -314,6 +307,7 @@ impl LspClient {
         Ok(())
     }
 
+    /// Returns `true` if the client is in `Initializing` or `Ready` state.
     pub async fn is_running(&self) -> bool {
         let state = self.state.lock().await;
         matches!(*state, LspClientState::Initializing | LspClientState::Ready)
@@ -323,6 +317,12 @@ impl LspClient {
         REQUEST_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
     }
 
+    /// Sends the LSP `initialize` request with client capabilities.
+    ///
+    /// - `root_uri` — The root URI of the workspace to initialize.
+    ///
+    /// Transitions to `Ready` on success, or `Crashed` on failure.
+    /// Returns the [`InitializeResult`] from the server on success.
     #[instrument(skip(self))]
     pub async fn initialize(&self, root_uri: Url) -> Result<InitializeResult, String> {
         let params = InitializeParams {
@@ -365,6 +365,11 @@ impl LspClient {
         result
     }
 
+    /// Sends a `textDocument/didOpen` notification to the language server.
+    ///
+    /// - `uri` — The URI of the document that was opened.
+    /// - `language_id` — The language identifier for the document.
+    /// - `text` — The full initial content of the document.
     pub async fn did_open(
         &self, uri: Url, language_id: String, text: String,
     ) -> Result<(), String> {
@@ -375,6 +380,11 @@ impl LspClient {
         self.send_notification("textDocument/didOpen", params).await
     }
 
+    /// Sends a `textDocument/didChange` notification with the full document content.
+    ///
+    /// - `uri` — The URI of the document that changed.
+    /// - `version` — The new version number of the document.
+    /// - `text` — The full updated content of the document.
     pub async fn did_change(&self, uri: Url, version: i32, text: String) -> Result<(), String> {
         let params = DidChangeTextDocumentParams {
             text_document: VersionedTextDocumentIdentifier { uri, version },
@@ -388,6 +398,9 @@ impl LspClient {
         self.send_notification("textDocument/didChange", params).await
     }
 
+    /// Sends a `textDocument/didSave` notification to the language server.
+    ///
+    /// - `uri` — The URI of the document that was saved.
     pub async fn did_save(&self, uri: Url) -> Result<(), String> {
         let params =
             DidSaveTextDocumentParams { text_document: TextDocumentIdentifier { uri }, text: None };
@@ -395,6 +408,14 @@ impl LspClient {
         self.send_notification("textDocument/didSave", params).await
     }
 
+    /// Sends a `textDocument/hover` request to retrieve hover information.
+    ///
+    /// - `uri` — The URI of the document.
+    /// - `line` — The zero-based line number of the position.
+    /// - `character` — The zero-based character offset of the position.
+    ///
+    /// Returns hover information if available, or `None` if the server
+    /// provides no hover data at the given position.
     pub async fn hover(
         &self, uri: Url, line: u32, character: u32,
     ) -> Result<Option<Hover>, String> {
@@ -409,6 +430,11 @@ impl LspClient {
         self.send_request("textDocument/hover", params).await
     }
 
+    /// Sends a JSON-RPC request to the language server and waits for a response.
+    ///
+    /// Serializes the request, writes it to the server's stdin using the
+    /// LSP Content-Length framing protocol, and waits up to 30 seconds for
+    /// a matching response. Returns the deserialized result on success.
     async fn send_request<P: serde::Serialize, R: serde::de::DeserializeOwned>(
         &self, method: &str, params: P,
     ) -> Result<R, String> {
@@ -471,6 +497,10 @@ impl LspClient {
         }
     }
 
+    /// Sends a JSON-RPC notification to the language server (no response expected).
+    ///
+    /// Serializes the notification and writes it to the server's stdin using
+    /// the LSP Content-Length framing protocol.
     async fn send_notification<P: serde::Serialize>(
         &self, method: &str, params: P,
     ) -> Result<(), String> {
@@ -497,11 +527,18 @@ impl LspClient {
 
         Ok(())
     }
+    /// Sends the LSP `shutdown` request to the language server.
+    ///
+    /// This signals the server to stop processing requests. Call `stop()`
+    /// afterwards to terminate the process.
     #[instrument(skip(self))]
     pub async fn shutdown(&self) -> Result<(), String> {
         self.send_notification("shutdown", serde_json::json!({})).await
     }
 
+    /// Sends the `initialized` notification to the language server.
+    ///
+    /// Must be called after `initialize()` to complete the handshake.
     pub async fn initialized(&self) -> Result<(), String> {
         self.send_notification("initialized", serde_json::json!({})).await
     }
@@ -567,5 +604,68 @@ mod tests {
         // because there's no actual process to spawn)
         // We can't fully test start() without a real server, but we can
         // verify the transition logic via the state machine.
+    }
+
+    #[tokio::test]
+    async fn test_lsp_client_is_running_stopped() {
+        let client = LspClient::new(
+            "rust".to_string(),
+            "rust-analyzer".to_string(),
+            vec![],
+        );
+        // A newly created client is Stopped, not running
+        assert!(!client.is_running().await);
+    }
+
+    #[tokio::test]
+    async fn test_lsp_client_is_running_only_active_states() {
+        // is_running returns true only for Initializing and Ready
+        let client = LspClient::new(
+            "rust".to_string(),
+            "rust-analyzer".to_string(),
+            vec![],
+        );
+        // Stopped -> not running
+        assert!(!client.is_running().await);
+
+        // Transition to Starting -> not running (Starting is not considered "running")
+        client.transition(LspClientState::Starting).await.unwrap();
+        assert!(!client.is_running().await);
+
+        // Transition to Initializing -> now running
+        client.transition(LspClientState::Initializing).await.unwrap();
+        assert!(client.is_running().await);
+
+        // Crashed -> not running
+        client.transition(LspClientState::Crashed).await.unwrap();
+        assert!(!client.is_running().await);
+    }
+
+    #[tokio::test]
+    async fn test_lsp_client_invalid_transition_crashed_to_ready() {
+        let client = LspClient::new(
+            "rust".to_string(),
+            "rust-analyzer".to_string(),
+            vec![],
+        );
+        // Go to Crashed state
+        client.transition(LspClientState::Starting).await.unwrap();
+        client.transition(LspClientState::Crashed).await.unwrap();
+
+        // Crashed -> Ready is invalid
+        let result = client.transition(LspClientState::Ready).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_lsp_client_invalid_transition_stopped_to_initializing() {
+        let client = LspClient::new(
+            "rust".to_string(),
+            "rust-analyzer".to_string(),
+            vec![],
+        );
+        // Stopped -> Initializing is invalid (must go through Starting)
+        let result = client.transition(LspClientState::Initializing).await;
+        assert!(result.is_err());
     }
 }

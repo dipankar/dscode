@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { clearQuickPick, type QuickPickEntry, type QuickPickState } from '../stores/quickPick';
   import { focusTrap } from '../lib/focus-trap';
@@ -13,27 +13,6 @@
   let selections = new Set<number>();
   let items: QuickPickEntry[] = [];
   let lastRequestId = '';
-  let modalContainer: HTMLDivElement;
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== 'Tab' || !modalContainer) return;
-    const focusable = Array.from(
-      modalContainer.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      )
-    ).filter((el) => el.offsetParent !== null);
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
   $: items = request.items;
   $: if (request.id !== lastRequestId) {
     lastRequestId = request.id;
@@ -51,16 +30,11 @@
   $: ensureSelectionWithinBounds();
 
   onMount(() => {
-    window.addEventListener('keydown', trapFocus);
     const handle = window.setTimeout(() => {
       searchInput?.focus();
     }, 0);
 
     return () => window.clearTimeout(handle);
-  });
-
-  onDestroy(() => {
-    window.removeEventListener('keydown', trapFocus);
   });
 
   function ensureSelectionWithinBounds() {
@@ -173,12 +147,6 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      void cancel();
-      return;
-    }
-
     if (event.key === 'Enter') {
       event.preventDefault();
       if (request.canPickMany) {
@@ -219,14 +187,12 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="quickpick-overlay" role="presentation" tabindex="-1" on:click={handleOverlayClick}>
+<div class="quickpick-overlay" role="presentation" tabindex="-1" on:click={handleOverlayClick} use:focusTrap={{ onEscape: () => void cancel() }}>
   <div
-    bind:this={modalContainer}
     class="quickpick-modal"
     role="dialog"
     aria-modal="true"
     aria-label={request.title ?? 'Quick pick'}
-    use:focusTrap
   >
     {#if request.title}
       <header>

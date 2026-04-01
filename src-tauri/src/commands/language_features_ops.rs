@@ -566,6 +566,7 @@ pub async fn invoke_references_provider(
 
 /// Invoke code actions provider via extension host
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn invoke_code_actions_provider(
     language_id: String, uri: String, start_line: u32, start_character: u32, end_line: u32,
     end_character: u32, diagnostics: Vec<serde_json::Value>,

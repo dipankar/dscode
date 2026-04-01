@@ -263,4 +263,215 @@ mod tests {
         );
         assert!(bad_result.is_err());
     }
+
+    #[test]
+    fn test_permission_serde_roundtrip() {
+        // Verify each Permission variant serializes and deserializes correctly
+        let all_perms = vec![
+            Permission::FileSystemRead,
+            Permission::FileSystemWrite,
+            Permission::FileSystemDelete,
+            Permission::WorkspaceRead,
+            Permission::WorkspaceWrite,
+            Permission::WorkspaceExecute,
+            Permission::NetworkHttp,
+            Permission::NetworkHttps,
+            Permission::NetworkWebSocket,
+            Permission::ClipboardRead,
+            Permission::ClipboardWrite,
+            Permission::SecretsRead,
+            Permission::SecretsWrite,
+            Permission::ShowNotifications,
+            Permission::ShowDialogs,
+            Permission::ShowQuickPick,
+            Permission::TextEditorRead,
+            Permission::TextEditorWrite,
+            Permission::TextEditorSelection,
+            Permission::DebugStart,
+            Permission::DebugStop,
+            Permission::DebugBreakpoints,
+            Permission::TerminalCreate,
+            Permission::TerminalSend,
+            Permission::TasksExecute,
+            Permission::CommandsExecute,
+            Permission::AuthenticationGetSession,
+            Permission::AuthenticationCreateSession,
+        ];
+
+        for perm in &all_perms {
+            let json = serde_json::to_string(perm).unwrap();
+            let deserialized: Permission = serde_json::from_str(&json).unwrap();
+            assert_eq!(&deserialized, perm, "Roundtrip failed for {:?}", perm);
+        }
+    }
+
+    #[test]
+    fn test_permission_serde_uses_camel_case() {
+        // Verify that serde rename_all = "camelCase" is applied
+        let json = serde_json::to_string(&Permission::FileSystemRead).unwrap();
+        assert!(
+            json.contains("fileSystemRead"),
+            "Expected camelCase 'fileSystemRead' in JSON: {}",
+            json
+        );
+
+        let json = serde_json::to_string(&Permission::NetworkWebSocket).unwrap();
+        assert!(
+            json.contains("networkWebSocket"),
+            "Expected camelCase 'networkWebSocket' in JSON: {}",
+            json
+        );
+
+        let json = serde_json::to_string(&Permission::AuthenticationGetSession).unwrap();
+        assert!(
+            json.contains("authenticationGetSession"),
+            "Expected camelCase 'authenticationGetSession' in JSON: {}",
+            json
+        );
+    }
+
+    #[test]
+    fn test_permission_workspace_category() {
+        let perms = ExtensionPermissions::from_manifest(
+            "workspace.ext".to_string(),
+            Some(vec![
+                "workspace.read".to_string(),
+                "workspace.write".to_string(),
+                "workspace.execute".to_string(),
+            ]),
+        )
+        .unwrap();
+        assert!(perms.has_permission(&Permission::WorkspaceRead));
+        assert!(perms.has_permission(&Permission::WorkspaceWrite));
+        assert!(perms.has_permission(&Permission::WorkspaceExecute));
+        assert!(!perms.has_permission(&Permission::FileSystemRead));
+    }
+
+    #[test]
+    fn test_permission_clipboard_category() {
+        let perms = ExtensionPermissions::from_manifest(
+            "clipboard.ext".to_string(),
+            Some(vec![
+                "clipboard.read".to_string(),
+                "clipboard.write".to_string(),
+            ]),
+        )
+        .unwrap();
+        assert!(perms.has_permission(&Permission::ClipboardRead));
+        assert!(perms.has_permission(&Permission::ClipboardWrite));
+        assert!(!perms.has_permission(&Permission::FileSystemRead));
+    }
+
+    #[test]
+    fn test_permission_secrets_category() {
+        let perms = ExtensionPermissions::from_manifest(
+            "secrets.ext".to_string(),
+            Some(vec![
+                "secrets.read".to_string(),
+                "secrets.write".to_string(),
+            ]),
+        )
+        .unwrap();
+        assert!(perms.has_permission(&Permission::SecretsRead));
+        assert!(perms.has_permission(&Permission::SecretsWrite));
+        assert!(!perms.has_permission(&Permission::FileSystemRead));
+    }
+
+    #[test]
+    fn test_permission_text_editor_category() {
+        let perms = ExtensionPermissions::from_manifest(
+            "editor.ext".to_string(),
+            Some(vec![
+                "textEditor.read".to_string(),
+                "textEditor.write".to_string(),
+                "textEditor.selection".to_string(),
+            ]),
+        )
+        .unwrap();
+        assert!(perms.has_permission(&Permission::TextEditorRead));
+        assert!(perms.has_permission(&Permission::TextEditorWrite));
+        assert!(perms.has_permission(&Permission::TextEditorSelection));
+        assert!(!perms.has_permission(&Permission::FileSystemRead));
+    }
+
+    #[test]
+    fn test_permission_terminal_category() {
+        let perms = ExtensionPermissions::from_manifest(
+            "terminal.ext".to_string(),
+            Some(vec![
+                "terminal.create".to_string(),
+                "terminal.send".to_string(),
+            ]),
+        )
+        .unwrap();
+        assert!(perms.has_permission(&Permission::TerminalCreate));
+        assert!(perms.has_permission(&Permission::TerminalSend));
+        assert!(!perms.has_permission(&Permission::FileSystemRead));
+    }
+
+    #[test]
+    fn test_permission_tasks_and_commands_category() {
+        let perms = ExtensionPermissions::from_manifest(
+            "cmd.ext".to_string(),
+            Some(vec![
+                "tasks.execute".to_string(),
+                "commands.execute".to_string(),
+            ]),
+        )
+        .unwrap();
+        assert!(perms.has_permission(&Permission::TasksExecute));
+        assert!(perms.has_permission(&Permission::CommandsExecute));
+        assert!(!perms.has_permission(&Permission::FileSystemRead));
+    }
+
+    #[test]
+    fn test_permission_authentication_category() {
+        let perms = ExtensionPermissions::from_manifest(
+            "auth.ext".to_string(),
+            Some(vec![
+                "authentication.getSession".to_string(),
+                "authentication.createSession".to_string(),
+            ]),
+        )
+        .unwrap();
+        assert!(perms.has_permission(&Permission::AuthenticationGetSession));
+        assert!(perms.has_permission(&Permission::AuthenticationCreateSession));
+        assert!(!perms.has_permission(&Permission::FileSystemRead));
+    }
+
+    #[test]
+    fn test_permission_hash_equality() {
+        // Permissions with the same variant should be equal and hash the same
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(Permission::FileSystemRead);
+        set.insert(Permission::FileSystemRead);
+        assert_eq!(set.len(), 1, "Duplicate permissions should deduplicate in HashSet");
+        set.insert(Permission::FileSystemWrite);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_extension_permissions_new_constructor() {
+        let perms = ExtensionPermissions::new(
+            "direct.ext".to_string(),
+            vec![Permission::NetworkHttp, Permission::NetworkHttps],
+        );
+        assert!(perms.has_permission(&Permission::NetworkHttp));
+        assert!(perms.has_permission(&Permission::NetworkHttps));
+        assert!(!perms.has_permission(&Permission::NetworkWebSocket));
+    }
+
+    #[test]
+    fn test_check_permission_error_message() {
+        let perms = ExtensionPermissions::from_manifest(
+            "my.ext".to_string(),
+            Some(vec!["fileSystem.read".to_string()]),
+        )
+        .unwrap();
+
+        let err = perms.check_permission(&Permission::FileSystemWrite).unwrap_err();
+        assert!(err.contains("my.ext"), "Error should mention extension id");
+        assert!(err.contains("FileSystemWrite"), "Error should mention the permission");
+    }
 }

@@ -7,7 +7,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
-use zip::ZipArchive;
 
 static HTTP_CLIENT: once_cell::sync::Lazy<reqwest::Client> =
     once_cell::sync::Lazy::new(reqwest::Client::new);
@@ -399,7 +398,7 @@ pub async fn download_extension(
             &bytes[0..std::cmp::min(16, bytes.len())]
         );
         error!("[Marketplace] Preview: {}", preview);
-        return Err(format!("Downloaded file is not a valid ZIP archive (invalid magic number). This usually means the marketplace API returned an error page instead of the extension file."));
+        return Err("Downloaded file is not a valid ZIP archive (invalid magic number). This usually means the marketplace API returned an error page instead of the extension file.".to_string());
     }
 
     let vsix_path_clone = vsix_path.clone();

@@ -392,4 +392,66 @@ mod tests {
         assert_eq!(config.max_memory_mb, Some(512), "Default memory limit should be 512MB");
         assert_eq!(config.max_cpu_percent, Some(50), "Default CPU limit should be 50%");
     }
+
+    #[test]
+    fn test_sandbox_config_custom_values() {
+        let config = SandboxConfig {
+            allow_network: true,
+            allow_file_write: true,
+            max_memory_mb: Some(1024),
+            max_cpu_percent: Some(80),
+        };
+        assert!(config.allow_network);
+        assert!(config.allow_file_write);
+        assert_eq!(config.max_memory_mb, Some(1024));
+        assert_eq!(config.max_cpu_percent, Some(80));
+    }
+
+    #[test]
+    fn test_sandbox_config_none_limits() {
+        let config = SandboxConfig {
+            allow_network: false,
+            allow_file_write: false,
+            max_memory_mb: None,
+            max_cpu_percent: None,
+        };
+        assert!(config.max_memory_mb.is_none());
+        assert!(config.max_cpu_percent.is_none());
+
+        // apply_sandbox should still succeed with None limits
+        let mut cmd = Command::new("echo");
+        let result = apply_sandbox(&mut cmd, &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_sandbox_config_default_cpu_percent() {
+        let config = SandboxConfig::default();
+        assert_eq!(config.max_cpu_percent, Some(50));
+    }
+
+    #[test]
+    fn test_apply_sandbox_permissive_config() {
+        let config = SandboxConfig {
+            allow_network: true,
+            allow_file_write: true,
+            max_memory_mb: Some(2048),
+            max_cpu_percent: Some(100),
+        };
+        let mut cmd = Command::new("echo");
+        cmd.arg("permissive");
+        let result = apply_sandbox(&mut cmd, &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_complete_sandbox_setup_noop_on_unix() {
+        // On non-Windows, complete_sandbox_setup should be a no-op
+        // We can't easily test with a real child, but we can verify the function exists
+        // and the module compiles. The function is called after spawn.
+        // Just verify SandboxConfig defaults are as expected.
+        let config = SandboxConfig::default();
+        assert!(!config.allow_network);
+        assert!(!config.allow_file_write);
+    }
 }

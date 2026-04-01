@@ -3,6 +3,10 @@
 //! Language Server Protocol client, manager, and connection pool for DSCode.
 //!
 //! This crate provides a complete LSP client implementation with:
+
+#![warn(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![warn(dead_code)]
 //! - [`LspClient`] — State-machine-based LSP client that manages a language server process
 //! - [`LspManager`] — Registry for language servers with lazy startup
 //! - [`LspServerPool`] — Connection pool with configurable strategies (one-per-language, multiple)

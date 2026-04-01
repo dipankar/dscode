@@ -11,7 +11,6 @@
   let activeTab: 'editor' | 'theme' | 'terminal' | 'git' = 'editor';
   let settingsUnsubscribe: (() => void) | null = null;
   let modalContainer: HTMLDivElement;
-  let previouslyFocused: HTMLElement | null = null;
 
   const tabKeys: Array<'editor' | 'theme' | 'terminal' | 'git'> = ['editor', 'theme', 'terminal', 'git'];
 
@@ -28,21 +27,6 @@
     }
   });
 
-  $: if (visible && modalContainer) {
-    previouslyFocused = document.activeElement as HTMLElement;
-    const firstFocusable = modalContainer.querySelector<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    if (firstFocusable) {
-      firstFocusable.focus();
-    }
-  }
-
-  $: if (!visible && previouslyFocused) {
-    previouslyFocused.focus();
-    previouslyFocused = null;
-  }
-
   function handleSave() {
     settingsStore.set(settings);
     onClose();
@@ -57,13 +41,6 @@
 
     if (confirmed) {
       settingsStore.reset();
-    }
-  }
-
-  function handleOverlayKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      onClose();
     }
   }
 
@@ -104,10 +81,10 @@
 {#if visible}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="settings-overlay" on:click={onClose} on:keydown={handleOverlayKeyDown}>
+  <div class="settings-overlay" on:click={onClose} use:focusTrap={{ onEscape: onClose }}>
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div bind:this={modalContainer} class="settings-modal" on:click|stopPropagation role="dialog" aria-modal="true" aria-label="Settings" use:focusTrap>
+    <div bind:this={modalContainer} class="settings-modal" on:click|stopPropagation role="dialog" aria-modal="true" aria-label="Settings">
       <div class="settings-header">
         <h2>Settings</h2>
         <button class="close-btn" on:click={onClose} aria-label="Close settings">

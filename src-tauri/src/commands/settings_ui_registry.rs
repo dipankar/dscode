@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -208,13 +208,14 @@ impl SettingsUIRegistry {
         self.configuration_registry
             .get_configuration_with_fallback(key, scope)
             .map(|v| v.unwrap_or(Value::Null))
+            .map_err(|e| e.to_string())
     }
 
     /// Update setting value
     pub async fn update_setting_value(
         &self, key: &str, value: Value, scope: ConfigurationScope,
     ) -> Result<(), String> {
-        self.configuration_registry.update_configuration(key.to_string(), value, scope)
+        self.configuration_registry.update_configuration(key.to_string(), value, scope).map_err(|e| e.to_string())
     }
 
     /// Reset setting to default
@@ -229,7 +230,7 @@ impl SettingsUIRegistry {
             key.to_string(),
             schema.default.clone(),
             scope,
-        )
+        ).map_err(|e| e.to_string())
     }
 
     // ===== Validation =====

@@ -155,7 +155,7 @@ pub async fn stop_debugging(
 
 #[tauri::command]
 pub async fn step_over(
-    debug_manager: State<'_, Mutex<DebugManager>>, debug_pool: State<'_, RwLock<DebugAdapterPool>>,
+    _debug_manager: State<'_, Mutex<DebugManager>>, debug_pool: State<'_, RwLock<DebugAdapterPool>>,
     session_id: String,
 ) -> Result<(), String> {
     let pool = debug_pool.read().await;
@@ -170,7 +170,7 @@ pub async fn step_over(
 
 #[tauri::command]
 pub async fn step_into(
-    debug_manager: State<'_, Mutex<DebugManager>>, debug_pool: State<'_, RwLock<DebugAdapterPool>>,
+    _debug_manager: State<'_, Mutex<DebugManager>>, debug_pool: State<'_, RwLock<DebugAdapterPool>>,
     session_id: String,
 ) -> Result<(), String> {
     let pool = debug_pool.read().await;
@@ -185,7 +185,7 @@ pub async fn step_into(
 
 #[tauri::command]
 pub async fn step_out(
-    debug_manager: State<'_, Mutex<DebugManager>>, debug_pool: State<'_, RwLock<DebugAdapterPool>>,
+    _debug_manager: State<'_, Mutex<DebugManager>>, debug_pool: State<'_, RwLock<DebugAdapterPool>>,
     session_id: String,
 ) -> Result<(), String> {
     let pool = debug_pool.read().await;

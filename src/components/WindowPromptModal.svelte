@@ -25,22 +25,13 @@
     }
   }
 
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      choose(undefined);
-    }
-  }
-
   onMount(async () => {
     await tick();
     primaryButton?.focus();
   });
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
-
-<div class="prompt-overlay" role="dialog" aria-modal="true" aria-labelledby="window-prompt-title" use:focusTrap>
+<div class="prompt-overlay" role="dialog" aria-modal="true" aria-labelledby="window-prompt-title" use:focusTrap={{ onEscape: () => choose(undefined) }}>
   <div class="prompt-modal">
     <header class={`level-${prompt.level}`}>
       <h2 id="window-prompt-title">

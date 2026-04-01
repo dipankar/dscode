@@ -1,10 +1,21 @@
 # dscode-terminal
 
+[![docs.rs](https://img.shields.io/docsrs/dscode-terminal)](https://docs.rs/dscode-terminal)
+[![crates.io](https://img.shields.io/crates/v/dscode-terminal.svg)](https://crates.io/crates/dscode-terminal)
+[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Terminal manager and PTY lifecycle management for DSCode.
 
 This crate provides a portable PTY-backed terminal manager that can be used
 independently of any UI framework. Event forwarding is abstracted behind the
 `TerminalEventSender` trait, so you can integrate with any event system.
+
+## Install
+
+```bash
+cargo add dscode-terminal
+```
 
 ## Features
 
@@ -192,6 +203,10 @@ let manager = TerminalManager::new(Box::new(sender));
 
 - `dscode-session` -- Uses `TerminalManager` as part of the IDE session.
 - `dscode-extension-host` -- Extension host that may create terminals via the session.
+
+## Full API Docs
+
+<https://docs.rs/dscode-terminal>
 
 ## License
 

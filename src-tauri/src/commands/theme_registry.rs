@@ -1,10 +1,9 @@
 use dscode_core::CoreError;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Color theme type
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -123,7 +122,7 @@ impl ThemeRegistry {
     /// Register color theme
     pub fn register_color_theme(&self, theme: ColorTheme) -> Result<String, CoreError> {
         let mut themes = self.color_themes.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let id = theme.id.clone();
@@ -137,7 +136,7 @@ impl ThemeRegistry {
     /// Unregister color theme
     pub fn unregister_color_theme(&self, theme_id: &str) -> Result<(), CoreError> {
         let mut themes = self.color_themes.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         themes
@@ -152,7 +151,7 @@ impl ThemeRegistry {
     /// Get color theme
     pub fn get_color_theme(&self, theme_id: &str) -> Result<ColorTheme, CoreError> {
         let themes = self.color_themes.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         themes
@@ -165,7 +164,10 @@ impl ThemeRegistry {
     pub fn get_all_color_themes(&self) -> Vec<ColorTheme> {
         self.color_themes
             .read()
-            .expect("theme_color_themes read lock poisoned")
+            .unwrap_or_else(|e| {
+                warn!("theme_color_themes read lock poisoned, recovering: {}", e);
+                e.into_inner()
+            })
             .values()
             .cloned()
             .collect()
@@ -173,7 +175,10 @@ impl ThemeRegistry {
 
     /// Get color themes by type
     pub fn get_color_themes_by_type(&self, theme_type: ThemeType) -> Vec<ColorTheme> {
-        let themes = self.color_themes.read().expect("theme_color_themes read lock poisoned");
+        let themes = self.color_themes.read().unwrap_or_else(|e| {
+            warn!("theme_color_themes read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         themes.values().filter(|t| t.theme_type == theme_type).cloned().collect()
     }
 
@@ -181,7 +186,7 @@ impl ThemeRegistry {
     pub fn set_active_color_theme(&self, theme_id: String) -> Result<(), CoreError> {
         // Verify theme exists
         let themes = self.color_themes.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
         if !themes.contains_key(&theme_id) {
             return Err(CoreError::Config(format!("Color theme not found: {}", theme_id)));
@@ -190,7 +195,7 @@ impl ThemeRegistry {
 
         // Update settings
         let mut settings = self.theme_settings.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
         settings.active_color_theme = Some(theme_id.clone());
         drop(settings);
@@ -210,7 +215,10 @@ impl ThemeRegistry {
 
     /// Get active color theme
     pub fn get_active_color_theme(&self) -> Option<ColorTheme> {
-        let settings = self.theme_settings.read().expect("theme_settings read lock poisoned");
+        let settings = self.theme_settings.read().unwrap_or_else(|e| {
+            warn!("theme_settings read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         let theme_id = settings.active_color_theme.clone()?;
         drop(settings);
 
@@ -222,7 +230,7 @@ impl ThemeRegistry {
     /// Register icon theme
     pub fn register_icon_theme(&self, theme: IconTheme) -> Result<String, CoreError> {
         let mut themes = self.icon_themes.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let id = theme.id.clone();
@@ -236,7 +244,7 @@ impl ThemeRegistry {
     /// Unregister icon theme
     pub fn unregister_icon_theme(&self, theme_id: &str) -> Result<(), CoreError> {
         let mut themes = self.icon_themes.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         themes
@@ -251,7 +259,7 @@ impl ThemeRegistry {
     /// Get icon theme
     pub fn get_icon_theme(&self, theme_id: &str) -> Result<IconTheme, CoreError> {
         let themes = self.icon_themes.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         themes
@@ -264,7 +272,10 @@ impl ThemeRegistry {
     pub fn get_all_icon_themes(&self) -> Vec<IconTheme> {
         self.icon_themes
             .read()
-            .expect("theme_icon_themes read lock poisoned")
+            .unwrap_or_else(|e| {
+                warn!("theme_icon_themes read lock poisoned, recovering: {}", e);
+                e.into_inner()
+            })
             .values()
             .cloned()
             .collect()
@@ -274,7 +285,7 @@ impl ThemeRegistry {
     pub fn set_active_icon_theme(&self, theme_id: String) -> Result<(), CoreError> {
         // Verify theme exists
         let themes = self.icon_themes.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
         if !themes.contains_key(&theme_id) {
             return Err(CoreError::Config(format!("Icon theme not found: {}", theme_id)));
@@ -283,7 +294,7 @@ impl ThemeRegistry {
 
         // Update settings
         let mut settings = self.theme_settings.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
         settings.active_icon_theme = Some(theme_id.clone());
         drop(settings);
@@ -303,7 +314,10 @@ impl ThemeRegistry {
 
     /// Get active icon theme
     pub fn get_active_icon_theme(&self) -> Option<IconTheme> {
-        let settings = self.theme_settings.read().expect("theme_settings read lock poisoned");
+        let settings = self.theme_settings.read().unwrap_or_else(|e| {
+            warn!("theme_settings read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         let theme_id = settings.active_icon_theme.clone()?;
         drop(settings);
 
@@ -315,7 +329,7 @@ impl ThemeRegistry {
     /// Register product icon theme
     pub fn register_product_icon_theme(&self, theme: ProductIconTheme) -> Result<String, CoreError> {
         let mut themes = self.product_icon_themes.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let id = theme.id.clone();
@@ -329,7 +343,7 @@ impl ThemeRegistry {
     /// Unregister product icon theme
     pub fn unregister_product_icon_theme(&self, theme_id: &str) -> Result<(), CoreError> {
         let mut themes = self.product_icon_themes.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         themes
@@ -344,7 +358,7 @@ impl ThemeRegistry {
     /// Get product icon theme
     pub fn get_product_icon_theme(&self, theme_id: &str) -> Result<ProductIconTheme, CoreError> {
         let themes = self.product_icon_themes.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         themes
@@ -359,7 +373,10 @@ impl ThemeRegistry {
     pub fn get_all_product_icon_themes(&self) -> Vec<ProductIconTheme> {
         self.product_icon_themes
             .read()
-            .expect("theme_product_icon_themes read lock poisoned")
+            .unwrap_or_else(|e| {
+                warn!("theme_product_icon_themes read lock poisoned, recovering: {}", e);
+                e.into_inner()
+            })
             .values()
             .cloned()
             .collect()
@@ -369,7 +386,7 @@ impl ThemeRegistry {
     pub fn set_active_product_icon_theme(&self, theme_id: String) -> Result<(), CoreError> {
         // Verify theme exists
         let themes = self.product_icon_themes.read().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
         if !themes.contains_key(&theme_id) {
             return Err(CoreError::Config(format!(
@@ -381,7 +398,7 @@ impl ThemeRegistry {
 
         // Update settings
         let mut settings = self.theme_settings.write().map_err(|e| {
-            CoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CoreError::Io(std::io::Error::other(e.to_string()))
         })?;
         settings.active_product_icon_theme = Some(theme_id.clone());
         drop(settings);
@@ -401,7 +418,10 @@ impl ThemeRegistry {
 
     /// Get active product icon theme
     pub fn get_active_product_icon_theme(&self) -> Option<ProductIconTheme> {
-        let settings = self.theme_settings.read().expect("theme_settings read lock poisoned");
+        let settings = self.theme_settings.read().unwrap_or_else(|e| {
+            warn!("theme_settings read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         let theme_id = settings.active_product_icon_theme.clone()?;
         drop(settings);
 
@@ -410,7 +430,10 @@ impl ThemeRegistry {
 
     /// Get theme settings
     pub fn get_theme_settings(&self) -> ThemeSettings {
-        self.theme_settings.read().expect("theme_settings read lock poisoned").clone()
+        self.theme_settings.read().unwrap_or_else(|e| {
+            warn!("theme_settings read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        }).clone()
     }
 
     /// Clear all theme data for an owner
@@ -418,7 +441,10 @@ impl ThemeRegistry {
         // Clear color themes
         {
             let mut themes =
-                self.color_themes.write().expect("theme_color_themes write lock poisoned");
+                self.color_themes.write().unwrap_or_else(|e| {
+                    warn!("theme_color_themes write lock poisoned, recovering: {}", e);
+                    e.into_inner()
+                });
             let before = themes.len();
             themes.retain(|_, t| t.owner != owner);
             let removed = before - themes.len();
@@ -430,7 +456,10 @@ impl ThemeRegistry {
         // Clear icon themes
         {
             let mut themes =
-                self.icon_themes.write().expect("theme_icon_themes write lock poisoned");
+                self.icon_themes.write().unwrap_or_else(|e| {
+                    warn!("theme_icon_themes write lock poisoned, recovering: {}", e);
+                    e.into_inner()
+                });
             let before = themes.len();
             themes.retain(|_, t| t.owner != owner);
             let removed = before - themes.len();
@@ -444,7 +473,10 @@ impl ThemeRegistry {
             let mut themes = self
                 .product_icon_themes
                 .write()
-                .expect("theme_product_icon_themes write lock poisoned");
+                .unwrap_or_else(|e| {
+                    warn!("theme_product_icon_themes write lock poisoned, recovering: {}", e);
+                    e.into_inner()
+                });
             let before = themes.len();
             themes.retain(|_, t| t.owner != owner);
             let removed = before - themes.len();

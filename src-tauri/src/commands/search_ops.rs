@@ -1,3 +1,4 @@
+use dscode_core::CoreError;
 use grep_matcher::Matcher;
 use grep_regex::{RegexMatcher, RegexMatcherBuilder};
 use grep_searcher::sinks::UTF8;
@@ -32,16 +33,16 @@ pub async fn search_in_files(
     root_path: String, options: SearchOptions,
 ) -> Result<Vec<SearchResult>, String> {
     // Move the blocking search operation to a background thread
-    tokio::task::spawn_blocking(move || perform_search(root_path, options))
+    tokio::task::spawn_blocking(move || perform_search(root_path, options).map_err(|e| e.to_string()))
         .await
         .map_err(|e| format!("Search task failed: {}", e))?
 }
 
-fn perform_search(root_path: String, options: SearchOptions) -> Result<Vec<SearchResult>, String> {
+fn perform_search(root_path: String, options: SearchOptions) -> Result<Vec<SearchResult>, CoreError> {
     let root = PathBuf::from(&root_path);
 
     if !root.exists() {
-        return Err(format!("Path does not exist: {}", root_path));
+        return Err(CoreError::PathResolution(format!("Path does not exist: {}", root_path)));
     }
 
     let mut results = Vec::new();
@@ -59,7 +60,7 @@ fn perform_search(root_path: String, options: SearchOptions) -> Result<Vec<Searc
     let matcher = RegexMatcherBuilder::new()
         .case_insensitive(!options.case_sensitive)
         .build(&pattern)
-        .map_err(|e| format!("Invalid regex: {}", e))?;
+        .map_err(|e| CoreError::Config(format!("Invalid regex: {}", e)))?;
 
     // Build file walker with limits
     let mut walker_builder = WalkBuilder::new(&root);
@@ -79,7 +80,7 @@ fn perform_search(root_path: String, options: SearchOptions) -> Result<Vec<Searc
                     .add_defaults()
                     .select("all")
                     .build()
-                    .map_err(|e| format!("Invalid include pattern: {}", e))?,
+                    .map_err(|e| CoreError::Config(format!("Invalid include pattern: {}", e)))?,
             );
         }
     }
@@ -126,7 +127,7 @@ fn perform_search(root_path: String, options: SearchOptions) -> Result<Vec<Searc
 
 fn search_file(
     matcher: &RegexMatcher, path: &Path, root: &Path, max_matches: usize,
-) -> Result<Vec<SearchResult>, String> {
+) -> Result<Vec<SearchResult>, CoreError> {
     let mut results = Vec::new();
     let mut searcher = Searcher::new();
 
@@ -174,7 +175,7 @@ fn search_file(
                 Ok(true) // Continue searching
             }),
         )
-        .map_err(|e| format!("Search error: {}", e))?;
+        .map_err(|e| CoreError::Io(std::io::Error::other(format!("Search error: {}", e))))?;
 
     Ok(results)
 }
@@ -186,7 +187,7 @@ pub async fn replace_in_files(
     let root = PathBuf::from(&root_path);
 
     if !root.exists() {
-        return Err(format!("Path does not exist: {}", root_path));
+        return Err(CoreError::PathResolution(format!("Path does not exist: {}", root_path)).to_string());
     }
 
     // First, find all matches
@@ -198,7 +199,7 @@ pub async fn replace_in_files(
         std::collections::HashMap::new();
 
     for result in search_results {
-        file_map.entry(result.path.clone()).or_insert_with(Vec::new).push(result);
+        file_map.entry(result.path.clone()).or_default().push(result);
     }
 
     // Replace in each file
@@ -218,7 +219,7 @@ pub async fn replace_in_files(
 
             if new_content != content {
                 std::fs::write(&full_path, new_content)
-                    .map_err(|e| format!("Failed to write file: {}", e))?;
+                    .map_err(|e| CoreError::from(e).to_string())?;
                 files_modified += 1;
             }
         }

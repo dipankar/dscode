@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::AppHandle;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Debug configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,7 +126,10 @@ impl DebugConfigurationRegistry {
         let providers = self
             .configuration_providers
             .read()
-            .expect("debug_configuration_providers read lock poisoned");
+            .unwrap_or_else(|e| {
+                warn!("debug_configuration_providers read lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
         providers.iter().filter(|p| p.debug_type == debug_type).cloned().collect()
     }
 
@@ -172,7 +175,10 @@ impl DebugConfigurationRegistry {
         let factories = self
             .descriptor_factories
             .read()
-            .expect("debug_descriptor_factories read lock poisoned");
+            .unwrap_or_else(|e| {
+                warn!("debug_descriptor_factories read lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
         factories.iter().filter(|f| f.debug_type == debug_type).cloned().collect()
     }
 
@@ -204,10 +210,11 @@ impl DebugConfigurationRegistry {
 
     /// Get all launch configurations
     pub fn get_all_launch_configurations(&self) -> HashMap<String, LaunchConfiguration> {
-        self.launch_configurations
-            .read()
-            .expect("debug_launch_configurations read lock poisoned")
-            .clone()
+        let launch_configurations = self.launch_configurations.read().unwrap_or_else(|e| {
+            warn!("debug_launch_configurations read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
+        launch_configurations.clone()
     }
 
     /// Clear all debug configuration data for an owner
@@ -217,7 +224,10 @@ impl DebugConfigurationRegistry {
             let mut providers = self
                 .configuration_providers
                 .write()
-                .expect("debug_configuration_providers write lock poisoned");
+                .unwrap_or_else(|e| {
+                    warn!("debug_configuration_providers write lock poisoned, recovering: {}", e);
+                    e.into_inner()
+                });
             let before = providers.len();
             providers.retain(|p| p.owner != owner);
             let removed = before - providers.len();
@@ -234,7 +244,10 @@ impl DebugConfigurationRegistry {
             let mut factories = self
                 .descriptor_factories
                 .write()
-                .expect("debug_descriptor_factories write lock poisoned");
+                .unwrap_or_else(|e| {
+                    warn!("debug_descriptor_factories write lock poisoned, recovering: {}", e);
+                    e.into_inner()
+                });
             let before = factories.len();
             factories.retain(|f| f.owner != owner);
             let removed = before - factories.len();

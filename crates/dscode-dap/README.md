@@ -1,6 +1,15 @@
 # dscode-dap
 
+[![docs.rs](https://img.shields.io/docsrs/dscode-dap)](https://docs.rs/dscode-dap)
+[![crates.io](https://img.shields.io/crates/v/dscode-dap.svg)](https://crates.io/crates/dscode-dap)
+[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Debug Adapter Protocol client, manager, and pool for DSCode.
+
+```bash
+cargo add dscode-dap
+```
 
 This crate provides a complete DAP client implementation with state-machine-based
 lifecycle management, a synchronous debug session registry, and an async connection
@@ -224,6 +233,10 @@ pool.stop_all().await.unwrap();
 
 - `dscode-session` -- Uses `DebugAdapterPool` as part of the IDE session.
 - `dscode-extension-host` -- Extension host that may register debug adapters.
+
+## Full API Docs
+
+<https://docs.rs/dscode-dap>
 
 ## License
 

@@ -3,6 +3,12 @@
   --modal-overlay-bg: rgba(0, 0, 0, 0.85);
   --modal-bg: var(--color-bg-secondary);
   --modal-border: var(--color-border);
+
+  /* Layout constants */
+  --status-bar-height: 22px;
+  --activity-bar-width: 48px;
+  --panel-header-height: 35px;
+  --editor-tab-height: 35px;
 }
 
 /* Dark Theme (Default) */

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter};
-use tracing::error;
+use tracing::{error, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusBarCommand {
@@ -169,7 +169,10 @@ impl StatusBarRegistry {
 
     /// Get all visible status bar items sorted by priority
     pub fn get_visible_items(&self) -> Vec<StatusBarItem> {
-        let items = self.items.read().expect("status_bar_registry read lock poisoned");
+        let items = self.items.read().unwrap_or_else(|e| {
+            warn!("status_bar_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
 
         let mut visible_items: Vec<StatusBarItem> =
             items.values().filter(|item| item.visible).cloned().collect();
@@ -182,7 +185,10 @@ impl StatusBarRegistry {
 
     /// Get a specific status bar item
     pub fn get_item(&self, key: &str) -> Option<StatusBarItem> {
-        let items = self.items.read().expect("status_bar_registry read lock poisoned");
+        let items = self.items.read().unwrap_or_else(|e| {
+            warn!("status_bar_registry read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         items.get(key).cloned()
     }
 

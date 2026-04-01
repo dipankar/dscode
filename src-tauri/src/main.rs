@@ -1,12 +1,14 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// TODO(B5): Remove this and fix all dead code warnings
+#![allow(dead_code)]
 
 // Configure memory allocator
 #[cfg(feature = "jemalloc")]
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-#[cfg(feature = "mimalloc-allocator")]
+#[cfg(all(feature = "mimalloc-allocator", not(feature = "jemalloc")))]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

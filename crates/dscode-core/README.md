@@ -1,21 +1,17 @@
 # dscode-core
 
+[![docs.rs](https://img.shields.io/docsrs/dscode-core)](https://docs.rs/dscode-core)
+[![crates.io](https://img.shields.io/crates/v/dscode-core.svg)](https://crates.io/crates/dscode-core)
+[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Core types, text buffer, and configuration for DSCode.
 
-## Overview
+## Install
 
-`dscode-core` provides fundamental building blocks used across all DSCode components:
-
-- **`TextBuffer`** — Rope-based text storage for efficient editing operations on large files
-- **`AppDirectories`** — Platform-aware directory resolution for extensions, storage, and logs
-
-## Features
-
-- Fast text operations via `ropey` rope data structure
-- Platform-appropriate directory resolution (macOS, Linux, Windows)
-- Environment variable overrides (`DSCODE_EXTENSIONS_DIR`)
-- User configuration file support (`~/.dscode/config.json`)
-- Tilde (`~`) expansion in paths
+```bash
+cargo add dscode-core
+```
 
 ## Usage
 
@@ -39,6 +35,41 @@ println!("Extensions: {:?}", dirs.extensions_dir);
 println!("Storage: {:?}", dirs.storage_dir);
 println!("Logs: {:?}", dirs.logs_dir);
 ```
+
+### Configuration
+
+```rust
+use dscode_core::AppDirectories;
+
+let dirs = AppDirectories::resolve()?;
+// User configuration file support at ~/.dscode/config.json
+// Environment variable overrides (DSCODE_EXTENSIONS_DIR)
+// Tilde (~) expansion in paths
+```
+
+See the `examples/` directory for more complete samples.
+
+## Key Types
+
+| Type | Description |
+|------|-------------|
+| `TextBuffer` | Rope-based text storage for efficient editing operations on large files |
+| `AppDirectories` | Platform-aware directory resolution for extensions, storage, and logs |
+| `CoreError` | Unified error type for core operations |
+
+## Feature Flags
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `python` | off | Enables Python bindings via PyO3 |
+
+## State Machine
+
+`TextBuffer` uses the `ropey` rope data structure internally for O(log n) insertions, deletions, and slicing on large files.
+
+## Full API Docs
+
+<https://docs.rs/dscode-core>
 
 ## License
 
