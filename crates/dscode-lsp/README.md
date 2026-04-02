@@ -2,7 +2,7 @@
 
 [![docs.rs](https://img.shields.io/docsrs/dscode-lsp)](https://docs.rs/dscode-lsp)
 [![crates.io](https://img.shields.io/crates/v/dscode-lsp.svg)](https://crates.io/crates/dscode-lsp)
-[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Language Server Protocol client, manager, and connection pool for DSCode.

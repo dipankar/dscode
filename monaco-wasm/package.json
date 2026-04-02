@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dipankarsarkar/dscode",
+    "url": "https://github.com/dipankar/dscode",
     "directory": "monaco-wasm"
   },
   "main": "pkg/monaco_wasm.js",
@@ -16,9 +16,9 @@
     "access": "public"
   },
   "bugs": {
-    "url": "https://github.com/dipankarsarkar/dscode/issues"
+    "url": "https://github.com/dipankar/dscode/issues"
   },
-  "homepage": "https://github.com/dipankarsarkar/dscode#readme",
+  "homepage": "https://github.com/dipankar/dscode#readme",
   "scripts": {
     "build": "wasm-pack build --release --target web --out-dir pkg",
     "prepublishOnly": "npm run build",

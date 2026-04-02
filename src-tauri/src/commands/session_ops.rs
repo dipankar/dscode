@@ -21,6 +21,16 @@ pub async fn get_session_state(
     Ok(session.get_state().await)
 }
 
+/// Get current session lifecycle
+#[tauri::command]
+pub async fn get_session_lifecycle(
+    session: State<'_, Arc<RwLock<SessionManager>>>,
+) -> Result<String, String> {
+    let session = session.read().await;
+    let lifecycle = session.lifecycle().await;
+    Ok(format!("{:?}", lifecycle))
+}
+
 /// Get list of installed extensions
 #[tauri::command]
 pub async fn get_installed_extensions(

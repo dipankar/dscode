@@ -10,7 +10,38 @@
     <link rel="modulepreload" href="/src/main.ts" />
     <link rel="modulepreload" href="/src/App.svelte" />
 
-    <!-- Inline critical CSS for instant render -->
+    <!-- Runtime theme detection before CSS renders -->
+    <script>
+      (function() {
+        const theme = localStorage.getItem('dscode-theme');
+        if (theme === 'light') {
+          document.documentElement.style.setProperty('--color-bg', '#ffffff');
+          document.documentElement.style.setProperty('--color-text', '#1e1e1e');
+          document.documentElement.style.setProperty('--color-text-secondary', '#616161');
+          document.documentElement.style.setProperty('--color-border', '#cccccc');
+        } else if (theme === 'highcontrast') {
+          document.documentElement.style.setProperty('--color-bg', '#000000');
+          document.documentElement.style.setProperty('--color-text', '#ffffff');
+          document.documentElement.style.setProperty('--color-text-secondary', '#ffffff');
+          document.documentElement.style.setProperty('--color-border', '#ffffff');
+        }
+      })();
+    </script>
+
+    <!-- Emergency fallback: hide loading screen after 3s if JS is stalled -->
+    <script>
+      (function() {
+        function hide() {
+          var el = document.querySelector('.loading-screen');
+          if (el) el.remove();
+          // If the startup controller loaded, tell it we forced a mount
+          if (window.startupController && window.startupController.markMounted) {
+            window.startupController.markMounted();
+          }
+        }
+        setTimeout(hide, 3000);
+      })();
+    </script>
     <style>
       * {
         margin: 0;
@@ -39,10 +70,11 @@
         transition: opacity 0.6s ease-out, visibility 0.6s ease-out;
       }
 
-      /* Fade out when Svelte app signals session is ready */
-      .loading-screen--fade-out {
+      /* Hidden state: used by the startup state machine to fade out the splash */
+      .loading-screen--hidden {
         opacity: 0;
         visibility: hidden;
+        pointer-events: none;
       }
 
       /* Entrance animation for loading content */

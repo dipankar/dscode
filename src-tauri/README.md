@@ -1,6 +1,6 @@
 # dscode
 
-[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 DSCode — A fast, Rust-based Visual Studio Code alternative with full extension compatibility.
@@ -24,7 +24,7 @@ This crate is the Tauri-based desktop application entry point for DSCode. It com
 
 ```bash
 # Clone the repository
-git clone https://github.com/dscode-dev/dscode.git
+git clone https://github.com/dipankar/dscode.git
 cd dscode
 
 # Install Node dependencies

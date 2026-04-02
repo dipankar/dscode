@@ -42,7 +42,7 @@ impl SessionManager {
     }
 
     pub async fn add_workspace_folder(&self, path: PathBuf) -> Result<(), String> {
-        let state_clone = {
+        {
             let mut state = self.state.write().await;
 
             if state.workspace_folders.contains(&path) {
@@ -50,8 +50,7 @@ impl SessionManager {
             }
 
             state.workspace_folders.push(path.clone());
-            state.clone()
-        };
+        }
 
         // Register the workspace folder with the path validator
         {
@@ -60,7 +59,8 @@ impl SessionManager {
         }
 
         self.emit_event(SessionEvent::WorkspaceFolderAdded { path });
-        self.emit_event(SessionEvent::StateChanged { state: state_clone });
+        let state = self.get_state().await;
+        self.emit_event(SessionEvent::StateChanged { state });
 
         Ok(())
     }
@@ -75,17 +75,17 @@ impl SessionManager {
             return Ok(());
         }
 
-        let state_clone = {
+        {
             let mut state = self.state.write().await;
             state.workspace_folders.retain(|p| p != path);
-            state.clone()
-        };
+        }
 
         // Note: PathValidator doesn't support unregistration of individual paths.
         // This is acceptable since removed workspace folders are no longer accessible.
 
         self.emit_event(SessionEvent::WorkspaceFolderRemoved { path: path.clone() });
-        self.emit_event(SessionEvent::StateChanged { state: state_clone });
+        let state = self.get_state().await;
+        self.emit_event(SessionEvent::StateChanged { state });
 
         Ok(())
     }

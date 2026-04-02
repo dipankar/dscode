@@ -23,7 +23,9 @@
   import { createAppShellController, createDefaultAppShellState } from './lib/app-shell/controller';
   import { workspaceStore } from './stores/workspace';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { sessionLoading } from './stores/session';
+  import { startupPhase } from './stores/startup';
+  import { startupController } from './lib/startup/controller';
+  import { updateSplashVisibility } from './lib/startup/splash';
 
   $: theme = $settingsStore.theme.colorTheme;
 
@@ -33,38 +35,25 @@
       const folderName = rootPath.split('/').pop() || rootPath.split('\\').pop() || rootPath;
       const title = `${folderName} - DSCode`;
       document.title = title;
-      getCurrentWindow().setTitle(title).catch(() => {});
+      try {
+        getCurrentWindow().setTitle(title).catch(() => {});
+      } catch {
+        // Not running in Tauri context (e.g. browser dev, webview race)
+      }
     } else {
       document.title = 'DSCode';
-      getCurrentWindow().setTitle('DSCode').catch(() => {});
+      try {
+        getCurrentWindow().setTitle('DSCode').catch(() => {});
+      } catch {
+        // Not running in Tauri context
+      }
     }
   }
 
   let shellState = createDefaultAppShellState();
 
-  // Track session initialization lifecycle to hide the loading screen.
-  // sessionLoading starts false, goes true during init, then false when done.
-  // We wait until it has been true at least once before dismissing the splash.
-  let hasSessionLoaded = false;
-
-  function hideLoadingScreen() {
-    const el = document.querySelector('.loading-screen');
-    if (el && !el.classList.contains('loading-screen--fade-out')) {
-      el.classList.add('loading-screen--fade-out');
-      el.addEventListener('transitionend', () => el.remove(), { once: true });
-      // Fallback removal in case transitionend never fires (e.g. prefers-reduced-motion)
-      setTimeout(() => { if (el.parentNode) el.remove(); }, 1000);
-    }
-  }
-
-  $: {
-    if ($sessionLoading) {
-      hasSessionLoaded = true;
-    }
-    if (hasSessionLoaded && !$sessionLoading) {
-      hideLoadingScreen();
-    }
-  }
+  // Drive splash screen visibility from the startup state machine
+  $: updateSplashVisibility($startupPhase);
 
   const appShellController = createAppShellController({
     getState: () => shellState,
@@ -82,10 +71,9 @@
   }
 
   onMount(() => {
+    startupController.markShellReady();
+    startupController.initializeSession();
     appShellController.initialize();
-
-    // Safety: hide loading screen after 10s even if session init stalls
-    setTimeout(hideLoadingScreen, 10000);
 
     const handleWindowError = (event: ErrorEvent) => {
       setAppError(event.error ?? new Error(event.message));

@@ -1,8 +1,8 @@
 site_name: DSCode Documentation
 site_description: Documentation for DSCode — a fast, lightweight VS Code alternative built with Tauri, Svelte, and Monaco Editor
-site_url: https://docs.dscode.dev
-repo_url: https://github.com/nicepkg/dscode
-repo_name: nicepkg/dscode
+site_url: https://docs.dipankar.name/dscode
+repo_url: https://github.com/dipankar/dscode
+repo_name: dipankar/dscode
 edit_uri: edit/main/documentation/docs/
 
 copyright: Copyright &copy; 2024-2026 DSCode Contributors
@@ -51,7 +51,7 @@ theme:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/nicepkg/dscode
+      link: https://github.com/dipankar/dscode
   generator: false
 
 extra_css:

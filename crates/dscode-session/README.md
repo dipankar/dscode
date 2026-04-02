@@ -2,7 +2,7 @@
 
 [![docs.rs](https://img.shields.io/docsrs/dscode-session)](https://docs.rs/dscode-session)
 [![crates.io](https://img.shields.io/crates/v/dscode-session.svg)](https://crates.io/crates/dscode-session)
-[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Session manager, extension lifecycle, workspace, and configuration for DSCode.

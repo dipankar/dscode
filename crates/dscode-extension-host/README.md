@@ -2,7 +2,7 @@
 
 [![docs.rs](https://img.shields.io/docsrs/dscode-extension-host)](https://docs.rs/dscode-extension-host)
 [![crates.io](https://img.shields.io/crates/v/dscode-extension-host.svg)](https://crates.io/crates/dscode-extension-host)
-[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Extension host process management, IPC, sandbox, and security for DSCode.

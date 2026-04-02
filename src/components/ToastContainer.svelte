@@ -19,15 +19,16 @@
   }
 
   function getIconColor(type: Toast['type']) {
+    const style = getComputedStyle(document.documentElement);
     switch (type) {
       case 'error':
-        return '#f44336';
+        return style.getPropertyValue('--color-toast-error').trim() || '#f44336';
       case 'success':
-        return '#4caf50';
+        return style.getPropertyValue('--color-toast-success').trim() || '#4caf50';
       case 'warning':
-        return '#ff9800';
+        return style.getPropertyValue('--color-toast-warning').trim() || '#ff9800';
       case 'info':
-        return '#2196f3';
+        return style.getPropertyValue('--color-toast-info').trim() || '#2196f3';
     }
   }
 </script>

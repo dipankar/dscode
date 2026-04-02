@@ -1568,7 +1568,7 @@ impl SessionManager {
                         pv.add_workspace_folder(PathBuf::from(folder_path));
                     }
 
-                    let state = self.state.read().await.clone();
+                    let state = self.get_state().await;
                     self.emit_event(SessionEvent::StateChanged { state });
                 } else {
                     // No URI provided, show folder picker dialog

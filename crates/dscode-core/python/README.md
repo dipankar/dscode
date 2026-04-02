@@ -1,6 +1,6 @@
 # dscode-core Python Bindings
 
-Python bindings for [dscode-core](https://github.com/dipankarsarkar/dscode), providing rope-based text buffer and platform-aware directory resolution.
+Python bindings for [dscode-core](https://github.com/dipankar/dscode), providing rope-based text buffer and platform-aware directory resolution.
 
 ## Installation
 

@@ -442,7 +442,7 @@ Open your workspace in DSCode and verify:
 
 If you encounter incompatibilities, report them:
 
-- GitHub Issues: [github.com/nicepkg/dscode/issues](https://github.com/nicepkg/dscode/issues)
+- GitHub Issues: [github.com/dipankar/dscode/issues](https://github.com/dipankar/dscode/issues)
 - Tag with `vscode-compat` label
 - Include the extension name and the specific API that fails
 

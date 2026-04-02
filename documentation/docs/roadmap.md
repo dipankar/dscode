@@ -205,11 +205,11 @@ The DSCode roadmap is shaped by community feedback and contributions. Here is ho
 
 ### Vote on Features
 
-Visit [GitHub Discussions -- Feature Requests](https://github.com/nicepkg/dscode/discussions/categories/feature-requests) to browse proposed features. Add a :thumbsup: reaction to features you want prioritized.
+Visit [GitHub Discussions -- Feature Requests](https://github.com/dipankar/dscode/discussions/categories/feature-requests) to browse proposed features. Add a :thumbsup: reaction to features you want prioritized.
 
 ### Report Compatibility Issues
 
-If a VS Code extension does not work in DSCode, [open an issue](https://github.com/nicepkg/dscode/issues) with the extension name and the error. This directly informs which APIs are prioritized for implementation.
+If a VS Code extension does not work in DSCode, [open an issue](https://github.com/dipankar/dscode/issues) with the extension name and the error. This directly informs which APIs are prioritized for implementation.
 
 ### Contribute Code
 
@@ -217,7 +217,7 @@ Pull requests are the fastest way to move the roadmap forward. See the [Contribu
 
 ### Join the Discussion
 
-Participate in design discussions, RFC proposals, and architecture decisions in [GitHub Discussions](https://github.com/nicepkg/dscode/discussions). Your input helps shape the direction of the project.
+Participate in design discussions, RFC proposals, and architecture decisions in [GitHub Discussions](https://github.com/dipankar/dscode/discussions). Your input helps shape the direction of the project.
 
 !!! tip "Stay Updated"
-    Watch the [DSCode repository](https://github.com/nicepkg/dscode) on GitHub and enable notifications for releases to stay informed about new versions and milestones.
+    Watch the [DSCode repository](https://github.com/dipankar/dscode) on GitHub and enable notifications for releases to stay informed about new versions and milestones.

@@ -302,7 +302,7 @@ Build failures are most commonly caused by missing system libraries. Solutions v
 
 **Solutions:**
 
-- **API not implemented:** Check the [VS Code Compatibility Matrix](reference/vscode-compatibility-matrix.md). If the extension needs an unimplemented API, file a [GitHub issue](https://github.com/nicepkg/dscode/issues) requesting it.
+- **API not implemented:** Check the [VS Code Compatibility Matrix](reference/vscode-compatibility-matrix.md). If the extension needs an unimplemented API, file a [GitHub issue](https://github.com/dipankar/dscode/issues) requesting it.
 - **Dependency missing:** Some extensions depend on other extensions. Install any required dependencies listed in the extension's documentation.
 - **Incompatible Node.js version:** Ensure your Node.js version meets the extension's requirements (most extensions require Node.js 18+).
 
@@ -507,7 +507,7 @@ $env:DSCODE_LOG_LEVEL = "trace"; dscode .
 
 1. Reproduce the issue with verbose logging enabled
 2. Copy the relevant log file(s)
-3. Attach them to your [GitHub issue](https://github.com/nicepkg/dscode/issues)
+3. Attach them to your [GitHub issue](https://github.com/dipankar/dscode/issues)
 4. Include the output of `dscode --version` and your OS version
 
 ---
@@ -594,6 +594,6 @@ To reset all settings to their defaults:
 
 If the solutions above do not resolve your issue:
 
-1. **Search existing issues:** [github.com/nicepkg/dscode/issues](https://github.com/nicepkg/dscode/issues)
+1. **Search existing issues:** [github.com/dipankar/dscode/issues](https://github.com/dipankar/dscode/issues)
 2. **Open a new issue:** Use the **Bug Report** template and include your OS, DSCode version, steps to reproduce, and [log files](#collecting-logs)
-3. **Ask the community:** Post in [GitHub Discussions](https://github.com/nicepkg/dscode/discussions) for help from other users and contributors
+3. **Ask the community:** Post in [GitHub Discussions](https://github.com/dipankar/dscode/discussions) for help from other users and contributors

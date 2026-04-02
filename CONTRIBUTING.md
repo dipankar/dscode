@@ -22,7 +22,7 @@ This project adheres to the [Contributor Covenant Code of Conduct](https://www.c
 1. **Clone the repository**:
 
    ```bash
-   git clone https://github.com/dscode-dev/dscode.git
+   git clone https://github.com/dipankar/dscode.git
    cd dscode
    ```
 
@@ -229,4 +229,4 @@ All workspace crates share the same version (currently `0.1.0`).
 
 ## Questions?
 
-Open an issue on [GitHub](https://github.com/dscode-dev/dscode/issues) or start a discussion.
+Open an issue on [GitHub](https://github.com/dipankar/dscode/issues) or start a discussion.

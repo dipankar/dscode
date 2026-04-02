@@ -21,30 +21,14 @@
   let closedByBackend = false;
   let settingsUnsubscribe: (() => void) | null = null;
 
-  function getTerminalTheme(theme: string): Record<string, string> {
-    switch (theme) {
-      case 'light':
-        return {
-          background: '#ffffff',
-          foreground: '#333333',
-          cursor: '#333333',
-          selectionBackground: '#add6ff',
-        };
-      case 'high-contrast':
-        return {
-          background: '#000000',
-          foreground: '#ffffff',
-          cursor: '#ffffff',
-          selectionBackground: '#660000',
-        };
-      default:
-        return {
-          background: '#1e1e1e',
-          foreground: '#cccccc',
-          cursor: '#cccccc',
-          selectionBackground: '#264f78',
-        };
-    }
+  function getTerminalTheme(_theme: string): Record<string, string> {
+    const style = getComputedStyle(document.documentElement);
+    return {
+      background: style.getPropertyValue('--editor-bg').trim() || '#1e1e1e',
+      foreground: style.getPropertyValue('--editor-fg').trim() || '#d4d4d4',
+      cursor: style.getPropertyValue('--editor-fg').trim() || '#cccccc',
+      selectionBackground: style.getPropertyValue('--editor-selection').trim() || '#264f78',
+    };
   }
 
   $: if (visible && fitAddon && terminal) {

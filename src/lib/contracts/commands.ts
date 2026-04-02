@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 export const TauriCommandName = {
   initializeSession: 'initialize_session',
   getSessionState: 'get_session_state',
+  getSessionLifecycle: 'get_session_lifecycle',
   sessionLoadExtension: 'session_load_extension',
   sessionUnloadExtension: 'session_unload_extension',
   sessionDeleteExtension: 'session_delete_extension',
@@ -38,6 +39,9 @@ export const sessionCommands = {
   },
   getState<T>() {
     return invoke<T>(TauriCommandName.getSessionState);
+  },
+  getLifecycle() {
+    return invoke<string>(TauriCommandName.getSessionLifecycle);
   },
   loadExtension(extensionId: string) {
     return invoke<void>(TauriCommandName.sessionLoadExtension, {

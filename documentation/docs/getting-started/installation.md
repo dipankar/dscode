@@ -185,7 +185,7 @@ cargo tauri --version
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/nicepkg/dscode.git
+git clone https://github.com/dipankar/dscode.git
 cd dscode
 ```
 

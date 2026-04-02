@@ -36,7 +36,7 @@ Find answers to the most common questions about DSCode below. Each question expa
 
     Yes. DSCode is fully open source and free to use. The project is dual-licensed under the **MIT License** and **Apache License 2.0**, giving you flexibility to use, modify, and distribute it in both personal and commercial contexts.
 
-    The source code is available on [GitHub](https://github.com/nicepkg/dscode).
+    The source code is available on [GitHub](https://github.com/dipankar/dscode).
 
 ??? question "What platforms does DSCode support?"
 
@@ -184,7 +184,7 @@ Find answers to the most common questions about DSCode below. Each question expa
 
     Bug reports are tracked on **GitHub Issues**:
 
-    1. Go to [github.com/nicepkg/dscode/issues](https://github.com/nicepkg/dscode/issues)
+    1. Go to [github.com/dipankar/dscode/issues](https://github.com/dipankar/dscode/issues)
     2. Search existing issues to avoid duplicates
     3. Click **New Issue** and select the **Bug Report** template
     4. Include your OS, DSCode version, steps to reproduce, and any relevant logs
@@ -196,9 +196,9 @@ Find answers to the most common questions about DSCode below. Each question expa
     DSCode welcomes contributions of all kinds -- code, documentation, testing, and bug reports. To get started:
 
     1. Read the [Contributing Guide](contributing/building-from-source.md) for development setup
-    2. Check the [GitHub Issues](https://github.com/nicepkg/dscode/issues) for tasks labeled `good first issue`
+    2. Check the [GitHub Issues](https://github.com/dipankar/dscode/issues) for tasks labeled `good first issue`
     3. Fork the repository, create a branch, make your changes, and open a pull request
-    4. Join discussions in [GitHub Discussions](https://github.com/nicepkg/dscode/discussions) to propose features or ask questions
+    4. Join discussions in [GitHub Discussions](https://github.com/dipankar/dscode/discussions) to propose features or ask questions
 
     See the [Architecture Overview](architecture/overview.md) to understand the codebase structure before diving in.
 
@@ -218,5 +218,5 @@ Find answers to the most common questions about DSCode below. Each question expa
 If your question is not answered here:
 
 - **Search the docs** -- Use the search bar at the top of this site
-- **GitHub Discussions** -- Ask in [github.com/nicepkg/dscode/discussions](https://github.com/nicepkg/dscode/discussions)
-- **GitHub Issues** -- Report bugs or request features at [github.com/nicepkg/dscode/issues](https://github.com/nicepkg/dscode/issues)
+- **GitHub Discussions** -- Ask in [github.com/dipankar/dscode/discussions](https://github.com/dipankar/dscode/discussions)
+- **GitHub Issues** -- Report bugs or request features at [github.com/dipankar/dscode/issues](https://github.com/dipankar/dscode/issues)

@@ -151,7 +151,7 @@ impl PathValidator {
                     // Parent doesn't exist yet (e.g. create_dir_all target).
                     // Walk up to find an existing ancestor and validate from there.
                     let mut ancestor = parent;
-                    while let Some(grandparent) = ancestor.parent() {
+                    loop {
                         if ancestor.exists() {
                             let canonical_ancestor = fs::canonicalize(ancestor)
                                 .map_err(|e| Self::sanitize_error(&format!("{}", e)))?;
@@ -163,10 +163,11 @@ impl PathValidator {
                                 return Err("Access denied: Path outside allowed directories".to_string());
                             }
                         }
-                        if grandparent.as_os_str().is_empty() {
-                            break;
+                        match ancestor.parent() {
+                            Some(gp) if gp.as_os_str().is_empty() => break,
+                            Some(gp) => ancestor = gp,
+                            None => break,
                         }
-                        ancestor = grandparent;
                     }
                     return Err("Parent directory does not exist".to_string());
                 }

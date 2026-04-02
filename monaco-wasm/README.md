@@ -1,7 +1,7 @@
 # @dscode/monaco-wasm
 
 [![npm version](https://img.shields.io/npm/v/@dscode/monaco-wasm.svg)](https://www.npmjs.com/package/@dscode/monaco-wasm)
-[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 WASM-based fast tokenizer for Monaco Editor, used by DSCode.

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 description = "Python bindings for dscode-core: text buffer and configuration utilities"
-repository = "https://github.com/dipankarsarkar/dscode"
+repository = "https://github.com/dipankar/dscode"
 
 [lib]
 name = "dscode_core_python"

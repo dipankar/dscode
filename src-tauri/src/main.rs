@@ -113,6 +113,7 @@ fn main() {
             extension_tree_notify_event,
             initialize_session,
             get_session_state,
+            get_session_lifecycle,
             get_installed_extensions,
             get_active_extensions,
             session_load_extension,

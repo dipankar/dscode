@@ -13,7 +13,7 @@ DSCode is currently in pre-release development (0.x). Only the latest developmen
 If you discover a security vulnerability in DSCode, please report it responsibly:
 
 - **Email**: security@dscode.dev
-- **GitHub**: Use [GitHub Security Advisories](https://github.com/dscode-dev/dscode/security/advisories/new)
+- **GitHub**: Use [GitHub Security Advisories](https://github.com/dipankar/dscode/security/advisories/new)
 
 Please **do not** file public issues for security vulnerabilities. Reports sent via email or GitHub Security Advisories will be acknowledged within **48 hours**, and we aim to provide a substantive response within **7 days**.
 

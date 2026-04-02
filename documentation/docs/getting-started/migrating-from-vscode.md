@@ -197,8 +197,8 @@ If you encounter issues during migration:
 
 - **Search the docs** -- Use the search bar at the top of this site.
 - **Check the FAQ** -- Common questions are answered in the [FAQ](../faq.md).
-- **Report issues** -- File a bug report at [GitHub Issues](https://github.com/nicepkg/dscode/issues) with the `vscode-compat` label.
-- **Community** -- Ask questions in [GitHub Discussions](https://github.com/nicepkg/dscode/discussions).
+- **Report issues** -- File a bug report at [GitHub Issues](https://github.com/dipankar/dscode/issues) with the `vscode-compat` label.
+- **Community** -- Ask questions in [GitHub Discussions](https://github.com/dipankar/dscode/discussions).
 
 ---
 

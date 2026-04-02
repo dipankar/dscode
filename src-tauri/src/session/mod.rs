@@ -157,6 +157,7 @@ pub struct SessionState {
     pub installed_extensions: Vec<ExtensionInfo>,
     pub available_commands: Vec<String>,
     pub status_bar_items: Vec<StatusBarItemState>,
+    pub lifecycle: String,
 }
 
 /// Extension information
@@ -487,6 +488,7 @@ impl SessionManager {
             installed_extensions: Vec::new(),
             available_commands: Vec::new(),
             status_bar_items: Vec::new(),
+            lifecycle: "Uninitialized".to_string(),
         }));
 
         let extension_host =
@@ -619,11 +621,11 @@ impl SessionManager {
             return Err(e);
         }
 
-        let state = self.state.read().await.clone();
-        self.emit_event(SessionEvent::StateChanged { state });
-
         self.transition_lifecycle(SessionLifecycle::Ready).await?;
         let _ = self.initialized.set(());
+
+        let state = self.get_state().await;
+        self.emit_event(SessionEvent::StateChanged { state });
 
         info!("Session initialized");
         Ok(())

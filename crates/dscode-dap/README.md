@@ -2,7 +2,7 @@
 
 [![docs.rs](https://img.shields.io/docsrs/dscode-dap)](https://docs.rs/dscode-dap)
 [![crates.io](https://img.shields.io/crates/v/dscode-dap.svg)](https://crates.io/crates/dscode-dap)
-[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Debug Adapter Protocol client, manager, and pool for DSCode.

@@ -2,7 +2,7 @@
 
 [![docs.rs](https://img.shields.io/docsrs/dscode-core)](https://docs.rs/dscode-core)
 [![crates.io](https://img.shields.io/crates/v/dscode-core.svg)](https://crates.io/crates/dscode-core)
-[![CI](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dscode-dev/dscode/actions/workflows/ci.yml)
+[![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Core types, text buffer, and configuration for DSCode.

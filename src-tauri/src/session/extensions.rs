@@ -523,14 +523,17 @@ impl SessionManager {
             state.active_extensions.retain(|e| e.id != extension_id);
         }
 
-        let state_clone = state.clone();
         drop(state);
 
-        self.emit_event(SessionEvent::StateChanged { state: state_clone });
+        let state = self.get_state().await;
+        self.emit_event(SessionEvent::StateChanged { state });
     }
 
     pub async fn get_state(&self) -> SessionState {
-        self.state.read().await.clone()
+        let mut state = self.state.read().await.clone();
+        let lifecycle = *self.lifecycle.read().await;
+        state.lifecycle = format!("{:?}", lifecycle);
+        state
     }
 
     pub async fn get_installed_extensions(&self) -> Vec<ExtensionInfo> {

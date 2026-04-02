@@ -12,7 +12,7 @@ main repository.
 
 ### 1. Fork the repository
 
-Click the **Fork** button on [github.com/nicepkg/dscode](https://github.com/nicepkg/dscode)
+Click the **Fork** button on [github.com/dipankar/dscode](https://github.com/dipankar/dscode)
 to create your personal copy.
 
 ### 2. Clone your fork
@@ -25,7 +25,7 @@ cd dscode
 ### 3. Add the upstream remote
 
 ```bash
-git remote add upstream https://github.com/nicepkg/dscode.git
+git remote add upstream https://github.com/dipankar/dscode.git
 git fetch upstream
 ```
 
@@ -348,8 +348,8 @@ interfaces, altered configuration format):
 ## Getting Help
 
 - **Questions about contributing?** Open a
-  [GitHub Discussion](https://github.com/nicepkg/dscode/discussions).
-- **Found a bug?** File an [issue](https://github.com/nicepkg/dscode/issues/new)
+  [GitHub Discussion](https://github.com/dipankar/dscode/discussions).
+- **Found a bug?** File an [issue](https://github.com/dipankar/dscode/issues/new)
   with reproduction steps.
 - **Need review?** Tag `@nicepkg/maintainers` in your PR if no one has responded
   after 3 business days.

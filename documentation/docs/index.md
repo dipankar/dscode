@@ -86,7 +86,7 @@ Native builds for **macOS**, **Linux**, and **Windows** via Tauri v2. Single cod
 
     ```bash
     # Download the latest .dmg from GitHub Releases
-    curl -LO https://github.com/nicepkg/dscode/releases/latest/download/DSCode_0.1.0_aarch64.dmg
+    curl -LO https://github.com/dipankar/dscode/releases/latest/download/DSCode_0.1.0_aarch64.dmg
 
     # Mount and install
     hdiutil attach DSCode_0.1.0_aarch64.dmg
@@ -101,11 +101,11 @@ Native builds for **macOS**, **Linux**, and **Windows** via Tauri v2. Single cod
 
     ```bash
     # Debian / Ubuntu (.deb)
-    curl -LO https://github.com/nicepkg/dscode/releases/latest/download/dscode_0.1.0_amd64.deb
+    curl -LO https://github.com/dipankar/dscode/releases/latest/download/dscode_0.1.0_amd64.deb
     sudo dpkg -i dscode_0.1.0_amd64.deb
 
     # Fedora / RHEL (.rpm)
-    curl -LO https://github.com/nicepkg/dscode/releases/latest/download/dscode-0.1.0-1.x86_64.rpm
+    curl -LO https://github.com/dipankar/dscode/releases/latest/download/dscode-0.1.0-1.x86_64.rpm
     sudo rpm -i dscode-0.1.0-1.x86_64.rpm
 
     # Launch
@@ -116,7 +116,7 @@ Native builds for **macOS**, **Linux**, and **Windows** via Tauri v2. Single cod
 
     ```powershell
     # Download the installer from GitHub Releases
-    Invoke-WebRequest -Uri "https://github.com/nicepkg/dscode/releases/latest/download/DSCode_0.1.0_x64-setup.exe" -OutFile "DSCode_setup.exe"
+    Invoke-WebRequest -Uri "https://github.com/dipankar/dscode/releases/latest/download/DSCode_0.1.0_x64-setup.exe" -OutFile "DSCode_setup.exe"
 
     # Run the installer
     .\DSCode_setup.exe
@@ -129,7 +129,7 @@ Native builds for **macOS**, **Linux**, and **Windows** via Tauri v2. Single cod
 
     ```bash
     # Prerequisites: Rust 1.75+, Node.js 20+, pnpm
-    git clone https://github.com/nicepkg/dscode.git
+    git clone https://github.com/dipankar/dscode.git
     cd dscode
     pnpm install
     cargo tauri dev
@@ -248,6 +248,6 @@ Build from source, development setup, testing, and PR guidelines.
 
 <div style="text-align: center; color: var(--md-default-fg-color--light); font-size: 0.85rem; margin-top: 2rem;" markdown>
 
-**DSCode** is open source under the MIT License. [View on GitHub :material-github:](https://github.com/nicepkg/dscode){ target="_blank" }
+**DSCode** is open source under the MIT License. [View on GitHub :material-github:](https://github.com/dipankar/dscode){ target="_blank" }
 
 </div>

@@ -5,7 +5,6 @@ import {
 } from '../preload';
 import { enableWindowPersistence } from '../window-persistence';
 import { WindowEventName } from '../contracts/events';
-import { initializeSession } from '../../stores/session';
 
 type ComponentRef = any;
 
@@ -267,10 +266,6 @@ export function createAppShellController({
   }
 
   function initialize() {
-    initializeSession().catch((error) => {
-      console.error('Failed to initialize session:', error);
-    });
-
     window.addEventListener(WindowEventName.toggleSidebar, handleSidebarEvent);
     window.addEventListener(WindowEventName.togglePanel, handlePanelEvent);
     window.addEventListener(WindowEventName.showCommandPalette, showCommandPalette);

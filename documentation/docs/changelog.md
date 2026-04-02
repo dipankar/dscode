@@ -158,11 +158,11 @@ See the [Roadmap](roadmap.md) for the full development plan. Key priorities for 
 
 DSCode is built by a growing community of contributors. Thank you to everyone who has contributed code, reported bugs, tested pre-release builds, and provided feedback.
 
-- See the full list of contributors on [GitHub](https://github.com/nicepkg/dscode/graphs/contributors)
+- See the full list of contributors on [GitHub](https://github.com/dipankar/dscode/graphs/contributors)
 - Want to contribute? Check out the [Contributing Guide](contributing/building-from-source.md)
 
 ---
 
 <!-- Link definitions -->
-[Unreleased]: https://github.com/nicepkg/dscode/compare/v0.1.0-alpha...HEAD
-[0.1.0-alpha]: https://github.com/nicepkg/dscode/releases/tag/v0.1.0-alpha
+[Unreleased]: https://github.com/dipankar/dscode/compare/v0.1.0-alpha...HEAD
+[0.1.0-alpha]: https://github.com/dipankar/dscode/releases/tag/v0.1.0-alpha

@@ -49,6 +49,8 @@ export interface SessionState {
   available_commands: string[];
   status_bar_items: StatusBarItemState[];
   context_keys: Record<string, unknown>;
+  /** Backend session lifecycle: 'Uninitialized' | 'Initializing' | 'Ready' | 'ShuttingDown' | 'Shutdown' | 'Error' */
+  lifecycle?: string;
 }
 
 // Session state store

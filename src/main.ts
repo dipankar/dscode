@@ -2,6 +2,12 @@ import './app.css';
 import App from './App.svelte';
 import { warmupJIT, scheduleBackgroundCompilation } from './lib/code-cache';
 import { initializeWasmTokenizer } from './lib/wasm-tokenizer';
+import { startupController } from './lib/startup/controller';
+
+const appEl = document.getElementById('app')!;
+
+// Mark that JS is executing — this is the first observable phase
+startupController.markBooting();
 
 // Warm up V8 JIT compiler immediately
 warmupJIT();
@@ -67,19 +73,21 @@ export async function initializeMonaco() {
   }
 }
 
-const appEl = document.getElementById('app')!;
+// Mount the Svelte application
+let app: App | undefined;
+try {
+  app = new App({ target: appEl });
+} catch (error) {
+  console.error('[main] Failed to mount App:', error);
+  startupController.markError(
+    error instanceof Error ? error.message : String(error)
+  );
+}
 
-const app = new App({
-  target: appEl,
-});
+// After mount, the framework is ready — transition the startup state machine
+startupController.markMounted();
 
-// Signal that the app is ready so the loading screen can fade out.
-// Use requestAnimationFrame to ensure the Svelte DOM has been painted
-// before we trigger the CSS transition on the loading screen.
-requestAnimationFrame(() => {
-  requestAnimationFrame(() => {
-    appEl.setAttribute('data-app-ready', '');
-  });
-});
+// Expose the startup controller globally for emergency fallbacks
+(window as any).startupController = startupController;
 
 export default app;
