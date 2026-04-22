@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-dscode-core = { path = "../../crates/dscode-core" }
-dscode-lsp = { path = "../../crates/dscode-lsp" }
+dscode-core = { path = "../../crates/dscode-core", version = "0.1.0" }
+dscode-lsp = { path = "../../crates/dscode-lsp", version = "0.1.0" }
 tokio = { version = "1", features = ["full"] }
 
 [[bin]]
