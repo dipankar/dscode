@@ -14,7 +14,7 @@
 //! - **Path validation** to prevent filesystem traversal attacks ([`path_validator::PathValidator`])
 //! - **Capability-based permissions** for extensions ([`permissions::ExtensionPermissions`])
 //! - **Per-extension rate limiting** using token bucket algorithm ([`rate_limiter::RateLimiter`])
-//! - **Multi-platform sandboxing** (macOS sandbox-exec, Linux bwrap, Windows Job Objects) ([`sandbox`])
+//! - **Multi-platform sandboxing** (macOS sandbox-exec, Linux bwrap, Windows Job Objects)
 //! - **OS keyring secret storage** ([`secrets::SecretStorage`])
 //!
 //! ## Feature Flags

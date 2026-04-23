@@ -288,10 +288,10 @@ fn create_and_configure_job_object(
     use windows::Win32::System::JobObjects::{
         CreateJobObjectW, JobObjectBasicUIRestrictions, JobObjectExtendedLimitInformation,
         SetInformationJobObject, JOBOBJECT_BASIC_UI_RESTRICTIONS,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
         JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-        JOB_OBJECT_UILIMIT_DESKTOP, JOB_OBJECT_UILIMIT_DISPLAY_SETTINGS,
-        JOB_OBJECT_UILIMIT_EXIT_WINDOWS, JOB_OBJECT_UILIMIT_FLAGS,
+        JOB_OBJECT_UILIMIT, JOB_OBJECT_UILIMIT_DESKTOP, JOB_OBJECT_UILIMIT_DISPLAYSETTINGS,
+        JOB_OBJECT_UILIMIT_EXITWINDOWS,
     };
 
     // Create an anonymous job object.
@@ -301,12 +301,12 @@ fn create_and_configure_job_object(
     // Configure extended limits: memory cap, active-process cap, kill-on-close.
     let mut extended_info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
 
-    let mut limit_flags = JOB_OBJECT_LIMIT_FLAGS(0);
+    let mut limit_flags = JOB_OBJECT_LIMIT(0);
 
     // Memory limit (e.g., 512 MB).
     if let Some(max_mb) = config.max_memory_mb {
         limit_flags |= JOB_OBJECT_LIMIT_JOB_MEMORY;
-        extended_info.JobMemoryLimit = max_mb * 1024 * 1024;
+        extended_info.JobMemoryLimit = (max_mb * 1024 * 1024) as usize;
     }
 
     // Active process limit — allow up to 4 concurrent processes in the job.
@@ -331,10 +331,10 @@ fn create_and_configure_job_object(
     // Configure UI restrictions.
     let mut ui_restrictions: JOBOBJECT_BASIC_UI_RESTRICTIONS = unsafe { std::mem::zeroed() };
 
-    let mut ui_flags = JOB_OBJECT_UILIMIT_FLAGS(0);
-    ui_flags |= JOB_OBJECT_UILIMIT_EXIT_WINDOWS;
+    let mut ui_flags = JOB_OBJECT_UILIMIT(0);
+    ui_flags |= JOB_OBJECT_UILIMIT_EXITWINDOWS;
     ui_flags |= JOB_OBJECT_UILIMIT_DESKTOP;
-    ui_flags |= JOB_OBJECT_UILIMIT_DISPLAY_SETTINGS;
+    ui_flags |= JOB_OBJECT_UILIMIT_DISPLAYSETTINGS;
 
     ui_restrictions.UIRestrictionsClass = ui_flags;
 

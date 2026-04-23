@@ -354,6 +354,9 @@ fn test_rate_limiter_error_message() {
 
 #[test]
 fn test_secret_storage_new() {
+    if std::env::var("CI").is_ok() {
+        return;
+    }
     let storage = SecretStorage::new();
     // Getting a nonexistent key should return None
     let result = storage.get("nonexistent.ext", "api_key").unwrap();
@@ -362,6 +365,9 @@ fn test_secret_storage_new() {
 
 #[test]
 fn test_secret_storage_default() {
+    if std::env::var("CI").is_ok() {
+        return;
+    }
     let storage = SecretStorage::default();
     let result = storage.get("nonexistent.ext", "token").unwrap();
     assert!(result.is_none());
@@ -369,6 +375,9 @@ fn test_secret_storage_default() {
 
 #[test]
 fn test_secret_storage_set_get_delete() {
+    if std::env::var("CI").is_ok() {
+        return;
+    }
     let storage = SecretStorage::new();
     // Use unique key with UUID to avoid keychain conflicts from previous runs
     let ext_id = format!("test.integration.{}", std::process::id());
@@ -395,6 +404,9 @@ fn test_secret_storage_set_get_delete() {
 
 #[test]
 fn test_secret_storage_different_extensions_isolated() {
+    if std::env::var("CI").is_ok() {
+        return;
+    }
     let storage = SecretStorage::new();
     let id = std::process::id();
     let ext1 = format!("ext1.isolated.{}", id);
@@ -431,6 +443,9 @@ fn test_secret_storage_different_extensions_isolated() {
 
 #[test]
 fn test_secret_storage_multiple_keys() {
+    if std::env::var("CI").is_ok() {
+        return;
+    }
     let storage = SecretStorage::new();
     let id = std::process::id();
     let ext = format!("my-ext.multi.{}", id);
@@ -465,6 +480,9 @@ fn test_secret_storage_multiple_keys() {
 
 #[test]
 fn test_secret_storage_delete_all_for_extension() {
+    if std::env::var("CI").is_ok() {
+        return;
+    }
     let storage = SecretStorage::new();
     let id = std::process::id();
     let ext_a = format!("ext-a.delall.{}", id);

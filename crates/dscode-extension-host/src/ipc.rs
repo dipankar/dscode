@@ -5,9 +5,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixStream;
 use tokio::sync::{oneshot, Mutex, Notify, RwLock};
 use tracing::{debug, error, info};
+
+#[cfg(unix)]
+use tokio::net::UnixStream;
 
 const MAX_MESSAGE_SIZE: usize = 50 * 1024 * 1024;
 
@@ -71,6 +73,9 @@ async fn write_message<W: AsyncWriteExt + Unpin>(
 
 type PendingRequestMap = Arc<Mutex<HashMap<String, oneshot::Sender<Result<Value, String>>>>>;
 
+// ── ExtensionIpc ────────────────────────────────────────────────────────────
+
+#[cfg(unix)]
 pub struct ExtensionIpc {
     write: Arc<Mutex<tokio::net::unix::OwnedWriteHalf>>,
     pending_requests: PendingRequestMap,
@@ -78,6 +83,10 @@ pub struct ExtensionIpc {
     alive: Arc<std::sync::atomic::AtomicBool>,
 }
 
+#[cfg(not(unix))]
+pub struct ExtensionIpc;
+
+#[cfg(unix)]
 impl ExtensionIpc {
     pub fn new(stream: UnixStream) -> Self {
         let (read_half, write_half) = stream.into_split();
@@ -118,14 +127,6 @@ impl ExtensionIpc {
                     }
                 }
             }
-            // When the read loop breaks (socket EOF or read error):
-            // 1. alive flag set to false (Relaxed ordering is sufficient —
-            //    eventual consistency is fine for a "dead connection" signal)
-            // 2. All pending requests are cleared by dropping their Senders,
-            //    which causes each Receiver to get RecvError
-            // 3. Any future request() calls will fail the alive check
-            // 4. The IpcManager still holds a reference to this ExtensionIpc —
-            //    it must be explicitly removed or replaced on reconnection
             alive_clone.store(false, std::sync::atomic::Ordering::Relaxed);
             let mut pending = pending_clone.lock().await;
             pending.clear();
@@ -144,9 +145,6 @@ impl ExtensionIpc {
     }
 
     pub async fn request(&self, msg_type: &str, payload: Value) -> Result<Value, String> {
-        // Check connection liveness before sending. This is a best-effort check —
-        // the connection could die between this check and the actual write.
-        // The timeout below protects against that race.
         if !self.alive.load(std::sync::atomic::Ordering::Relaxed) {
             return Err("IPC connection is not alive".to_string());
         }
@@ -174,32 +172,14 @@ impl ExtensionIpc {
             write_message(&mut *writer, &message).await?;
         }
 
-        // Request timeout: 30 seconds.
-        // Three possible outcomes for a pending request:
-        //   1. Response received: resolved normally via oneshot channel
-        //   2. Connection closed: oneshot Sender dropped, Receiver gets RecvError
-        //   3. Timeout: tokio::time::timeout fires, request cleaned up
-        //
-        // Without this timeout, if the extension host becomes unresponsive
-        // (infinite loop, deadlock) but the connection stays alive, the caller
-        // blocks forever. Connection close (outcome 2) only helps when the
-        // process actually crashes or the socket breaks.
         match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => {
-                // Sender dropped — connection closed while request was in flight.
-                // The read loop (spawned task) detected socket EOF and cleared
-                // pending requests by dropping all Senders.
                 let mut pending = self.pending_requests.lock().await;
                 pending.remove(&id);
                 Err("IPC connection closed while awaiting response".to_string())
             }
             Err(_) => {
-                // Timeout — extension host did not respond within 30 seconds.
-                // This can happen if the host is in an infinite loop, deadlocked,
-                // or simply overwhelmed. The request is removed from pending to
-                // prevent memory leaks. If a response arrives later (after timeout),
-                // it will be silently dropped (no matching pending entry).
                 let mut pending = self.pending_requests.lock().await;
                 pending.remove(&id);
                 Err(format!("IPC request '{}' timed out after 30s", msg_type))
@@ -229,6 +209,24 @@ impl ExtensionIpc {
     }
 }
 
+#[cfg(not(unix))]
+impl ExtensionIpc {
+    pub fn is_alive(&self) -> bool {
+        false
+    }
+
+    pub async fn request(&self, _msg_type: &str, _payload: Value) -> Result<Value, String> {
+        Err("IPC not supported on this platform".to_string())
+    }
+
+    pub async fn send(&self, _msg_type: &str, _payload: Value) -> Result<(), String> {
+        Err("IPC not supported on this platform".to_string())
+    }
+}
+
+// ── IncomingIpc ────────────────────────────────────────────────────────────
+
+#[cfg(unix)]
 pub struct IncomingIpc {
     listener: Arc<tokio::net::UnixListener>,
     handler: Option<IncomingRequestHandler>,
@@ -236,6 +234,10 @@ pub struct IncomingIpc {
     shutdown: Arc<Notify>,
 }
 
+#[cfg(not(unix))]
+pub struct IncomingIpc;
+
+#[cfg(unix)]
 impl IncomingIpc {
     pub fn new(socket_path: &str) -> Result<Self, String> {
         let path = socket_path
@@ -327,6 +329,22 @@ impl IncomingIpc {
     }
 }
 
+#[cfg(not(unix))]
+impl IncomingIpc {
+    pub fn new(_socket_path: &str) -> Result<Self, String> {
+        Err("IPC not supported on this platform".to_string())
+    }
+
+    pub fn set_handler(&mut self, _handler: IncomingRequestHandler) {}
+
+    pub async fn start(&self) -> Result<(), String> {
+        Err("IPC not supported on this platform".to_string())
+    }
+
+    pub async fn stop(&self) {}
+}
+
+#[cfg(unix)]
 async fn handle_incoming_connection(
     stream: tokio::net::UnixStream,
     handler: IncomingRequestHandler,
@@ -383,6 +401,8 @@ async fn handle_incoming_connection(
     Ok(())
 }
 
+// ── IpcManager ─────────────────────────────────────────────────────────────
+
 pub struct IpcManager {
     outgoing: Arc<RwLock<HashMap<String, Arc<ExtensionIpc>>>>,
     incoming: Arc<RwLock<HashMap<String, Arc<IncomingIpc>>>>,
@@ -402,6 +422,7 @@ impl IpcManager {
         }
     }
 
+    #[cfg(unix)]
     pub async fn connect_outgoing(&self, id: &str, socket_path: &str) -> Result<(), String> {
         debug!(id = id, socket_path = socket_path, "Connecting outgoing");
 
@@ -434,6 +455,11 @@ impl IpcManager {
         }
 
         Err("Failed to connect".to_string())
+    }
+
+    #[cfg(not(unix))]
+    pub async fn connect_outgoing(&self, _id: &str, _socket_path: &str) -> Result<(), String> {
+        Err("IPC not supported on this platform".to_string())
     }
 
     pub async fn setup_incoming(

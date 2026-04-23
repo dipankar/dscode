@@ -70,9 +70,8 @@ type PendingResponseMap = Arc<Mutex<HashMap<i32, oneshot::Sender<Result<Value, S
 ///
 /// # Concurrency
 ///
-/// Same as [`LspClient`](crate::LspClient) -- state in `Arc<Mutex<>>`,
-/// separate from process/writer. Lock ordering: state -> process -> writer
-/// -> pending_responses.
+/// State is held in `Arc<Mutex<>>`, separate from process/writer.
+/// Lock ordering: state -> process -> writer -> pending_responses.
 pub struct DebugAdapter {
     state: Arc<Mutex<DebugAdapterState>>,
     session: DebugSession,
