@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["ide", "editor", "tauri"]
 categories = ["development-tools"]
 edition = "2021"
+# This is a Tauri application binary with external assets (frontend, extension host,
+# Node.js runtime). It is distributed via platform-specific installers built with
+# `cargo tauri build`, not via `cargo install` from crates.io.
+publish = false
 
 [build-dependencies]
 tauri-build = { version = "2.1", features = [] }

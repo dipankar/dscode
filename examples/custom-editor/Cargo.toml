@@ -2,6 +2,7 @@
 name = "custom-editor"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [dependencies]
 dscode-core = { path = "../../crates/dscode-core", version = "0.1.0" }
