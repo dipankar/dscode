@@ -1,9 +1,17 @@
 name: Publish npm Packages
 
+# Publishes npm packages to the npm registry.
+# Triggered after a GitHub Release is published.
+
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to verify before publishing (e.g. 0.2.0)'
+        required: false
+        default: ''
 
 jobs:
   publish-extension-host:
@@ -17,11 +25,23 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Verify version (if specified)
+        if: github.event.inputs.version != ''
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          PKG_VERSION=$(node -p "require('./extension-host/package.json').version")
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "Error: extension-host version is $PKG_VERSION, expected $VERSION"
+            exit 1
+          fi
+
       - name: Build extension host
         run: |
           cd extension-host
           npm ci
-          npm run compile
+          npm run build
+
       - name: Publish extension host
         run: |
           cd extension-host
@@ -40,12 +60,25 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Verify version (if specified)
+        if: github.event.inputs.version != ''
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          PKG_VERSION=$(node -p "require('./monaco-wasm/package.json').version")
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "Error: monaco-wasm version is $PKG_VERSION, expected $VERSION"
+            exit 1
+          fi
+
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
       - name: Build WASM package
         run: |
           cd monaco-wasm
           npm run build
+
       - name: Publish monaco-wasm
         run: |
           cd monaco-wasm

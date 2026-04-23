@@ -1,12 +1,48 @@
 name: Release
 
+# Triggered by pushing a version tag (e.g. v0.2.0).
+# The release.sh script creates these tags.
+#
+# This workflow builds signed installers for all platforms and creates a
+# GitHub Release with the artifacts attached.
+
 on:
   push:
     tags:
       - 'v*'
 
+env:
+  NODE_VERSION: 20
+
 jobs:
+  # ── 1. Build the extension host (platform-agnostic TypeScript) ──
+  build-extension-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: extension-host/package-lock.json
+
+      - name: Build extension host
+        run: |
+          cd extension-host
+          npm ci
+          npm run build
+
+      - name: Upload extension-host dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-host-dist
+          path: extension-host/dist/**
+          if-no-files-found: error
+
+  # ── 2. Build Tauri app for each platform ──
   release:
+    needs: [build-extension-host]
     permissions:
       contents: write
     strategy:
@@ -14,12 +50,16 @@ jobs:
       matrix:
         include:
           - platform: 'macos-latest'
+            target: 'aarch64-apple-darwin'
             args: '--target aarch64-apple-darwin'
           - platform: 'macos-latest'
+            target: 'x86_64-apple-darwin'
             args: '--target x86_64-apple-darwin'
           - platform: 'ubuntu-22.04'
+            target: 'x86_64-unknown-linux-gnu'
             args: ''
           - platform: 'windows-latest'
+            target: 'x86_64-pc-windows-msvc'
             args: ''
 
     runs-on: ${{ matrix.platform }}
@@ -30,7 +70,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: Install Rust stable
@@ -41,14 +81,24 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install dependencies (Ubuntu)
+      - name: Install Tauri dependencies (Ubuntu)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Download extension-host dist
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-host-dist
+          path: extension-host/dist
+
+      - name: Download Node.js for external binary
+        run: npm run download-node:all
+        shell: bash
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -57,7 +107,16 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'DSCode ${{ github.ref_name }}'
-          releaseBody: 'See the assets below to download the installer for your platform.'
+          releaseBody: |
+            ## What's New
+            See the [CHANGELOG](../blob/main/CHANGELOG.md) for full details.
+
+            ## Assets
+            Download the installer for your platform below:
+            - **macOS (Apple Silicon)**: `.dmg`
+            - **macOS (Intel)**: `.dmg`
+            - **Linux (x86_64)**: `.deb` or `.AppImage`
+            - **Windows (x86_64)**: `.msi` or `.exe`
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

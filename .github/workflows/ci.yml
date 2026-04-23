@@ -102,6 +102,15 @@ jobs:
 
       - run: npm ci
 
+      - name: Build extension host
+        run: |
+          cd extension-host
+          npm ci
+          npm run build
+
+      - name: Download Node.js binaries (host only)
+        run: ./scripts/download-node.sh --host
+
       - run: cargo check --workspace
 
       - run: npm run build
@@ -140,8 +149,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Build extension host
+        run: |
+          cd extension-host
+          npm ci
+          npm run build
+
       - name: Download Node.js for external binary
-        run: npm run download-node:all
+        run: npm run download-node:host
         shell: bash
 
       - name: Build Tauri app
@@ -159,6 +174,10 @@ jobs:
             src-tauri/target/release/bundle/**/*.exe
           if-no-files-found: warn
 
+  # Dry-run only the leaf crates that have no internal path dependencies.
+  # Dependent crates (dscode-session, dscode) will fail dry-run because
+  # their dependencies aren't yet on crates.io. They are tested via
+  # cargo check --workspace in the 'rust' and 'build' jobs.
   publish-dry-run:
     runs-on: ubuntu-latest
     needs: rust
@@ -175,17 +194,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Publish dry-run dscode-core
-        run: cargo publish -p dscode-core --dry-run
+        run: cargo publish -p dscode-core --dry-run --allow-dirty
       - name: Publish dry-run dscode-lsp
-        run: cargo publish -p dscode-lsp --dry-run
+        run: cargo publish -p dscode-lsp --dry-run --allow-dirty
       - name: Publish dry-run dscode-dap
-        run: cargo publish -p dscode-dap --dry-run
+        run: cargo publish -p dscode-dap --dry-run --allow-dirty
       - name: Publish dry-run dscode-extension-host
-        run: cargo publish -p dscode-extension-host --dry-run
+        run: cargo publish -p dscode-extension-host --dry-run --allow-dirty
       - name: Publish dry-run dscode-terminal
-        run: cargo publish -p dscode-terminal --dry-run
-      - name: Publish dry-run dscode-session
-        run: cargo publish -p dscode-session --dry-run
+        run: cargo publish -p dscode-terminal --dry-run --allow-dirty
 
   fmt:
     runs-on: ubuntu-latest

@@ -1,0 +1,87 @@
+name: Publish Rust Crates
+
+# Publishes workspace crates to crates.io in dependency order.
+# Triggered after a GitHub Release is published (i.e. after the draft
+# release is reviewed and published via the GitHub UI).
+#
+# Publish order:
+#   1. dscode-core (no internal deps)
+#   2. dscode-lsp, dscode-dap, dscode-terminal, dscode-extension-host (leaf crates)
+#   3. dscode-session (depends on all above)
+#
+# The main `dscode` Tauri binary is NOT published to crates.io because
+# it is a cross-platform GUI application distributed via installers.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to verify before publishing (e.g. 0.2.0)'
+        required: false
+        default: ''
+
+jobs:
+  # ── Stage 1: Leaf crates (no internal path dependencies) ──
+  publish-leaf:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate:
+          - dscode-core
+          - dscode-lsp
+          - dscode-dap
+          - dscode-terminal
+          - dscode-extension-host
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify version (if specified)
+        if: github.event.inputs.version != ''
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          PKG_VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "${{ matrix.crate }}") | .version')
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "Error: ${{ matrix.crate }} version is $PKG_VERSION, expected $VERSION"
+            exit 1
+          fi
+
+      - name: Publish ${{ matrix.crate }}
+        run: cargo publish -p ${{ matrix.crate }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # ── Stage 2: Dependent crates ──
+  publish-dependent:
+    runs-on: ubuntu-latest
+    needs: [publish-leaf]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Wait for crates.io index propagation
+        run: sleep 60
+
+      - name: Verify version (if specified)
+        if: github.event.inputs.version != ''
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          PKG_VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "dscode-session") | .version')
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "Error: dscode-session version is $PKG_VERSION, expected $VERSION"
+            exit 1
+          fi
+
+      - name: Publish dscode-session
+        run: cargo publish -p dscode-session
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
