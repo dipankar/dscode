@@ -99,6 +99,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
+      # Intel macOS cross-compilation requires x86_64 Homebrew OpenSSL
+      - name: Install x86_64 OpenSSL (macOS Intel cross-build)
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: |
+          arch -x86_64 /usr/local/bin/brew install openssl@3 || true
+          echo "OPENSSL_DIR=$(arch -x86_64 /usr/local/bin/brew --prefix openssl@3 2>/dev/null || echo /usr/local/opt/openssl@3)" >> "$GITHUB_ENV"
+        shell: bash
+
       - name: Install frontend dependencies
         run: npm ci
 
@@ -111,10 +119,14 @@ jobs:
       - name: Download Node.js for external binary
         run: bash ./scripts/download-node.sh --all
 
+      # Ad-hoc codesigning on macOS prevents "damaged" Gatekeeper errors
+      # on Apple Silicon. Will be replaced with proper Developer ID signing
+      # once an Apple Developer account is available.
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODESIGN_IDENTITY: ${{ matrix.platform == 'macos-latest' && '-' || '' }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'DSCode ${{ github.ref_name }}'
