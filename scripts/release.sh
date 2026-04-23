@@ -109,7 +109,22 @@ echo "[1/9] Bumping version to $VERSION..."
 
 bump_files=()
 
-# Update root package.json
+# Determine the current workspace version (assumes 0.1.0 if not found)
+CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+if [[ -z "$CURRENT_VERSION" ]]; then
+    CURRENT_VERSION="0.1.0"
+fi
+
+# Helper: bump version in Cargo.toml files (both top-level and path-dep versions)
+bump_cargo_version() {
+    local file="$1"
+    if [[ -f "$file" ]] && grep -q "version = \"[^\"]*\"" "$file"; then
+        sed -i '' "s/version = \"[^\"]*\"/version = \"${VERSION}\"/g" "$file" 2>/dev/null || \
+            sed -i "s/version = \"[^\"]*\"/version = \"${VERSION}\"/g" "$file"
+        bump_files+=("$file")
+    fi
+}
+
 if [[ "$DRY_RUN" == "false" ]]; then
     # package.json
     if command -v node >/dev/null 2>&1; then
@@ -120,8 +135,6 @@ if [[ "$DRY_RUN" == "false" ]]; then
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
         "
         bump_files+=("package.json")
-    else
-        echo "Warning: node not found, skipping package.json bump"
     fi
 
     # extension-host/package.json
@@ -146,46 +159,24 @@ if [[ "$DRY_RUN" == "false" ]]; then
         bump_files+=("monaco-wasm/package.json")
     fi
 
-    # Update workspace Cargo.toml version
-    if command -v sed >/dev/null 2>&1; then
-        # Update workspace version if it exists
-        if grep -q '^version = ' Cargo.toml; then
-            sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" Cargo.toml 2>/dev/null || \
-                sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" Cargo.toml
-            bump_files+=("Cargo.toml")
-        fi
+    # Bump all Cargo.toml files that contain version declarations
+    # (top-level package versions AND path dependency versions)
+    bump_cargo_version "Cargo.toml"
+    bump_cargo_version "src-tauri/Cargo.toml"
+    bump_cargo_version "monaco-wasm/Cargo.toml"
+    bump_cargo_version "crates/dscode-core/python/Cargo.toml"
+    bump_cargo_version "crates/dscode-session/Cargo.toml"
+    bump_cargo_version "examples/custom-editor/Cargo.toml"
 
-        # Update src-tauri/Cargo.toml version (non-workspace version)
-        if grep -q '^version = ' src-tauri/Cargo.toml; then
-            sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" src-tauri/Cargo.toml 2>/dev/null || \
-                sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" src-tauri/Cargo.toml
-            bump_files+=("src-tauri/Cargo.toml")
-        fi
-
-        # Update monaco-wasm/Cargo.toml version
-        if grep -q '^version = ' monaco-wasm/Cargo.toml; then
-            sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" monaco-wasm/Cargo.toml 2>/dev/null || \
-                sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" monaco-wasm/Cargo.toml
-            bump_files+=("monaco-wasm/Cargo.toml")
-        fi
-
-        # Update crates/dscode-core/python/Cargo.toml version
-        if grep -q '^version = ' crates/dscode-core/python/Cargo.toml; then
-            sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" crates/dscode-core/python/Cargo.toml 2>/dev/null || \
-                sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" crates/dscode-core/python/Cargo.toml
-            bump_files+=("crates/dscode-core/python/Cargo.toml")
-        fi
-
-        # Update src-tauri/tauri.conf.json version
-        if command -v node >/dev/null 2>&1; then
-            node -e "
-                const fs = require('fs');
-                const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-                conf.version = '${VERSION}';
-                fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
-            "
-            bump_files+=("src-tauri/tauri.conf.json")
-        fi
+    # Update src-tauri/tauri.conf.json version
+    if command -v node >/dev/null 2>&1; then
+        node -e "
+            const fs = require('fs');
+            const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+            conf.version = '${VERSION}';
+            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+        "
+        bump_files+=("src-tauri/tauri.conf.json")
     fi
 
     # Update Python pyproject.toml version
@@ -206,10 +197,12 @@ else
     echo "    - package.json"
     echo "    - extension-host/package.json"
     echo "    - monaco-wasm/package.json"
-    echo "    - Cargo.toml"
-    echo "    - src-tauri/Cargo.toml"
+    echo "    - Cargo.toml (workspace + path deps)"
+    echo "    - src-tauri/Cargo.toml (package + path deps)"
     echo "    - monaco-wasm/Cargo.toml"
-    echo "    - crates/dscode-core/python/Cargo.toml"
+    echo "    - crates/dscode-core/python/Cargo.toml (package + path deps)"
+    echo "    - crates/dscode-session/Cargo.toml (path deps)"
+    echo "    - examples/custom-editor/Cargo.toml (path deps)"
     echo "    - crates/dscode-core/python/pyproject.toml"
     echo "    - src-tauri/tauri.conf.json"
     echo "    - package-lock.json (regenerated)"
