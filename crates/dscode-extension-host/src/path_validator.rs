@@ -398,12 +398,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
     fn test_path_validator_uri_format_file_two_slashes() {
         let mut validator = PathValidator::new();
         let current_dir = env::current_dir().unwrap();
         validator.add_workspace_folder(current_dir.clone());
 
-        // file:// with two slashes (hostname + path)
+        // file:// with two slashes (hostname + path). This form assumes
+        // Unix-style absolute paths and is not valid on Windows.
         let cargo_path = current_dir.join("Cargo.toml");
         if cargo_path.exists() {
             let uri = format!("file://localhost{}", cargo_path.display());
