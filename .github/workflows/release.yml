@@ -60,7 +60,8 @@ jobs:
             args: ''
           - platform: 'windows-latest'
             target: 'x86_64-pc-windows-msvc'
-            args: ''
+            # jemalloc (tikv-jemalloc-sys) does not build on Windows
+            args: '-- --no-default-features'
 
     runs-on: ${{ matrix.platform }}
 
@@ -73,10 +74,21 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      # Work around dtolnay/rust-toolchain@stable bug on Windows where
+      # an internal grep step exits with code 1 due to bash -e.
+      # Rust is pre-installed on GitHub Actions runners, so this is safe.
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        continue-on-error: ${{ matrix.platform == 'windows-latest' }}
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Verify Rust installation
+        if: matrix.platform == 'windows-latest'
+        run: |
+          rustc --version
+          cargo --version
+        shell: bash
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
