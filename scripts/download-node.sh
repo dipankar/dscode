@@ -115,6 +115,9 @@ elif [ "${1:-}" = "--host" ]; then
         else
             copy_external_bin "linux" "arm64" "aarch64-unknown-linux-gnu"
         fi
+    elif [[ "$HOST_OS" == mingw* ]] || [[ "$HOST_OS" == msys* ]] || [[ "$HOST_OS" == cygwin* ]]; then
+        download_and_extract "win" "x64"
+        copy_external_bin "win" "x64" "x86_64-pc-windows-msvc"
     else
         echo "Unsupported host OS: $HOST_OS"
         exit 1
