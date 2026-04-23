@@ -116,11 +116,12 @@ if [[ -z "$CURRENT_VERSION" ]]; then
 fi
 
 # Helper: bump version in Cargo.toml files (both top-level and path-dep versions)
+# Only replaces exact matches of CURRENT_VERSION to avoid bumping external deps
 bump_cargo_version() {
     local file="$1"
-    if [[ -f "$file" ]] && grep -q "version = \"[^\"]*\"" "$file"; then
-        sed -i '' "s/version = \"[^\"]*\"/version = \"${VERSION}\"/g" "$file" 2>/dev/null || \
-            sed -i "s/version = \"[^\"]*\"/version = \"${VERSION}\"/g" "$file"
+    if [[ -f "$file" ]] && grep -qF "version = \"${CURRENT_VERSION}\"" "$file"; then
+        sed -i '' "s/version = \"${CURRENT_VERSION}\"/version = \"${VERSION}\"/g" "$file" 2>/dev/null || \
+            sed -i "s/version = \"${CURRENT_VERSION}\"/version = \"${VERSION}\"/g" "$file"
         bump_files+=("$file")
     fi
 }
