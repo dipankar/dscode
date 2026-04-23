@@ -11,11 +11,11 @@ keywords = ["dscode", "ide", "session", "extension"]
 categories = ["development-tools"]
 
 [dependencies]
-dscode-core = { path = "../dscode-core", version = "0.1.0" }
-dscode-extension-host = { path = "../dscode-extension-host", version = "0.1.0" }
-dscode-lsp = { path = "../dscode-lsp", version = "0.1.0" }
-dscode-dap = { path = "../dscode-dap", version = "0.1.0" }
-dscode-terminal = { path = "../dscode-terminal", version = "0.1.0" }
+dscode-core = { path = "../dscode-core", version = "0.2.0" }
+dscode-extension-host = { path = "../dscode-extension-host", version = "0.2.0" }
+dscode-lsp = { path = "../dscode-lsp", version = "0.2.0" }
+dscode-dap = { path = "../dscode-dap", version = "0.2.0" }
+dscode-terminal = { path = "../dscode-terminal", version = "0.2.0" }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

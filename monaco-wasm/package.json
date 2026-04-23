@@ -1,8 +1,15 @@
 {
   "name": "@dscode/monaco-wasm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WASM-based fast syntax tokenizer for Monaco Editor, built for DSCode",
-  "keywords": ["dscode", "monaco", "wasm", "editor", "syntax", "tokenizer"],
+  "keywords": [
+    "dscode",
+    "monaco",
+    "wasm",
+    "editor",
+    "syntax",
+    "tokenizer"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -11,7 +18,9 @@
   },
   "main": "pkg/monaco_wasm.js",
   "types": "pkg/monaco_wasm.d.ts",
-  "files": ["pkg/"],
+  "files": [
+    "pkg/"
+  ],
   "publishConfig": {
     "access": "public"
   },

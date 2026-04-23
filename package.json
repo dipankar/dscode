@@ -1,6 +1,6 @@
 {
   "name": "dscode",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A blazingly fast, Rust-based Visual Studio Code alternative",
   "type": "module",
   "scripts": {

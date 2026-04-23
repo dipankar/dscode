@@ -1,6 +1,6 @@
 [package]
 name = "dscode"
-version = "0.1.0"
+version = "0.2.0"
 description = "A blazingly fast, Rust-based Visual Studio Code alternative"
 authors = ["DSCode Contributors"]
 license = "MIT"
@@ -28,12 +28,12 @@ thiserror = "1.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 
 # Library crates
-dscode-core = { path = "../crates/dscode-core", version = "0.1.0" }
-dscode-lsp = { path = "../crates/dscode-lsp", version = "0.1.0" }
-dscode-dap = { path = "../crates/dscode-dap", version = "0.1.0" }
-dscode-extension-host = { path = "../crates/dscode-extension-host", version = "0.1.0", features = ["tauri"] }
-dscode-terminal = { path = "../crates/dscode-terminal", version = "0.1.0", features = ["tauri"] }
-dscode-session = { path = "../crates/dscode-session", version = "0.1.0", features = ["tauri"] }
+dscode-core = { path = "../crates/dscode-core", version = "0.2.0" }
+dscode-lsp = { path = "../crates/dscode-lsp", version = "0.2.0" }
+dscode-dap = { path = "../crates/dscode-dap", version = "0.2.0" }
+dscode-extension-host = { path = "../crates/dscode-extension-host", version = "0.2.0", features = ["tauri"] }
+dscode-terminal = { path = "../crates/dscode-terminal", version = "0.2.0", features = ["tauri"] }
+dscode-session = { path = "../crates/dscode-session", version = "0.2.0", features = ["tauri"] }
 
 # Git
 git2 = "0.18"
