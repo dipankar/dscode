@@ -135,6 +135,17 @@ if [[ "$DRY_RUN" == "false" ]]; then
         bump_files+=("extension-host/package.json")
     fi
 
+    # monaco-wasm/package.json
+    if [[ -f "monaco-wasm/package.json" ]] && command -v node >/dev/null 2>&1; then
+        node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('monaco-wasm/package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('monaco-wasm/package.json', JSON.stringify(pkg, null, 2) + '\n');
+        "
+        bump_files+=("monaco-wasm/package.json")
+    fi
+
     # Update workspace Cargo.toml version
     if command -v sed >/dev/null 2>&1; then
         # Update workspace version if it exists
@@ -151,6 +162,20 @@ if [[ "$DRY_RUN" == "false" ]]; then
             bump_files+=("src-tauri/Cargo.toml")
         fi
 
+        # Update monaco-wasm/Cargo.toml version
+        if grep -q '^version = ' monaco-wasm/Cargo.toml; then
+            sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" monaco-wasm/Cargo.toml 2>/dev/null || \
+                sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" monaco-wasm/Cargo.toml
+            bump_files+=("monaco-wasm/Cargo.toml")
+        fi
+
+        # Update crates/dscode-core/python/Cargo.toml version
+        if grep -q '^version = ' crates/dscode-core/python/Cargo.toml; then
+            sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" crates/dscode-core/python/Cargo.toml 2>/dev/null || \
+                sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" crates/dscode-core/python/Cargo.toml
+            bump_files+=("crates/dscode-core/python/Cargo.toml")
+        fi
+
         # Update src-tauri/tauri.conf.json version
         if command -v node >/dev/null 2>&1; then
             node -e "
@@ -162,13 +187,33 @@ if [[ "$DRY_RUN" == "false" ]]; then
             bump_files+=("src-tauri/tauri.conf.json")
         fi
     fi
+
+    # Update Python pyproject.toml version
+    if [[ -f "crates/dscode-core/python/pyproject.toml" ]] && command -v sed >/dev/null 2>&1; then
+        sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" crates/dscode-core/python/pyproject.toml 2>/dev/null || \
+            sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" crates/dscode-core/python/pyproject.toml
+        bump_files+=("crates/dscode-core/python/pyproject.toml")
+    fi
+
+    # Update lock files after version bumps
+    if command -v npm >/dev/null 2>&1; then
+        npm install --package-lock-only >/dev/null 2>&1 || true
+        (cd extension-host && npm install --package-lock-only >/dev/null 2>&1) || true
+        bump_files+=("package-lock.json" "extension-host/package-lock.json")
+    fi
 else
     echo "  (dry-run) Would bump version in:"
     echo "    - package.json"
     echo "    - extension-host/package.json"
+    echo "    - monaco-wasm/package.json"
     echo "    - Cargo.toml"
     echo "    - src-tauri/Cargo.toml"
+    echo "    - monaco-wasm/Cargo.toml"
+    echo "    - crates/dscode-core/python/Cargo.toml"
+    echo "    - crates/dscode-core/python/pyproject.toml"
     echo "    - src-tauri/tauri.conf.json"
+    echo "    - package-lock.json (regenerated)"
+    echo "    - extension-host/package-lock.json (regenerated)"
 fi
 
 # ── 5. Run frontend checks ────────────────────────────────────────────────────
