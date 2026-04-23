@@ -189,6 +189,7 @@ fn test_path_validator_set_special_dirs() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
 fn test_path_validator_validate_path_uri_formats() {
     let mut validator = PathValidator::new();
     let dir = tempfile::tempdir().unwrap();
@@ -202,7 +203,8 @@ fn test_path_validator_validate_path_uri_formats() {
     let result = validator.validate_path(&uri);
     assert!(result.is_ok());
 
-    // file://localhost/ URI format (with explicit localhost)
+    // file://localhost/ URI format (with explicit localhost).
+    // This form assumes Unix-style absolute paths and is not valid on Windows.
     let uri2 = format!("file://localhost{}", test_file.display());
     let result2 = validator.validate_path(&uri2);
     assert!(result2.is_ok());
