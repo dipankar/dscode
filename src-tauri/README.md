@@ -3,7 +3,7 @@
 [![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-DSCode — A fast, Rust-based Visual Studio Code alternative with full extension compatibility.
+DSCode — A fully hackable Visual Studio Code alternative. Built in Rust. Every subsystem is a library you can replace.
 
 ## Overview
 

@@ -1,7 +1,7 @@
 {
   "name": "dscode",
   "version": "0.2.0",
-  "description": "A blazingly fast, Rust-based Visual Studio Code alternative",
+  "description": "A fully hackable Visual Studio Code alternative. Built in Rust.",
   "type": "module",
   "scripts": {
     "dev": "vite",
