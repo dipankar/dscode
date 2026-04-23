@@ -29,10 +29,10 @@ multiple-versions = "warn"
 wildcards = "allow"
 
 [advisories]
-# Most unmaintained advisories are from upstream Tauri/gtk-rs dependencies
-# that we cannot directly control. We still check for vulnerabilities.
-unmaintained = "warn"
-unsound = "warn"
+# Advisory checks are handled separately by the `audit` job (cargo-audit).
+# We skip them here to avoid duplicating effort and dealing with upstream
+# Tauri/gtk-rs advisories we cannot directly control.
+version = 2
 yanked = "warn"
 ignore = [
     # RUSTSEC-2025-0020: idna accepts Punycode data that does not round-trip

@@ -287,5 +287,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked
+      # Advisory checks are handled separately by the `audit` job.
+      # We only check licenses, bans, and sources here.
       - name: Run cargo-deny
-        run: cargo deny check
+        run: cargo deny check licenses bans sources
