@@ -65,7 +65,7 @@ pub use types::SessionState;
 pub use types::StatusBarCommand;
 /// Serializable state of a single status bar entry.
 pub use types::StatusBarItemState;
-/// Converts a `file://` URI to a filesystem [`PathBuf`].
+/// Converts a `file://` URI to a filesystem [`std::path::PathBuf`].
 pub use workspace::workspace_path_from_uri;
 /// Converts a filesystem path to a `file://` URI string.
 pub use workspace::workspace_uri_from_path;
