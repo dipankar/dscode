@@ -184,7 +184,7 @@ jobs:
       # jemalloc (tikv-jemalloc-sys) does not build on Windows.
       - name: Build Tauri app (Windows)
         if: runner.os == 'Windows'
-        run: npx tauri build --no-default-features
+        run: npx tauri build -- --no-default-features
 
       - name: Upload Tauri bundle artifacts
         uses: actions/upload-artifact@v4
