@@ -1,6 +1,6 @@
 # DSCode
 
-> A fast, Rust-based Visual Studio Code alternative with full extension compatibility
+> A fully hackable Visual Studio Code alternative. Built in Rust. Every subsystem is a library you can replace.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
@@ -22,12 +22,22 @@
 
 ## Overview
 
-DSCode is a code editor built with a **Rust backend** (Tauri 2.1) and **Svelte 4 frontend**, designed as a drop-in replacement for Visual Studio Code. It maintains near-100% compatibility with VS Code's extension ecosystem while delivering superior performance through native Rust architecture.
+DSCode is a **hackable code editor** built with a Rust backend (Tauri) and Svelte frontend. Unlike VS Code, which is a monolithic Electron app, DSCode is a **loosely coupled system of libraries** — each designed to be used independently, replaced, or embedded in your own projects.
+
+The default application gives you a familiar VS Code-like experience out of the box. But the real goal is that **nothing is hardcoded**: swap the editor, replace the terminal, write your own extension host, or embed the entire session layer in a headless CI runner.
+
+### Why DSCode?
+
+- **Hackable by Design**: Every subsystem is a separate crate with a clean API. Don't like Monaco? Plug in your own renderer. Don't need the UI? Use `dscode-session` headlessly.
+- **VS Code Extension Compatible**: Run existing VS Code extensions via a Node.js-based extension host with full `vscode.*` API support.
+- **Rust-Native Performance**: Sub-second startup, ~60% less memory than Electron, rope-based text buffers, and native file watching.
+- **Secure by Default**: Extensions run in a deny-by-default sandbox with OS-native isolation (macOS sandbox-exec, Linux bubblewrap, Windows Job Objects).
+- **Built as Libraries First**: The app is a thin shell around crates you can `cargo add` into your own projects.
 
 ### Key Features
 
 - **Fast**: Sub-second startup times, Rust-powered backend
-- **Monaco Editor**: Same editor as VS Code, pixel-perfect experience
+- **Monaco Editor**: Same editor engine as VS Code, pixel-perfect experience
 - **Full Extension Compatibility**: Run existing VS Code extensions with Node.js runtime
 - **Svelte UI**: Reactive, lightweight component system with custom theming
 - **xterm.js Terminal**: Built-in terminal with PTY support
@@ -40,7 +50,7 @@ DSCode is a code editor built with a **Rust backend** (Tauri 2.1) and **Svelte 4
 
 ## Library Crates
 
-DSCode's core components are published as reusable Rust libraries. Use them independently in your own projects:
+DSCode is not a single binary — it is a **workspace of libraries** that happen to ship with a default UI. Every crate is designed for independent use:
 
 | Crate | Description | Install |
 |-------|-------------|---------|
@@ -52,6 +62,8 @@ DSCode's core components are published as reusable Rust libraries. Use them inde
 | `dscode-session` | Session manager, extension lifecycle, workspace, configuration | `cargo add dscode-session` |
 
 ### Using as a Library
+
+Import just what you need. No UI, no Tauri, no frontend required:
 
 ```rust
 use dscode_core::{TextBuffer, AppDirectories};
@@ -78,8 +90,16 @@ fn main() {
 Each crate has optional Tauri integration via feature flags:
 ```toml
 [dependencies]
-dscode-terminal = { version = "0.1", features = ["tauri"] }
+dscode-terminal = { version = "0.2", features = ["tauri"] }
 ```
+
+## Design Principles
+
+1. **Everything is a library**: The application is a thin composition layer. The real value is in the crates.
+2. **APIs over implementations**: We standardize on interfaces (`TerminalEventSender`, `LspClient`, `TextBuffer`) so you can swap implementations without touching the rest of the system.
+3. **VS Code compatibility is a feature, not a constraint**: We support VS Code extensions because they are useful. We do not let their limitations dictate our architecture.
+4. **Security by default**: Extensions should not be able to read your SSH keys by accident. Deny-by-default sandboxing is non-negotiable.
+5. **Performance is table stakes**: Rust gives us sub-second startup and low memory usage. We do not trade this away for convenience.
 
 ## Architecture
 
@@ -253,6 +273,8 @@ npm run tauri:build
 
 ## Extension Compatibility
 
+DSCode's extension host is not a compatibility shim — it is a **full Node.js runtime** that speaks the same IPC protocol as VS Code. Extensions are first-class citizens, but they are also fully sandboxed and observable.
+
 ### Supported Extension Types
 
 | Type                       | Compatibility | Notes                           |
@@ -267,6 +289,15 @@ npm run tauri:build
 ### Language Provider Support
 
 The extension host supports full two-way IPC for: Hover, Completion, Diagnostics, SignatureHelp, Rename, CodeLens, CodeActions, Formatting, DocumentHighlights, FoldingRanges, SemanticTokens, DocumentSymbols, WorkspaceSymbols, Definitions, References, DocumentLinks, ColorPresentations, and InlineCompletions.
+
+### Writing Extensions for DSCode
+
+Extensions use the standard VS Code `package.json` + `vscode` API. DSCode adds a few extra capabilities:
+
+- **Sandbox declarations**: Extensions declare permissions in `package.json` (filesystem, network, shell). Denied by default.
+- **Rate limiting**: Built-in per-extension quota system.
+- **OS keyring access**: Secure credential storage via `vscode.SecretStorage`.
+- **Hot reload**: Extensions can be reloaded without restarting the editor.
 
 ## Security
 
@@ -289,25 +320,51 @@ The extension host supports full two-way IPC for: Hover, Completion, Diagnostics
 - [LSP Integration](docs/architecture/lsp-integration.md)
 - [Roadmap](docs/roadmap.md)
 
-## Architecture for Hackers
+## Hackability
 
-DSCode is designed to be disassembled and reassembled. Every major subsystem is a separate crate with a minimal public API:
+DSCode is designed to be disassembled and reassembled. Every major subsystem is a separate crate with a minimal public API. You are not just a user — you are a co-author.
 
-- **Replace the editor**: Swap Monaco for your own renderer while keeping `dscode-core::TextBuffer` and `dscode-lsp`.
-- **Headless CI runner**: Use `dscode-session` without the `tauri` feature to scan workspaces and run extensions in CI.
+### Replace Anything
+
+| Subsystem | Default Implementation | Swap For |
+|-----------|----------------------|----------|
+| **Editor** | Monaco Editor (via `monaco-wasm`) | Your own WebGL renderer, Vim mode, or a lightweight textarea |
+| **Extension Host** | Node.js + NNG IPC | A Wasm runtime, a Lua engine, or nothing at all |
+| **Terminal** | xterm.js + portable-pty | Alacritty, your own ANSI parser, or a remote SSH session |
+| **UI Framework** | Svelte 4 | React, Solid, Vue, or raw DOM |
+| **Session State** | `dscode-session` (Tauri) | `dscode-session` without Tauri for headless CI |
+| **Text Storage** | `ropey` (via `dscode-core::TextBuffer`) | Your own gap buffer, piece table, or CRDT |
+| **LSP Client** | `dscode-lsp::LspManager` | Direct `LspClient` usage, or a custom protocol handler |
+
+### Common Recipes
+
+- **Headless CI runner**: Use `dscode-session` without the `tauri` feature to scan workspaces, run extensions, and export diagnostics as JSON.
 - **Custom terminal UI**: Implement `TerminalEventSender` from `dscode-terminal` to forward PTY output to a web socket, log file, or custom UI.
 - **Embed in your own Tauri app**: Import `dscode-session` with the `tauri` feature to get the full IDE session in your application.
 - **Write a new LSP client**: `dscode-lsp` exposes `LspClient` directly if you want to build your own manager instead of using `LspManager`.
+- **Build a VS Code theme editor**: Use `dscode-core::AppDirectories` and the CSS custom property system to preview themes in real time.
 
-See [docs/library-guide.md](docs/library-guide.md) for concrete recipes.
+See [docs/library-guide.md](docs/library-guide.md) for concrete code examples.
 
-## Contributing a New Crate
+## Contributing
+
+DSCode is a community project. Contributions are welcome — whether you are fixing a bug, adding a feature, or replacing an entire subsystem.
+
+### Adding a New Crate
 
 1. Create `crates/my-crate/` with a `Cargo.toml` that inherits `[workspace.package]`.
 2. Add `"crates/my-crate"` to the `[workspace].members` array in root `Cargo.toml`.
 3. Write a `README.md` with badges, install instructions, and a usage example.
 4. Add an `examples/` directory with at least one runnable example.
 5. Open a PR. CI will check formatting, clippy, tests, docs, and `cargo publish --dry-run`.
+
+### Replacing a Subsystem
+
+If you want to replace Monaco, the extension host, or any other component:
+
+1. Open an issue describing your use case.
+2. We will help you identify the minimal API surface you need to implement.
+3. Submit a PR. We prioritize hackability over backwards compatibility in pre-1.0 releases.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines including workspace build instructions, code style, and PR process.
 
