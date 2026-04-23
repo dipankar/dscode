@@ -1,0 +1,15 @@
+[advisories]
+ignore = [
+    # RUSTSEC-2025-0020: idna accepts Punycode data that does not round-trip
+    # Affects idna 0.5.x which is pulled in by pyo3 0.23.x.
+    # Upstream fix requires pyo3 to update its idna dependency.
+    "RUSTSEC-2025-0020",
+    # RUSTSEC-2024-0413: gtk-rs GTK3 bindings are no longer maintained
+    # Affects gtk 0.18.x which is pulled in by wry/tauri-runtime-wry.
+    # Upstream fix requires Tauri to migrate to GTK4.
+    "RUSTSEC-2024-0413",
+    # RUSTSEC-2024-0370: proc-macro-error is unmaintained
+    # Affects proc-macro-error 1.0.x which is pulled in by gtk3-macros.
+    # Upstream fix requires gtk3-macros to migrate to proc-macro-error2.
+    "RUSTSEC-2024-0370",
+]

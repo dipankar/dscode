@@ -143,8 +143,18 @@ jobs:
           node-version: 20
           cache: npm
 
+      # Work around dtolnay/rust-toolchain@stable bug on Windows where
+      # an internal grep step exits with code 1 due to bash -e.
+      # Rust is pre-installed on GitHub Actions runners, so this is safe.
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        continue-on-error: true
+
+      - name: Verify Rust installation
+        run: |
+          rustc --version
+          cargo --version
+        shell: bash
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -267,6 +277,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v1
-        with:
-          command: check
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: Run cargo-deny
+        run: cargo deny check
