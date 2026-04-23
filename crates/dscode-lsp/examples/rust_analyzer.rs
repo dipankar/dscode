@@ -17,13 +17,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Or use a connection pool with a strategy
     let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
-    pool
-        .register_server(
-            "rust".to_string(),
-            "rust-analyzer".to_string(),
-            vec!["--stdio".to_string()],
-        )
-        .await;
+    pool.register_server(
+        "rust".to_string(),
+        "rust-analyzer".to_string(),
+        vec!["--stdio".to_string()],
+    )
+    .await;
 
     println!("rust-analyzer registered and started.");
     Ok(())

@@ -166,7 +166,8 @@ mod tests {
         };
 
         let json = serde_json::to_string(&bp).expect("Failed to serialize Breakpoint");
-        let roundtrip: Breakpoint = serde_json::from_str(&json).expect("Failed to deserialize Breakpoint");
+        let roundtrip: Breakpoint =
+            serde_json::from_str(&json).expect("Failed to deserialize Breakpoint");
         assert_eq!(roundtrip.id, bp.id);
         assert_eq!(roundtrip.verified, bp.verified);
         assert_eq!(roundtrip.message, bp.message);

@@ -148,13 +148,7 @@ impl MarketplaceUIRegistry {
 
         let reviews = if start < total { all_reviews[start..end].to_vec() } else { Vec::new() };
 
-        ReviewsPage {
-            reviews,
-            page,
-            page_size,
-            total,
-            total_pages: total.div_ceil(page_size),
-        }
+        ReviewsPage { reviews, page, page_size, total, total_pages: total.div_ceil(page_size) }
     }
 
     // ===== Ratings =====

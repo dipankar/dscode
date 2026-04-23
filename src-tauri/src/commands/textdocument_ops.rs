@@ -27,7 +27,9 @@ pub async fn update_text_document(
     uri: String, version: u64, content_changes: Vec<TextDocumentContentChange>,
     registry: State<'_, TextDocumentRegistry>, session: State<'_, Arc<RwLock<SessionManager>>>,
 ) -> Result<(), String> {
-    registry.update_text_document(&uri, version, content_changes.clone()).map_err(|e| e.to_string())?;
+    registry
+        .update_text_document(&uri, version, content_changes.clone())
+        .map_err(|e| e.to_string())?;
 
     let sm = session.read().await;
     let _ = sm.forward_document_change(&uri, version, &content_changes).await;
@@ -129,7 +131,9 @@ pub async fn set_text_editor_decorations(
     editor_id: String, decoration_type_id: String, ranges: Vec<Range>, owner: String,
     registry: State<'_, TextDocumentRegistry>,
 ) -> Result<(), String> {
-    registry.set_editor_decorations(&editor_id, &decoration_type_id, ranges, &owner).map_err(|e| e.to_string())
+    registry
+        .set_editor_decorations(&editor_id, &decoration_type_id, ranges, &owner)
+        .map_err(|e| e.to_string())
 }
 
 /// Get editor decorations

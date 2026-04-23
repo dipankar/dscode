@@ -22,7 +22,9 @@ impl PyTextBuffer {
     #[new]
     #[pyo3(signature = (text=""))]
     fn new(text: &str) -> Self {
-        Self { inner: TextBuffer::new(text) }
+        Self {
+            inner: TextBuffer::new(text),
+        }
     }
 
     /// Get the full text content of the buffer.
@@ -47,9 +49,8 @@ impl PyAppDirectories {
     /// Resolve directories from user configuration and environment overrides.
     #[new]
     fn new() -> PyResult<Self> {
-        let dirs = AppDirectories::resolve().map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(e)
-        })?;
+        let dirs =
+            AppDirectories::resolve().map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
         Ok(Self { inner: dirs })
     }
 

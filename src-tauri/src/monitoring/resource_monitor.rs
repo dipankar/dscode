@@ -69,11 +69,10 @@ impl ResourceMonitor {
         system.refresh_cpu_usage();
         system.refresh_process(self.main_pid);
 
-        let ext_host_pid =
-            self.extension_host_pid.lock().unwrap_or_else(|e| {
-                warn!("extension_host_pid lock poisoned, recovering: {}", e);
-                e.into_inner()
-            });
+        let ext_host_pid = self.extension_host_pid.lock().unwrap_or_else(|e| {
+            warn!("extension_host_pid lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         if let Some(pid) = *ext_host_pid {
             system.refresh_process(pid);
         }
@@ -96,11 +95,10 @@ impl ResourceMonitor {
             });
 
         // Get extension host metrics if available
-        let ext_host_pid =
-            self.extension_host_pid.lock().unwrap_or_else(|e| {
-                warn!("extension_host_pid lock poisoned, recovering: {}", e);
-                e.into_inner()
-            });
+        let ext_host_pid = self.extension_host_pid.lock().unwrap_or_else(|e| {
+            warn!("extension_host_pid lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         let extension_host = ext_host_pid.and_then(|pid| {
             system.process(pid).map(|p| ProcessMetrics {
                 cpu_percent: p.cpu_usage(),

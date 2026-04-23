@@ -97,8 +97,7 @@ jobs:
           path: extension-host/dist
 
       - name: Download Node.js for external binary
-        run: npm run download-node:all
-        shell: bash
+        run: bash ./scripts/download-node.sh --all
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0

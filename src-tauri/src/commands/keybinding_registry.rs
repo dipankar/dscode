@@ -314,11 +314,10 @@ impl KeybindingRegistry {
         }
 
         let normalized_key = keybinding.normalized_key();
-        let mut keybindings =
-            self.keybindings.write().unwrap_or_else(|e| {
-                warn!("keybinding_registry write lock poisoned, recovering: {}", e);
-                e.into_inner()
-            });
+        let mut keybindings = self.keybindings.write().unwrap_or_else(|e| {
+            warn!("keybinding_registry write lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
 
         let bindings = keybindings.entry(normalized_key).or_default();
 
@@ -329,7 +328,11 @@ impl KeybindingRegistry {
                 if existing.owner != keybinding.owner {
                     warn!(
                         "Keybinding conflict for '{}': '{}' (owner: {}) vs '{}' (owner: {})",
-                        keybinding.key, existing.command, existing.owner, keybinding.command, keybinding.owner
+                        keybinding.key,
+                        existing.command,
+                        existing.owner,
+                        keybinding.command,
+                        keybinding.owner
                     );
                 }
                 // Replace existing
@@ -392,11 +395,10 @@ impl KeybindingRegistry {
 
     /// Remove all keybindings from a specific owner
     pub fn clear_keybindings_by_owner(&self, owner: &str) {
-        let mut keybindings =
-            self.keybindings.write().unwrap_or_else(|e| {
-                warn!("keybinding_registry write lock poisoned, recovering: {}", e);
-                e.into_inner()
-            });
+        let mut keybindings = self.keybindings.write().unwrap_or_else(|e| {
+            warn!("keybinding_registry write lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
 
         for bindings in keybindings.values_mut() {
             bindings.retain(|kb| kb.owner != owner);

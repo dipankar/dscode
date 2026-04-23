@@ -22,7 +22,8 @@ mod manager;
 
 pub use error::TerminalError;
 pub use manager::{
-    TerminalInfo, TerminalInstance, TerminalManager, TerminalOptions, TerminalProfile, TerminalState,
+    TerminalInfo, TerminalInstance, TerminalManager, TerminalOptions, TerminalProfile,
+    TerminalState,
 };
 
 /// Trait abstracting how terminal events are forwarded to a consumer.

@@ -28,7 +28,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Update a root-level key
     store.update(None, "theme", serde_json::json!("dark"))?;
     let root = store.snapshot(None);
-    println!("Root config keys: {:?}", root.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+    println!(
+        "Root config keys: {:?}",
+        root.as_object().map(|o| o.keys().collect::<Vec<_>>())
+    );
 
     Ok(())
 }

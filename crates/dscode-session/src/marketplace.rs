@@ -106,7 +106,9 @@ struct MarketplaceStatistic {
 
 /// Search the VS Code Marketplace
 pub(crate) async fn search_marketplace(
-    query: String, page: i32, page_size: i32,
+    query: String,
+    page: i32,
+    page_size: i32,
 ) -> Result<Vec<MarketplaceExtension>, String> {
     let marketplace_query = MarketplaceQuery {
         filters: vec![Filter {
@@ -202,7 +204,8 @@ pub(crate) async fn search_marketplace(
 
 /// Get detailed information about a specific extension
 pub(crate) async fn get_extension_details(
-    publisher: String, extension_name: String,
+    publisher: String,
+    extension_name: String,
 ) -> Result<MarketplaceExtension, String> {
     let marketplace_query = MarketplaceQuery {
         filters: vec![Filter {
@@ -239,7 +242,10 @@ pub(crate) async fn get_extension_details(
         .await
         .map_err(|e| format!("Failed to parse marketplace response: {}", e))?;
 
-    let result = marketplace_response.results.first().ok_or("No results found")?;
+    let result = marketplace_response
+        .results
+        .first()
+        .ok_or("No results found")?;
     let ext_raw = result.extensions.first().ok_or("Extension not found")?;
     let version = ext_raw.versions.first().ok_or("No versions found")?;
 
@@ -292,7 +298,9 @@ pub(crate) async fn get_extension_details(
 
 /// Download extension from marketplace
 pub(crate) async fn download_extension(
-    publisher: String, extension_name: String, version: String,
+    publisher: String,
+    extension_name: String,
+    version: String,
 ) -> Result<PathBuf, String> {
     let marketplace_query = MarketplaceQuery {
         filters: vec![Filter {
@@ -342,7 +350,10 @@ pub(crate) async fn download_extension(
 
     let response = HTTP_CLIENT
         .get(&download_url)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) VSCode/1.80.0")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) VSCode/1.80.0",
+        )
         .header("Accept", "*/*")
         .send()
         .await
@@ -351,7 +362,10 @@ pub(crate) async fn download_extension(
     info!(status = %response.status(), "Marketplace download response");
 
     if !response.status().is_success() {
-        return Err(format!("Download failed with status: {}", response.status()));
+        return Err(format!(
+            "Download failed with status: {}",
+            response.status()
+        ));
     }
 
     if let Some(content_type) = response.headers().get("content-type") {
@@ -360,17 +374,24 @@ pub(crate) async fn download_extension(
             && !ct.contains("application/zip")
             && !ct.contains("binary/octet-stream")
         {
-            warn!(content_type = ct, "Unexpected content-type from marketplace download");
+            warn!(
+                content_type = ct,
+                "Unexpected content-type from marketplace download"
+            );
         }
     }
 
     let temp_dir =
         tempfile::tempdir().map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
-    let vsix_path =
-        temp_dir.path().join(format!("{}.{}-{}.vsix", publisher, extension_name, version));
+    let vsix_path = temp_dir
+        .path()
+        .join(format!("{}.{}-{}.vsix", publisher, extension_name, version));
 
-    let bytes = response.bytes().await.map_err(|e| format!("Failed to read response bytes: {}", e))?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read response bytes: {}", e))?;
 
     info!(size = bytes.len(), "Downloaded marketplace extension bytes");
 

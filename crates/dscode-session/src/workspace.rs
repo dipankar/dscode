@@ -95,25 +95,37 @@ impl WorkspaceManager {
 
     /// Get a workspace configuration section.
     pub async fn get_workspace_configuration(
-        &self, section: &str, scope: Option<&str>,
+        &self,
+        section: &str,
+        scope: Option<&str>,
     ) -> Option<WorkspaceConfiguration> {
         let key = workspace_config_key(section, scope);
-        self.workspace_configurations.read().await.get(&key).cloned()
+        self.workspace_configurations
+            .read()
+            .await
+            .get(&key)
+            .cloned()
     }
 
     /// Update a workspace configuration value.
     pub async fn update_workspace_configuration(
-        &self, section: String, scope: Option<String>, key: String, value: serde_json::Value,
+        &self,
+        section: String,
+        scope: Option<String>,
+        key: String,
+        value: serde_json::Value,
     ) -> Result<(), String> {
         {
             let mut configs = self.workspace_configurations.write().await;
             let config_key = workspace_config_key(&section, scope.as_deref());
 
-            let config = configs.entry(config_key).or_insert_with(|| WorkspaceConfiguration {
-                section: section.clone(),
-                scope: scope.clone(),
-                values: HashMap::new(),
-            });
+            let config = configs
+                .entry(config_key)
+                .or_insert_with(|| WorkspaceConfiguration {
+                    section: section.clone(),
+                    scope: scope.clone(),
+                    values: HashMap::new(),
+                });
 
             config.values.insert(key.clone(), value);
         }
@@ -123,7 +135,8 @@ impl WorkspaceManager {
 
     /// Register a file decoration provider.
     pub async fn register_file_decoration_provider(
-        &self, provider: FileDecorationProvider,
+        &self,
+        provider: FileDecorationProvider,
     ) -> Result<String, String> {
         let id = provider.id.clone();
         let mut providers = self.file_decoration_providers.write().await;
@@ -133,7 +146,9 @@ impl WorkspaceManager {
 
     /// Update file decorations for a provider.
     pub async fn update_file_decorations(
-        &self, provider_id: String, decorations: Vec<FileDecoration>,
+        &self,
+        provider_id: String,
+        decorations: Vec<FileDecoration>,
     ) -> Result<(), String> {
         {
             let mut all_decorations = self.file_decorations.write().await;

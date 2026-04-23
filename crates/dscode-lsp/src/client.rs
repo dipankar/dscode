@@ -59,7 +59,8 @@ pub enum LspClientState {
     Crashed,
 }
 
-type PendingResponseMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<serde_json::Value, String>>>>>;
+type PendingResponseMap =
+    Arc<Mutex<HashMap<u64, oneshot::Sender<Result<serde_json::Value, String>>>>>;
 
 /// A state-machine-based LSP client that manages a language server process.
 ///
@@ -371,10 +372,18 @@ impl LspClient {
     /// - `language_id` — The language identifier for the document.
     /// - `text` — The full initial content of the document.
     pub async fn did_open(
-        &self, uri: Url, language_id: String, text: String,
+        &self,
+        uri: Url,
+        language_id: String,
+        text: String,
     ) -> Result<(), String> {
         let params = DidOpenTextDocumentParams {
-            text_document: TextDocumentItem { uri, language_id, version: 1, text },
+            text_document: TextDocumentItem {
+                uri,
+                language_id,
+                version: 1,
+                text,
+            },
         };
 
         self.send_notification("textDocument/didOpen", params).await
@@ -395,15 +404,18 @@ impl LspClient {
             }],
         };
 
-        self.send_notification("textDocument/didChange", params).await
+        self.send_notification("textDocument/didChange", params)
+            .await
     }
 
     /// Sends a `textDocument/didSave` notification to the language server.
     ///
     /// - `uri` — The URI of the document that was saved.
     pub async fn did_save(&self, uri: Url) -> Result<(), String> {
-        let params =
-            DidSaveTextDocumentParams { text_document: TextDocumentIdentifier { uri }, text: None };
+        let params = DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+            text: None,
+        };
 
         self.send_notification("textDocument/didSave", params).await
     }
@@ -417,7 +429,10 @@ impl LspClient {
     /// Returns hover information if available, or `None` if the server
     /// provides no hover data at the given position.
     pub async fn hover(
-        &self, uri: Url, line: u32, character: u32,
+        &self,
+        uri: Url,
+        line: u32,
+        character: u32,
     ) -> Result<Option<Hover>, String> {
         let params = HoverParams {
             text_document_position_params: TextDocumentPositionParams {
@@ -436,7 +451,9 @@ impl LspClient {
     /// LSP Content-Length framing protocol, and waits up to 30 seconds for
     /// a matching response. Returns the deserialized result on success.
     async fn send_request<P: serde::Serialize, R: serde::de::DeserializeOwned>(
-        &self, method: &str, params: P,
+        &self,
+        method: &str,
+        params: P,
     ) -> Result<R, String> {
         let id = self.next_request_id();
 
@@ -455,7 +472,9 @@ impl LspClient {
 
         {
             let mut writer_guard = self.writer.lock().await;
-            let writer = writer_guard.as_mut().ok_or("LSP client stdin not available")?;
+            let writer = writer_guard
+                .as_mut()
+                .ok_or("LSP client stdin not available")?;
 
             let body = serde_json::to_string(&request)
                 .map_err(|e| format!("Failed to serialize LSP request: {}", e))?;
@@ -502,7 +521,9 @@ impl LspClient {
     /// Serializes the notification and writes it to the server's stdin using
     /// the LSP Content-Length framing protocol.
     async fn send_notification<P: serde::Serialize>(
-        &self, method: &str, params: P,
+        &self,
+        method: &str,
+        params: P,
     ) -> Result<(), String> {
         let notification = serde_json::json!({
             "jsonrpc": "2.0",
@@ -511,7 +532,9 @@ impl LspClient {
         });
 
         let mut writer_guard = self.writer.lock().await;
-        let writer = writer_guard.as_mut().ok_or("LSP client stdin not available")?;
+        let writer = writer_guard
+            .as_mut()
+            .ok_or("LSP client stdin not available")?;
 
         let body = serde_json::to_string(&notification)
             .map_err(|e| format!("Failed to serialize LSP notification: {}", e))?;
@@ -533,14 +556,16 @@ impl LspClient {
     /// afterwards to terminate the process.
     #[instrument(skip(self))]
     pub async fn shutdown(&self) -> Result<(), String> {
-        self.send_notification("shutdown", serde_json::json!({})).await
+        self.send_notification("shutdown", serde_json::json!({}))
+            .await
     }
 
     /// Sends the `initialized` notification to the language server.
     ///
     /// Must be called after `initialize()` to complete the handshake.
     pub async fn initialized(&self) -> Result<(), String> {
-        self.send_notification("initialized", serde_json::json!({})).await
+        self.send_notification("initialized", serde_json::json!({}))
+            .await
     }
 }
 
@@ -560,11 +585,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_lsp_client_new_state() {
-        let client = LspClient::new(
-            "rust".to_string(),
-            "rust-analyzer".to_string(),
-            vec![],
-        );
+        let client = LspClient::new("rust".to_string(), "rust-analyzer".to_string(), vec![]);
         let state = client.get_state().await;
         assert_eq!(state, LspClientState::Stopped);
     }
@@ -608,11 +629,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_lsp_client_is_running_stopped() {
-        let client = LspClient::new(
-            "rust".to_string(),
-            "rust-analyzer".to_string(),
-            vec![],
-        );
+        let client = LspClient::new("rust".to_string(), "rust-analyzer".to_string(), vec![]);
         // A newly created client is Stopped, not running
         assert!(!client.is_running().await);
     }
@@ -620,11 +637,7 @@ mod tests {
     #[tokio::test]
     async fn test_lsp_client_is_running_only_active_states() {
         // is_running returns true only for Initializing and Ready
-        let client = LspClient::new(
-            "rust".to_string(),
-            "rust-analyzer".to_string(),
-            vec![],
-        );
+        let client = LspClient::new("rust".to_string(), "rust-analyzer".to_string(), vec![]);
         // Stopped -> not running
         assert!(!client.is_running().await);
 
@@ -633,7 +646,10 @@ mod tests {
         assert!(!client.is_running().await);
 
         // Transition to Initializing -> now running
-        client.transition(LspClientState::Initializing).await.unwrap();
+        client
+            .transition(LspClientState::Initializing)
+            .await
+            .unwrap();
         assert!(client.is_running().await);
 
         // Crashed -> not running
@@ -643,11 +659,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_lsp_client_invalid_transition_crashed_to_ready() {
-        let client = LspClient::new(
-            "rust".to_string(),
-            "rust-analyzer".to_string(),
-            vec![],
-        );
+        let client = LspClient::new("rust".to_string(), "rust-analyzer".to_string(), vec![]);
         // Go to Crashed state
         client.transition(LspClientState::Starting).await.unwrap();
         client.transition(LspClientState::Crashed).await.unwrap();
@@ -659,11 +671,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_lsp_client_invalid_transition_stopped_to_initializing() {
-        let client = LspClient::new(
-            "rust".to_string(),
-            "rust-analyzer".to_string(),
-            vec![],
-        );
+        let client = LspClient::new("rust".to_string(), "rust-analyzer".to_string(), vec![]);
         // Stopped -> Initializing is invalid (must go through Starting)
         let result = client.transition(LspClientState::Initializing).await;
         assert!(result.is_err());

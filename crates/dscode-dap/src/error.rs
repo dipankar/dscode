@@ -11,7 +11,10 @@ pub enum DapError {
     Crashed { session_id: String },
     /// An invalid state transition was attempted on the debug adapter.
     #[error("Invalid state transition: {from_state} -> {to_state}")]
-    InvalidTransition { from_state: String, to_state: String },
+    InvalidTransition {
+        from_state: String,
+        to_state: String,
+    },
     /// A DAP request exceeded its timeout.
     #[error("DAP request timed out after {timeout_secs}s")]
     RequestTimeout { timeout_secs: u64 },
@@ -43,14 +46,22 @@ mod tests {
             reason: "command not found".to_string(),
         };
         let msg = err.to_string();
-        assert!(msg.contains("spawn failed"), "Display should contain 'spawn failed'");
+        assert!(
+            msg.contains("spawn failed"),
+            "Display should contain 'spawn failed'"
+        );
         assert!(msg.contains("sess-1"), "Display should contain session id");
-        assert!(msg.contains("command not found"), "Display should contain reason");
+        assert!(
+            msg.contains("command not found"),
+            "Display should contain reason"
+        );
     }
 
     #[test]
     fn test_dap_error_crashed_display() {
-        let err = DapError::Crashed { session_id: "sess-2".to_string() };
+        let err = DapError::Crashed {
+            session_id: "sess-2".to_string(),
+        };
         let msg = err.to_string();
         assert!(msg.contains("crashed"), "Display should contain 'crashed'");
         assert!(msg.contains("sess-2"), "Display should contain session id");
@@ -63,7 +74,10 @@ mod tests {
             to_state: "Running".to_string(),
         };
         let msg = err.to_string();
-        assert!(msg.contains("Invalid state transition"), "Display should contain transition label");
+        assert!(
+            msg.contains("Invalid state transition"),
+            "Display should contain transition label"
+        );
         assert!(msg.contains("Stopped"), "Display should contain from_state");
         assert!(msg.contains("Running"), "Display should contain to_state");
     }
@@ -72,15 +86,24 @@ mod tests {
     fn test_dap_error_request_timeout_display() {
         let err = DapError::RequestTimeout { timeout_secs: 30 };
         let msg = err.to_string();
-        assert!(msg.contains("timed out"), "Display should contain 'timed out'");
-        assert!(msg.contains("30"), "Display should contain timeout duration");
+        assert!(
+            msg.contains("timed out"),
+            "Display should contain 'timed out'"
+        );
+        assert!(
+            msg.contains("30"),
+            "Display should contain timeout duration"
+        );
     }
 
     #[test]
     fn test_dap_error_not_registered_display() {
         let err = DapError::NotRegistered("sess-3".to_string());
         let msg = err.to_string();
-        assert!(msg.contains("No debug adapter found"), "Display should contain 'No debug adapter found'");
+        assert!(
+            msg.contains("No debug adapter found"),
+            "Display should contain 'No debug adapter found'"
+        );
         assert!(msg.contains("sess-3"), "Display should contain session id");
     }
 
@@ -88,16 +111,28 @@ mod tests {
     fn test_dap_error_io_display() {
         let err = DapError::Io("connection reset".to_string());
         let msg = err.to_string();
-        assert!(msg.contains("I/O error"), "Display should contain 'I/O error'");
-        assert!(msg.contains("connection reset"), "Display should contain the message");
+        assert!(
+            msg.contains("I/O error"),
+            "Display should contain 'I/O error'"
+        );
+        assert!(
+            msg.contains("connection reset"),
+            "Display should contain the message"
+        );
     }
 
     #[test]
     fn test_dap_error_protocol_display() {
         let err = DapError::Protocol("malformed header".to_string());
         let msg = err.to_string();
-        assert!(msg.contains("protocol error"), "Display should contain 'protocol error'");
-        assert!(msg.contains("malformed header"), "Display should contain the message");
+        assert!(
+            msg.contains("protocol error"),
+            "Display should contain 'protocol error'"
+        );
+        assert!(
+            msg.contains("malformed header"),
+            "Display should contain the message"
+        );
     }
 
     #[test]
@@ -107,13 +142,21 @@ mod tests {
             reason: "r".to_string(),
         };
         let s: String = err.into();
-        assert!(s.contains("spawn failed"), "Into<String> should produce the Display output");
+        assert!(
+            s.contains("spawn failed"),
+            "Into<String> should produce the Display output"
+        );
     }
 
     #[test]
     fn test_dap_error_debug_format() {
-        let err = DapError::Crashed { session_id: "s".to_string() };
+        let err = DapError::Crashed {
+            session_id: "s".to_string(),
+        };
         let debug = format!("{:?}", err);
-        assert!(debug.contains("Crashed"), "Debug format should contain variant name");
+        assert!(
+            debug.contains("Crashed"),
+            "Debug format should contain variant name"
+        );
     }
 }

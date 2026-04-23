@@ -11,7 +11,7 @@ use dscode_core::AppDirectories;
 use dscode_dap::{DebugAdapterPool, DebugManager};
 use dscode_extension_host::PathValidator;
 use dscode_lsp::LspManager;
-use dscode_terminal::{TerminalManager, TauriEventSender};
+use dscode_terminal::{TauriEventSender, TerminalManager};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use tauri::{
@@ -44,7 +44,8 @@ fn setup_app(app: &mut tauri::App<Wry>) -> SetupResult {
     app.manage(path_validator.clone());
 
     // Create TerminalManager with TauriEventSender for forwarding PTY events
-    let terminal_manager = TerminalManager::new(Box::new(TauriEventSender::new(app.handle().clone())));
+    let terminal_manager =
+        TerminalManager::new(Box::new(TauriEventSender::new(app.handle().clone())));
     app.manage(Mutex::new(terminal_manager));
 
     app.manage(Mutex::new(DebugManager::new()));
@@ -67,8 +68,8 @@ fn create_path_validator(app_dirs: &AppDirectories) -> Arc<RwLock<PathValidator>
 }
 
 fn register_app_directories(app: &mut tauri::App<Wry>) -> Result<AppDirectories, Box<dyn Error>> {
-    let app_dirs = AppDirectories::resolve()
-        .map_err(|error| std::io::Error::other(error.to_string()))?;
+    let app_dirs =
+        AppDirectories::resolve().map_err(|error| std::io::Error::other(error.to_string()))?;
 
     app.manage(app_dirs.clone());
     Ok(app_dirs)
@@ -116,14 +117,10 @@ fn build_tray(app: &mut tauri::App<Wry>) -> SetupResult {
 }
 
 fn register_session_manager(
-    app: &mut tauri::App<Wry>, app_dirs: AppDirectories,
-    path_validator: Arc<RwLock<PathValidator>>,
+    app: &mut tauri::App<Wry>, app_dirs: AppDirectories, path_validator: Arc<RwLock<PathValidator>>,
 ) -> Arc<RwLock<SessionManager>> {
-    let session_manager = Arc::new(RwLock::new(SessionManager::new(
-        app.handle().clone(),
-        app_dirs,
-        path_validator,
-    )));
+    let session_manager =
+        Arc::new(RwLock::new(SessionManager::new(app.handle().clone(), app_dirs, path_validator)));
 
     app.manage(session_manager.clone());
     session_manager

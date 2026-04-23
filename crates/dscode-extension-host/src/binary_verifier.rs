@@ -4,7 +4,7 @@
 //! Node.js binary against a list of known-good hashes. If the hash doesn't
 //! match, the extension host refuses to start.
 
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 use tracing::warn;
@@ -47,8 +47,7 @@ pub fn verify_binary(binary_path: &Path) -> Result<(), String> {
 
 /// Compute the SHA256 hash of a file.
 fn compute_file_hash(path: &Path) -> Result<String, String> {
-    let data = fs::read(path)
-        .map_err(|e| format!("Failed to read binary {:?}: {}", path, e))?;
+    let data = fs::read(path).map_err(|e| format!("Failed to read binary {:?}: {}", path, e))?;
 
     let mut hasher = Sha256::new();
     hasher.update(&data);

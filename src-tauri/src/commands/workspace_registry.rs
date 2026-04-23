@@ -99,9 +99,10 @@ impl WorkspaceRegistry {
     /// Add a workspace folder
     pub fn add_workspace_folder(&self, folder: WorkspaceFolder) -> Result<(), CoreError> {
         {
-            let mut folders = self.folders.write().map_err(|e| {
-                CoreError::Io(std::io::Error::other(e.to_string()))
-            })?;
+            let mut folders = self
+                .folders
+                .write()
+                .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
             // Check if folder already exists
             if folders.iter().any(|f| f.uri == folder.uri) {
@@ -126,9 +127,10 @@ impl WorkspaceRegistry {
     /// Remove a workspace folder
     pub fn remove_workspace_folder(&self, uri: &str) -> Result<(), CoreError> {
         {
-            let mut folders = self.folders.write().map_err(|e| {
-                CoreError::Io(std::io::Error::other(e.to_string()))
-            })?;
+            let mut folders = self
+                .folders
+                .write()
+                .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
             let initial_len = folders.len();
             folders.retain(|f| f.uri != uri);
 
@@ -157,11 +159,10 @@ impl WorkspaceRegistry {
     pub fn get_configuration(
         &self, section: &str, scope: Option<&str>,
     ) -> Option<WorkspaceConfiguration> {
-        let configs =
-            self.configurations.read().unwrap_or_else(|e| {
-                warn!("workspace_configurations read lock poisoned, recovering: {}", e);
-                e.into_inner()
-            });
+        let configs = self.configurations.read().unwrap_or_else(|e| {
+            warn!("workspace_configurations read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         let key = self.config_key(section, scope);
         configs.get(&key).cloned()
     }
@@ -171,9 +172,10 @@ impl WorkspaceRegistry {
         &self, section: String, scope: Option<String>, key: String, value: serde_json::Value,
     ) -> Result<(), CoreError> {
         {
-            let mut configs = self.configurations.write().map_err(|e| {
-                CoreError::Io(std::io::Error::other(e.to_string()))
-            })?;
+            let mut configs = self
+                .configurations
+                .write()
+                .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
             let config_key = self.config_key(&section, scope.as_deref());
 
             let config = configs.entry(config_key).or_insert_with(|| WorkspaceConfiguration {
@@ -200,9 +202,10 @@ impl WorkspaceRegistry {
     pub fn register_file_decoration_provider(
         &self, provider: FileDecorationProvider,
     ) -> Result<String, CoreError> {
-        let mut providers = self.file_decoration_providers.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut providers = self
+            .file_decoration_providers
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
         let id = provider.id.clone();
         providers.push(provider);
 
@@ -215,9 +218,10 @@ impl WorkspaceRegistry {
         &self, provider_id: String, decorations: Vec<FileDecoration>,
     ) -> Result<(), CoreError> {
         {
-            let mut all_decorations = self.file_decorations.write().map_err(|e| {
-                CoreError::Io(std::io::Error::other(e.to_string()))
-            })?;
+            let mut all_decorations = self
+                .file_decorations
+                .write()
+                .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
             all_decorations.insert(provider_id.clone(), decorations.clone());
         }
 
@@ -231,11 +235,10 @@ impl WorkspaceRegistry {
 
     /// Get file decorations for a URI
     pub fn get_file_decorations(&self, uri: &str) -> Vec<FileDecoration> {
-        let all_decorations =
-            self.file_decorations.read().unwrap_or_else(|e| {
-                warn!("workspace_file_decorations read lock poisoned, recovering: {}", e);
-                e.into_inner()
-            });
+        let all_decorations = self.file_decorations.read().unwrap_or_else(|e| {
+            warn!("workspace_file_decorations read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         let mut result = Vec::new();
 
         for decorations in all_decorations.values() {
@@ -252,25 +255,26 @@ impl WorkspaceRegistry {
     /// Clear all providers and configurations for an owner
     pub fn clear_owner_data(&self, owner: &str) -> Result<(), CoreError> {
         {
-            let mut providers =
-                self.file_decoration_providers.write().map_err(|e| {
-                    CoreError::Io(std::io::Error::other(e.to_string()))
-                })?;
+            let mut providers = self
+                .file_decoration_providers
+                .write()
+                .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
             providers.retain(|p| p.owner != owner);
         }
 
         {
-            let mut decorations = self.file_decorations.write().map_err(|e| {
-                CoreError::Io(std::io::Error::other(e.to_string()))
-            })?;
+            let mut decorations = self
+                .file_decorations
+                .write()
+                .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
             decorations.retain(|provider_id, _| {
-                let providers = self
-                    .file_decoration_providers
-                    .read()
-                    .unwrap_or_else(|e| {
-                        warn!("workspace_file_decoration_providers read lock poisoned, recovering: {}", e);
-                        e.into_inner()
-                    });
+                let providers = self.file_decoration_providers.read().unwrap_or_else(|e| {
+                    warn!(
+                        "workspace_file_decoration_providers read lock poisoned, recovering: {}",
+                        e
+                    );
+                    e.into_inner()
+                });
                 providers.iter().any(|p| &p.id == provider_id)
             });
         }

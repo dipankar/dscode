@@ -33,7 +33,10 @@ impl ConfigurationStore {
     /// Create an empty store that writes to the given path.
     #[allow(dead_code)]
     pub(crate) fn empty(path: PathBuf) -> Self {
-        Self { path, data: Value::Object(Map::new()) }
+        Self {
+            path,
+            data: Value::Object(Map::new()),
+        }
     }
 
     /// Create a store with a default file name in the given directory.
@@ -45,12 +48,17 @@ impl ConfigurationStore {
 
     /// Take a snapshot of a configuration section.
     pub fn snapshot(&self, section: Option<&str>) -> Value {
-        self.get_section(section).cloned().unwrap_or_else(|| Value::Object(Map::new()))
+        self.get_section(section)
+            .cloned()
+            .unwrap_or_else(|| Value::Object(Map::new()))
     }
 
     /// Update a key within an optional section. Returns `true` if the value changed.
     pub fn update(
-        &mut self, section: Option<&str>, key: &str, value: Value,
+        &mut self,
+        section: Option<&str>,
+        key: &str,
+        value: Value,
     ) -> Result<bool, String> {
         let changed = if value.is_null() {
             self.remove_value(section, key)
@@ -132,7 +140,9 @@ impl ConfigurationStore {
     }
 
     fn ensure_path<'a>(
-        &'a mut self, section: Option<&str>, key: &'a str,
+        &'a mut self,
+        section: Option<&str>,
+        key: &'a str,
     ) -> (&'a mut Map<String, Value>, &'a str) {
         let mut segments: Vec<&str> = key.split('.').collect();
         let final_key = segments.pop().unwrap_or(key);
@@ -150,7 +160,9 @@ impl ConfigurationStore {
             let map = current
                 .as_object_mut()
                 .expect("configuration path segment must be an object after conversion");
-            let entry = map.entry(segment.to_string()).or_insert_with(|| Value::Object(Map::new()));
+            let entry = map
+                .entry(segment.to_string())
+                .or_insert_with(|| Value::Object(Map::new()));
             if !entry.is_object() {
                 *entry = Value::Object(Map::new());
             }
@@ -166,7 +178,10 @@ impl ConfigurationStore {
     fn save(&self) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                format!("Failed to create configuration directory {:?}: {}", parent, e)
+                format!(
+                    "Failed to create configuration directory {:?}: {}",
+                    parent, e
+                )
             })?;
         }
 
@@ -289,7 +304,9 @@ mod tests {
         let path = dir.path().join("settings.json");
         let mut store = ConfigurationStore::empty(path);
 
-        store.update(Some("editor.formatting"), "tabSize", json!(4)).unwrap();
+        store
+            .update(Some("editor.formatting"), "tabSize", json!(4))
+            .unwrap();
         let snapshot = store.snapshot(Some("editor.formatting"));
         assert_eq!(snapshot.get("tabSize"), Some(&json!(4)));
     }

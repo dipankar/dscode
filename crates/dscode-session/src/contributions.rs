@@ -347,8 +347,11 @@ impl ExtensionContributes {
     }
 
     pub fn language_ids_for_extension(&self, file_ext: &str) -> Vec<String> {
-        let ext =
-            if file_ext.starts_with('.') { file_ext.to_string() } else { format!(".{}", file_ext) };
+        let ext = if file_ext.starts_with('.') {
+            file_ext.to_string()
+        } else {
+            format!(".{}", file_ext)
+        };
         self.languages
             .iter()
             .filter(|l| {

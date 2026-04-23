@@ -55,7 +55,10 @@ impl LspServerPool {
     /// - `server_command` — The command to spawn the language server.
     /// - `server_args` — Arguments to pass to the server command.
     pub async fn register_server(
-        &self, language_id: String, server_command: String, server_args: Vec<String>,
+        &self,
+        language_id: String,
+        server_command: String,
+        server_args: Vec<String>,
     ) {
         let mut configs = self.configurations.write().await;
         configs.insert(language_id.clone(), (server_command, server_args));
@@ -74,7 +77,9 @@ impl LspServerPool {
     /// Returns a shared reference to the [`LspClient`], or an error if no
     /// configuration is registered for the language or the start fails.
     pub async fn get_server(
-        &self, language_id: &str, root_uri: Option<&str>,
+        &self,
+        language_id: &str,
+        root_uri: Option<&str>,
     ) -> Result<Arc<LspClient>, String> {
         {
             let servers = self.servers.read().await;
@@ -84,7 +89,9 @@ impl LspServerPool {
                         .iter()
                         .min_by_key(|s| s.request_count.load(std::sync::atomic::Ordering::Relaxed))
                         .expect("server list is non-empty");
-                    min_server.request_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    min_server
+                        .request_count
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     return Ok(Arc::clone(&min_server.client));
                 }
             }
@@ -94,13 +101,18 @@ impl LspServerPool {
     }
 
     async fn start_server(
-        &self, language_id: &str, root_uri: Option<&str>,
+        &self,
+        language_id: &str,
+        root_uri: Option<&str>,
     ) -> Result<Arc<LspClient>, String> {
         let (command, args) = {
             let configs = self.configurations.read().await;
             configs
                 .get(language_id)
-                .ok_or(format!("No configuration found for language {}", language_id))?
+                .ok_or(format!(
+                    "No configuration found for language {}",
+                    language_id
+                ))?
                 .clone()
         };
 
@@ -134,7 +146,10 @@ impl LspServerPool {
         });
 
         let mut servers = self.servers.write().await;
-        servers.entry(language_id.to_string()).or_insert_with(Vec::new).push(server_info);
+        servers
+            .entry(language_id.to_string())
+            .or_insert_with(Vec::new)
+            .push(server_info);
 
         info!(language = language_id, "Started and initialized LSP server");
         Ok(client)
@@ -191,7 +206,10 @@ impl LspServerPool {
         let total_servers: usize = servers.values().map(|list| list.len()).sum();
         let total_languages = servers.len();
 
-        LspPoolStats { total_servers, total_languages }
+        LspPoolStats {
+            total_servers,
+            total_languages,
+        }
     }
 }
 
@@ -219,8 +237,14 @@ mod tests {
     async fn test_pool_stats_empty() {
         let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
         let stats = pool.get_stats().await;
-        assert_eq!(stats.total_servers, 0, "Empty pool should have 0 total servers");
-        assert_eq!(stats.total_languages, 0, "Empty pool should have 0 total languages");
+        assert_eq!(
+            stats.total_servers, 0,
+            "Empty pool should have 0 total servers"
+        );
+        assert_eq!(
+            stats.total_languages, 0,
+            "Empty pool should have 0 total languages"
+        );
     }
 
     #[tokio::test]
@@ -232,7 +256,10 @@ mod tests {
         // After registering, list_servers should still be empty because
         // register only stores the configuration, not a running server
         let servers = pool.list_servers().await;
-        assert!(servers.is_empty(), "Registered config does not create a running server");
+        assert!(
+            servers.is_empty(),
+            "Registered config does not create a running server"
+        );
 
         // Stats should still show 0
         let stats = pool.get_stats().await;
@@ -246,7 +273,10 @@ mod tests {
 
         // Trying to get a server for a language with no configuration should fail
         let result = pool.get_server("rust", None).await;
-        assert!(result.is_err(), "Should fail when no configuration registered");
+        assert!(
+            result.is_err(),
+            "Should fail when no configuration registered"
+        );
         assert!(result.unwrap_err().contains("No configuration found"));
     }
 
@@ -289,8 +319,12 @@ mod tests {
 
         pool.register_server("rust".to_string(), "rust-analyzer".to_string(), vec![])
             .await;
-        pool.register_server("python".to_string(), "pyright".to_string(), vec!["--stdio".to_string()])
-            .await;
+        pool.register_server(
+            "python".to_string(),
+            "pyright".to_string(),
+            vec!["--stdio".to_string()],
+        )
+        .await;
         pool.register_server("go".to_string(), "gopls".to_string(), vec![])
             .await;
 

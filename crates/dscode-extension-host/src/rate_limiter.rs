@@ -27,7 +27,10 @@ impl RateLimiter {
         // Default: 100 requests per second
         let quota = Quota::per_second(NonZeroU32::new(100).expect("100 is nonzero"));
 
-        Self { limiters: Arc::new(Mutex::new(HashMap::new())), default_quota: quota }
+        Self {
+            limiters: Arc::new(Mutex::new(HashMap::new())),
+            default_quota: quota,
+        }
     }
 
     pub fn with_quota(requests_per_second: u32) -> Self {
@@ -36,7 +39,10 @@ impl RateLimiter {
                 .unwrap_or(NonZeroU32::new(100).expect("100 is nonzero")),
         );
 
-        Self { limiters: Arc::new(Mutex::new(HashMap::new())), default_quota: quota }
+        Self {
+            limiters: Arc::new(Mutex::new(HashMap::new())),
+            default_quota: quota,
+        }
     }
 
     /// Check if a request should be allowed
@@ -222,6 +228,9 @@ mod tests {
         let limiter = RateLimiter::with_quota(1);
         limiter.check_rate_limit("error-ext").unwrap();
         let err = limiter.check_rate_limit("error-ext").unwrap_err();
-        assert!(err.contains("error-ext"), "Error message should contain extension id");
+        assert!(
+            err.contains("error-ext"),
+            "Error message should contain extension id"
+        );
     }
 }

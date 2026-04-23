@@ -1,7 +1,7 @@
 use super::{SessionEvent, SessionManager, TextEditPayload};
 use crate::commands::{CommandInfo, CommandRegistry, LanguageFeaturesRegistry};
-use dscode_extension_host::PathValidator;
 use dscode_extension_host::IncomingRequestHandler;
+use dscode_extension_host::PathValidator;
 use serde_json::{json, Map, Value};
 use std::fs;
 use std::io;
@@ -925,10 +925,7 @@ impl SessionManager {
                         .request("main", "configuration-changed", notify_payload)
                         .await
                     {
-                        error!(
-                            "[SessionManager] Failed to forward configuration change: {}",
-                            err
-                        );
+                        error!("[SessionManager] Failed to forward configuration change: {}", err);
                     }
                 }
 
@@ -1206,12 +1203,10 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing uri".to_string())?;
 
-                let validated_path = self
-                    .path_validator
-                    .read()
-                    .await
-                    .validate_path(uri)
-                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
+                let validated_path =
+                    self.path_validator.read().await.validate_path(uri).map_err(|e| {
+                        format!("NoPermissions: {}", PathValidator::sanitize_error(&e))
+                    })?;
 
                 let path_for_mkdir = validated_path.clone();
                 tokio::task::spawn_blocking(move || std::fs::create_dir_all(&path_for_mkdir))
@@ -1234,12 +1229,10 @@ impl SessionManager {
                 let content =
                     payload.get("content").ok_or_else(|| "Missing content".to_string())?;
 
-                let validated_path = self
-                    .path_validator
-                    .read()
-                    .await
-                    .validate_path(uri)
-                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
+                let validated_path =
+                    self.path_validator.read().await.validate_path(uri).map_err(|e| {
+                        format!("NoPermissions: {}", PathValidator::sanitize_error(&e))
+                    })?;
 
                 let bytes: Vec<u8> = if let Some(arr) = content.as_array() {
                     arr.iter().filter_map(|v| v.as_u64().map(|n| n as u8)).collect()
@@ -1280,12 +1273,10 @@ impl SessionManager {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
-                let validated_path = self
-                    .path_validator
-                    .read()
-                    .await
-                    .validate_path(uri)
-                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
+                let validated_path =
+                    self.path_validator.read().await.validate_path(uri).map_err(|e| {
+                        format!("NoPermissions: {}", PathValidator::sanitize_error(&e))
+                    })?;
 
                 let path_for_delete = validated_path.clone();
                 tokio::task::spawn_blocking(move || {
@@ -1320,18 +1311,14 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing newUri".to_string())?;
 
-                let old_validated = self
-                    .path_validator
-                    .read()
-                    .await
-                    .validate_path(old_uri)
-                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
-                let new_validated = self
-                    .path_validator
-                    .read()
-                    .await
-                    .validate_path(new_uri)
-                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
+                let old_validated =
+                    self.path_validator.read().await.validate_path(old_uri).map_err(|e| {
+                        format!("NoPermissions: {}", PathValidator::sanitize_error(&e))
+                    })?;
+                let new_validated =
+                    self.path_validator.read().await.validate_path(new_uri).map_err(|e| {
+                        format!("NoPermissions: {}", PathValidator::sanitize_error(&e))
+                    })?;
 
                 let old_path = old_validated.clone();
                 let new_path = new_validated.clone();
@@ -1357,18 +1344,14 @@ impl SessionManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Missing destination".to_string())?;
 
-                let source_validated = self
-                    .path_validator
-                    .read()
-                    .await
-                    .validate_path(source_uri)
-                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
-                let dest_validated = self
-                    .path_validator
-                    .read()
-                    .await
-                    .validate_path(dest_uri)
-                    .map_err(|e| format!("NoPermissions: {}", PathValidator::sanitize_error(&e)))?;
+                let source_validated =
+                    self.path_validator.read().await.validate_path(source_uri).map_err(|e| {
+                        format!("NoPermissions: {}", PathValidator::sanitize_error(&e))
+                    })?;
+                let dest_validated =
+                    self.path_validator.read().await.validate_path(dest_uri).map_err(|e| {
+                        format!("NoPermissions: {}", PathValidator::sanitize_error(&e))
+                    })?;
 
                 let src = source_validated.clone();
                 let dst = dest_validated.clone();

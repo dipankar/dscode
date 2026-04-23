@@ -63,16 +63,28 @@ mod tests {
     fn test_core_error_config_display() {
         let err = CoreError::Config("invalid setting".to_string());
         let msg = err.to_string();
-        assert!(msg.contains("Configuration error"), "Display should contain variant label");
-        assert!(msg.contains("invalid setting"), "Display should contain the inner message");
+        assert!(
+            msg.contains("Configuration error"),
+            "Display should contain variant label"
+        );
+        assert!(
+            msg.contains("invalid setting"),
+            "Display should contain the inner message"
+        );
     }
 
     #[test]
     fn test_core_error_path_resolution_display() {
         let err = CoreError::PathResolution("home dir unavailable".to_string());
         let msg = err.to_string();
-        assert!(msg.contains("Path resolution failed"), "Display should contain variant label");
-        assert!(msg.contains("home dir unavailable"), "Display should contain the inner message");
+        assert!(
+            msg.contains("Path resolution failed"),
+            "Display should contain variant label"
+        );
+        assert!(
+            msg.contains("home dir unavailable"),
+            "Display should contain the inner message"
+        );
     }
 
     #[test]
@@ -80,8 +92,14 @@ mod tests {
         let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
         let err = CoreError::Io(io_err);
         let msg = err.to_string();
-        assert!(msg.contains("I/O error"), "Display should contain variant label");
-        assert!(msg.contains("access denied"), "Display should contain the inner io message");
+        assert!(
+            msg.contains("I/O error"),
+            "Display should contain variant label"
+        );
+        assert!(
+            msg.contains("access denied"),
+            "Display should contain the inner io message"
+        );
     }
 
     #[test]

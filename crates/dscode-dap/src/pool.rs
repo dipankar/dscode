@@ -42,7 +42,10 @@ impl DebugAdapterPool {
 
     /// Register a debug adapter configuration
     pub async fn register_adapter(
-        &self, adapter_type: String, adapter_command: String, adapter_args: Vec<String>,
+        &self,
+        adapter_type: String,
+        adapter_command: String,
+        adapter_args: Vec<String>,
     ) {
         let mut configs = self.configurations.write().await;
         configs.insert(adapter_type.clone(), (adapter_command, adapter_args));
@@ -56,7 +59,10 @@ impl DebugAdapterPool {
             let configs = self.configurations.read().await;
             configs
                 .get(&session.adapter_type)
-                .ok_or(format!("No configuration found for adapter type {}", session.adapter_type))?
+                .ok_or(format!(
+                    "No configuration found for adapter type {}",
+                    session.adapter_type
+                ))?
                 .clone()
         };
 
@@ -83,7 +89,9 @@ impl DebugAdapterPool {
     /// Get an existing debug adapter
     pub async fn get_adapter(&self, session_id: &str) -> Option<Arc<DebugAdapter>> {
         let adapters = self.adapters.read().await;
-        adapters.get(session_id).map(|info| Arc::clone(&info.adapter))
+        adapters
+            .get(session_id)
+            .map(|info| Arc::clone(&info.adapter))
     }
 
     /// Update session state
@@ -138,7 +146,10 @@ impl DebugAdapterPool {
             *states.entry(info.state.clone()).or_insert(0) += 1;
         }
 
-        DebugPoolStats { total_sessions, states }
+        DebugPoolStats {
+            total_sessions,
+            states,
+        }
     }
 }
 
@@ -170,7 +181,10 @@ mod tests {
         let pool = DebugAdapterPool::new();
         let stats = pool.get_stats().await;
         assert_eq!(stats.total_sessions, 0, "Empty pool should have 0 sessions");
-        assert!(stats.states.is_empty(), "Empty pool should have no state counts");
+        assert!(
+            stats.states.is_empty(),
+            "Empty pool should have no state counts"
+        );
     }
 
     #[tokio::test]
@@ -181,7 +195,10 @@ mod tests {
 
         // Registering a config does not create a running session
         let sessions = pool.list_sessions().await;
-        assert!(sessions.is_empty(), "Registering config should not create a session");
+        assert!(
+            sessions.is_empty(),
+            "Registering config should not create a session"
+        );
 
         let stats = pool.get_stats().await;
         assert_eq!(stats.total_sessions, 0);
@@ -191,7 +208,10 @@ mod tests {
     async fn test_pool_get_adapter_nonexistent() {
         let pool = DebugAdapterPool::new();
         let result = pool.get_adapter("nonexistent-session").await;
-        assert!(result.is_none(), "Getting nonexistent adapter should return None");
+        assert!(
+            result.is_none(),
+            "Getting nonexistent adapter should return None"
+        );
     }
 
     #[tokio::test]
@@ -204,7 +224,10 @@ mod tests {
             adapter_type: "nonexistent".to_string(),
         };
         let result = pool.create_session(session).await;
-        assert!(result.is_err(), "Should fail when no adapter config registered");
+        assert!(
+            result.is_err(),
+            "Should fail when no adapter config registered"
+        );
         assert!(result.unwrap_err().contains("No configuration found"));
     }
 
@@ -229,8 +252,12 @@ mod tests {
         let pool = DebugAdapterPool::new();
         pool.register_adapter("cppdbg".to_string(), "/usr/bin/gdb".to_string(), vec![])
             .await;
-        pool.register_adapter("python".to_string(), "debugpy".to_string(), vec!["--listen".to_string()])
-            .await;
+        pool.register_adapter(
+            "python".to_string(),
+            "debugpy".to_string(),
+            vec!["--listen".to_string()],
+        )
+        .await;
         pool.register_adapter("go".to_string(), "dlv".to_string(), vec![])
             .await;
 

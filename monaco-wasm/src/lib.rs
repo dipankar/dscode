@@ -23,18 +23,18 @@ impl FastTokenizer {
     pub fn new(language: &str) -> Self {
         let keywords = match language {
             "javascript" | "typescript" => vec![
-                "const", "let", "var", "function", "class", "if", "else",
-                "for", "while", "return", "import", "export", "async", "await"
+                "const", "let", "var", "function", "class", "if", "else", "for", "while", "return",
+                "import", "export", "async", "await",
             ],
             "rust" => vec![
-                "fn", "let", "mut", "const", "struct", "enum", "impl",
-                "pub", "use", "mod", "if", "else", "match", "return"
+                "fn", "let", "mut", "const", "struct", "enum", "impl", "pub", "use", "mod", "if",
+                "else", "match", "return",
             ],
             "python" => vec![
-                "def", "class", "if", "else", "elif", "for", "while",
-                "return", "import", "from", "as", "with", "try", "except"
+                "def", "class", "if", "else", "elif", "for", "while", "return", "import", "from",
+                "as", "with", "try", "except",
             ],
-            _ => vec![]
+            _ => vec![],
         }
         .into_iter()
         .map(|s| s.to_string())
@@ -141,10 +141,10 @@ impl FastTokenizer {
 pub fn benchmark_tokenize(text: &str, iterations: u32) -> f64 {
     let tokenizer = FastTokenizer::new("javascript");
     let start = js_sys::Date::now();
-    
+
     for _ in 0..iterations {
         tokenizer.tokenize(text);
     }
-    
+
     js_sys::Date::now() - start
 }

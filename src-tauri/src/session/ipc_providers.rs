@@ -2,9 +2,9 @@ use crate::commands::{
     CodeActionProvider, CodeLensProvider, ColorProvider, CompletionProvider, DefinitionProvider,
     DocumentFormattingProvider, DocumentHighlightProvider, DocumentSelector,
     DocumentSymbolsProvider, FoldingRangeProvider, HoverProvider, LanguageFeaturesRegistry,
-    OnTypeFormattingProvider, RangeFormattingProvider,
-    ReferencesProvider, RenameProvider, SelectionRangeProvider, SemanticTokensLegend,
-    SemanticTokensProvider, SignatureHelpProvider, WorkspaceSymbolsProvider,
+    OnTypeFormattingProvider, RangeFormattingProvider, ReferencesProvider, RenameProvider,
+    SelectionRangeProvider, SemanticTokensLegend, SemanticTokensProvider, SignatureHelpProvider,
+    WorkspaceSymbolsProvider,
 };
 use serde_json::{json, Value};
 
@@ -193,26 +193,23 @@ pub(super) fn handle_register_provider(
         }
         "semanticTokens" => {
             let legend_val = payload.get("legend");
-            let legend = legend_val.map(|l| SemanticTokensLegend {
-                        token_types: l
-                            .get("tokenTypes")
-                            .and_then(|v| v.as_array())
-                            .map(|arr| {
-                                arr.iter()
-                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                    .collect()
-                            })
-                            .unwrap_or_default(),
-                        token_modifiers: l
-                            .get("tokenModifiers")
-                            .and_then(|v| v.as_array())
-                            .map(|arr| {
-                                arr.iter()
-                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                    .collect()
-                            })
-                            .unwrap_or_default(),
-                    })
+            let legend = legend_val
+                .map(|l| SemanticTokensLegend {
+                    token_types: l
+                        .get("tokenTypes")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
+                        })
+                        .unwrap_or_default(),
+                    token_modifiers: l
+                        .get("tokenModifiers")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
+                        })
+                        .unwrap_or_default(),
+                })
                 .unwrap_or(SemanticTokensLegend {
                     token_types: Vec::new(),
                     token_modifiers: Vec::new(),

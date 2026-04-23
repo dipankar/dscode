@@ -72,16 +72,24 @@ fn apply_linux_sandbox(command: &mut Command, config: &SandboxConfig) -> Result<
 
 #[cfg(target_os = "linux")]
 fn apply_bubblewrap_sandbox(
-    original_command: &mut Command, config: &SandboxConfig,
+    original_command: &mut Command,
+    config: &SandboxConfig,
 ) -> Result<(), String> {
     let program = original_command.get_program().to_string_lossy().to_string();
-    let args: Vec<String> =
-        original_command.get_args().map(|s| s.to_string_lossy().to_string()).collect();
+    let args: Vec<String> = original_command
+        .get_args()
+        .map(|s| s.to_string_lossy().to_string())
+        .collect();
 
     let envs: Vec<(String, String)> = original_command
         .get_envs()
         .filter_map(|(k, v)| {
-            v.map(|val| (k.to_string_lossy().to_string(), val.to_string_lossy().to_string()))
+            v.map(|val| {
+                (
+                    k.to_string_lossy().to_string(),
+                    val.to_string_lossy().to_string(),
+                )
+            })
         })
         .collect();
 
@@ -132,7 +140,8 @@ fn apply_bubblewrap_sandbox(
 
 #[cfg(target_os = "linux")]
 fn apply_linux_resource_limits(
-    command: &mut Command, config: &SandboxConfig,
+    command: &mut Command,
+    config: &SandboxConfig,
 ) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
 
@@ -142,7 +151,10 @@ fn apply_linux_resource_limits(
         command.pre_exec(move || {
             if let Some(max_mb) = max_memory_mb {
                 let max_bytes = max_mb * 1024 * 1024;
-                let limit = libc::rlimit { rlim_cur: max_bytes, rlim_max: max_bytes };
+                let limit = libc::rlimit {
+                    rlim_cur: max_bytes,
+                    rlim_max: max_bytes,
+                };
                 libc::setrlimit(libc::RLIMIT_AS, &limit);
             }
             Ok(())
@@ -161,7 +173,8 @@ fn apply_macos_sandbox(command: &mut Command, config: &SandboxConfig) -> Result<
 
 #[cfg(target_os = "macos")]
 fn apply_macos_resource_limits(
-    command: &mut Command, config: &SandboxConfig,
+    command: &mut Command,
+    config: &SandboxConfig,
 ) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
 
@@ -171,7 +184,10 @@ fn apply_macos_resource_limits(
         command.pre_exec(move || {
             if let Some(max_mb) = max_memory_mb {
                 let max_bytes = max_mb * 1024 * 1024;
-                let limit = libc::rlimit { rlim_cur: max_bytes, rlim_max: libc::RLIM_INFINITY };
+                let limit = libc::rlimit {
+                    rlim_cur: max_bytes,
+                    rlim_max: libc::RLIM_INFINITY,
+                };
                 let _ = libc::setrlimit(libc::RLIMIT_AS, &limit);
             }
             Ok(())
@@ -233,13 +249,8 @@ fn complete_windows_sandbox(child: &std::process::Child) -> Result<(), String> {
 
     // Open a handle to the child process with the minimum access rights
     // required by AssignProcessToJobObject.
-    let process_handle = unsafe {
-        OpenProcess(
-            PROCESS_SET_QUOTA | PROCESS_TERMINATE,
-            FALSE,
-            child.id(),
-        )
-    };
+    let process_handle =
+        unsafe { OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, FALSE, child.id()) };
 
     let process_handle: HANDLE = match process_handle {
         Ok(h) => h,
@@ -276,11 +287,11 @@ fn create_and_configure_job_object(
 ) -> Result<windows::Win32::Foundation::HANDLE, String> {
     use windows::Win32::System::JobObjects::{
         CreateJobObjectW, JobObjectBasicUIRestrictions, JobObjectExtendedLimitInformation,
-        JOBOBJECT_BASIC_UI_RESTRICTIONS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_JOB_MEMORY,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_UILIMIT_DESKTOP,
-        JOB_OBJECT_UILIMIT_DISPLAY_SETTINGS, JOB_OBJECT_UILIMIT_EXIT_WINDOWS,
-        JOB_OBJECT_UILIMIT_FLAGS, SetInformationJobObject,
+        SetInformationJobObject, JOBOBJECT_BASIC_UI_RESTRICTIONS,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
+        JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOB_OBJECT_UILIMIT_DESKTOP, JOB_OBJECT_UILIMIT_DISPLAY_SETTINGS,
+        JOB_OBJECT_UILIMIT_EXIT_WINDOWS, JOB_OBJECT_UILIMIT_FLAGS,
     };
 
     // Create an anonymous job object.
@@ -288,8 +299,7 @@ fn create_and_configure_job_object(
         .map_err(|e| format!("Failed to create job object: {e}"))?;
 
     // Configure extended limits: memory cap, active-process cap, kill-on-close.
-    let mut extended_info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION =
-        unsafe { std::mem::zeroed() };
+    let mut extended_info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
 
     let mut limit_flags = JOB_OBJECT_LIMIT_FLAGS(0);
 
@@ -389,8 +399,16 @@ mod tests {
         // Verify default config values are restrictive
         assert!(!config.allow_network, "Default should block network");
         assert!(!config.allow_file_write, "Default should block file write");
-        assert_eq!(config.max_memory_mb, Some(512), "Default memory limit should be 512MB");
-        assert_eq!(config.max_cpu_percent, Some(50), "Default CPU limit should be 50%");
+        assert_eq!(
+            config.max_memory_mb,
+            Some(512),
+            "Default memory limit should be 512MB"
+        );
+        assert_eq!(
+            config.max_cpu_percent,
+            Some(50),
+            "Default CPU limit should be 50%"
+        );
     }
 
     #[test]

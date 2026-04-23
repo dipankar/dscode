@@ -215,7 +215,9 @@ impl SettingsUIRegistry {
     pub async fn update_setting_value(
         &self, key: &str, value: Value, scope: ConfigurationScope,
     ) -> Result<(), String> {
-        self.configuration_registry.update_configuration(key.to_string(), value, scope).map_err(|e| e.to_string())
+        self.configuration_registry
+            .update_configuration(key.to_string(), value, scope)
+            .map_err(|e| e.to_string())
     }
 
     /// Reset setting to default
@@ -226,11 +228,9 @@ impl SettingsUIRegistry {
         let schema =
             self.get_ui_schema(key).await.ok_or_else(|| format!("Setting '{}' not found", key))?;
 
-        self.configuration_registry.update_configuration(
-            key.to_string(),
-            schema.default.clone(),
-            scope,
-        ).map_err(|e| e.to_string())
+        self.configuration_registry
+            .update_configuration(key.to_string(), schema.default.clone(), scope)
+            .map_err(|e| e.to_string())
     }
 
     // ===== Validation =====

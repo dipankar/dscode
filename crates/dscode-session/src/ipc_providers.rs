@@ -20,7 +20,8 @@ pub(super) struct ProviderHandlerContext<'a> {
 /// Returns a JSON response with `success: true` and `providerId` fields.
 #[allow(dead_code)]
 pub(super) fn handle_register_provider(
-    _context: &ProviderHandlerContext, _registry: &(), // Placeholder: will use LanguageFeaturesRegistry when integrated
+    _context: &ProviderHandlerContext,
+    _registry: &(), // Placeholder: will use LanguageFeaturesRegistry when integrated
 ) -> Result<Value, String> {
     let provider_id = Uuid::new_v4().to_string();
 

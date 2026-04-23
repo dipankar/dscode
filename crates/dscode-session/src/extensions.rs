@@ -89,8 +89,8 @@ pub(crate) fn read_extension_manifest(extension_path: &Path) -> Result<Extension
     let content = fs::read_to_string(&manifest_path)
         .map_err(|e| format!("Failed to read manifest: {}", e))?;
 
-    let manifest: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse manifest: {}", e))?;
+    let manifest: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse manifest: {}", e))?;
 
     let name = manifest
         .get("name")
@@ -98,13 +98,22 @@ pub(crate) fn read_extension_manifest(extension_path: &Path) -> Result<Extension
         .ok_or("Missing 'name' field")?
         .to_string();
 
-    let version = manifest.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
+    let version = manifest
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("0.0.0")
+        .to_string();
 
-    let publisher =
-        manifest.get("publisher").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+    let publisher = manifest
+        .get("publisher")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
 
-    let description =
-        manifest.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let description = manifest
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let extension_id = format!("{}.{}", publisher, name);
 
@@ -156,7 +165,9 @@ pub(crate) fn read_extension_manifest(extension_path: &Path) -> Result<Extension
         .map(|arr| {
             arr.iter()
                 .filter_map(|item| {
-                    item.get("command").and_then(|c| c.as_str()).map(|s| s.to_string())
+                    item.get("command")
+                        .and_then(|c| c.as_str())
+                        .map(|s| s.to_string())
                 })
                 .collect::<Vec<String>>()
         })
@@ -166,14 +177,17 @@ pub(crate) fn read_extension_manifest(extension_path: &Path) -> Result<Extension
         if let Some(url) = value.as_str() {
             Some(url.to_string())
         } else if let Some(obj) = value.as_object() {
-            obj.get("url").and_then(|u| u.as_str()).map(|s| s.to_string())
+            obj.get("url")
+                .and_then(|u| u.as_str())
+                .map(|s| s.to_string())
         } else {
             None
         }
     });
 
-    let contributes: Option<ExtensionContributes> =
-        manifest.get("contributes").map(ExtensionContributes::from_json);
+    let contributes: Option<ExtensionContributes> = manifest
+        .get("contributes")
+        .map(ExtensionContributes::from_json);
 
     Ok(ExtensionInfo {
         id: extension_id,
@@ -211,15 +225,23 @@ pub(crate) fn scan_extension_dir(extension_path: &Path) -> Result<InstalledExten
         publisher: manifest.publisher,
         description: manifest.description,
         path: extension_path.to_string_lossy().to_string(),
-        contributes: manifest.contributes.as_ref().map(ExtensionContributes::from_json),
+        contributes: manifest
+            .contributes
+            .as_ref()
+            .map(ExtensionContributes::from_json),
         dependencies,
         categories: manifest.categories.unwrap_or_default(),
-        repository: manifest.repository.as_ref().and_then(extract_repository_url),
+        repository: manifest
+            .repository
+            .as_ref()
+            .and_then(extract_repository_url),
     })
 }
 
 /// List all installed extensions from a given extensions directory.
-pub(crate) fn list_installed_extensions(extensions_dir: &Path) -> Result<Vec<InstalledExtension>, String> {
+pub(crate) fn list_installed_extensions(
+    extensions_dir: &Path,
+) -> Result<Vec<InstalledExtension>, String> {
     if !extensions_dir.exists() {
         return Ok(Vec::new());
     }
@@ -249,7 +271,10 @@ pub(crate) fn list_installed_extensions(extensions_dir: &Path) -> Result<Vec<Ins
 }
 
 /// Install a VSIX package from a file path.
-pub(crate) fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<InstalledExtension, String> {
+pub(crate) fn install_vsix(
+    vsix_path: String,
+    extensions_root: PathBuf,
+) -> Result<InstalledExtension, String> {
     let file =
         fs::File::open(&vsix_path).map_err(|e| format!("Failed to open .vsix file: {}", e))?;
 
@@ -260,8 +285,9 @@ pub(crate) fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Resul
     let mut extension_folder: Option<String> = None;
 
     for i in 0..archive.len() {
-        let mut zip_file =
-            archive.by_index(i).map_err(|e| format!("Failed to read archive entry: {}", e))?;
+        let mut zip_file = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read archive entry: {}", e))?;
 
         let file_path = zip_file.name().to_string();
 
@@ -312,8 +338,9 @@ pub(crate) fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Resul
         ZipArchive::new(file).map_err(|e| format!("Failed to read .vsix archive: {}", e))?;
 
     for i in 0..archive.len() {
-        let mut zip_file =
-            archive.by_index(i).map_err(|e| format!("Failed to read archive entry: {}", e))?;
+        let mut zip_file = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read archive entry: {}", e))?;
 
         let path = zip_file.name().to_string();
 
@@ -390,7 +417,10 @@ pub(crate) fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Resul
     dependency_list.dedup();
 
     let categories = manifest.categories.clone().unwrap_or_default();
-    let repository = manifest.repository.as_ref().and_then(extract_repository_url);
+    let repository = manifest
+        .repository
+        .as_ref()
+        .and_then(extract_repository_url);
 
     Ok(InstalledExtension {
         id: extension_id,
@@ -399,7 +429,10 @@ pub(crate) fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Resul
         publisher: manifest.publisher,
         description: manifest.description,
         path: install_path.to_string_lossy().to_string(),
-        contributes: manifest.contributes.as_ref().map(ExtensionContributes::from_json),
+        contributes: manifest
+            .contributes
+            .as_ref()
+            .map(ExtensionContributes::from_json),
         dependencies: dependency_list,
         categories,
         repository,
@@ -408,7 +441,8 @@ pub(crate) fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Resul
 
 /// Ensure extension dependencies are installed.
 pub(crate) async fn ensure_extension_dependencies(
-    dependencies: &[String], extensions_dir: &Path,
+    dependencies: &[String],
+    extensions_dir: &Path,
 ) -> Result<Vec<InstalledExtension>, String> {
     if dependencies.is_empty() {
         return Ok(Vec::new());
@@ -444,20 +478,16 @@ pub(crate) async fn ensure_extension_dependencies(
 
         let details =
             crate::marketplace::get_extension_details(publisher.clone(), name.clone()).await?;
-        let vsix_path = crate::marketplace::download_extension(
-            publisher,
-            name,
-            details.version.clone(),
-        )
-        .await?;
+        let vsix_path =
+            crate::marketplace::download_extension(publisher, name, details.version.clone())
+                .await?;
         let vsix_string = vsix_path.to_string_lossy().to_string();
         let extensions_root_clone = extensions_root.clone();
 
-        let installed_dep = tokio::task::spawn_blocking(move || {
-            install_vsix(vsix_string, extensions_root_clone)
-        })
-        .await
-        .map_err(|e| format!("Task failed: {}", e))??;
+        let installed_dep =
+            tokio::task::spawn_blocking(move || install_vsix(vsix_string, extensions_root_clone))
+                .await
+                .map_err(|e| format!("Task failed: {}", e))??;
 
         if let Err(err) = fs::remove_file(&vsix_path) {
             if err.kind() != io::ErrorKind::NotFound {
@@ -500,7 +530,11 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
         return Err("Extension publisher is required".to_string());
     }
 
-    if !manifest.name.chars().all(|c| c.is_lowercase() || c.is_numeric() || c == '-') {
+    if !manifest
+        .name
+        .chars()
+        .all(|c| c.is_lowercase() || c.is_numeric() || c == '-')
+    {
         return Err("Extension name must be lowercase alphanumeric with hyphens".to_string());
     }
 
@@ -762,26 +796,26 @@ mod tests {
             parse_extension_id("pub.name"),
             Some(("pub".to_string(), "name".to_string()))
         );
-        assert_eq!(
-            parse_extension_id("single"),
-            None
-        );
-        assert_eq!(
-            parse_extension_id(""),
-            None
-        );
+        assert_eq!(parse_extension_id("single"), None);
+        assert_eq!(parse_extension_id(""), None);
     }
 
     #[test]
     fn test_extract_repository_url_string() {
         let value = serde_json::json!("https://github.com/test/repo");
-        assert_eq!(extract_repository_url(&value), Some("https://github.com/test/repo".to_string()));
+        assert_eq!(
+            extract_repository_url(&value),
+            Some("https://github.com/test/repo".to_string())
+        );
     }
 
     #[test]
     fn test_extract_repository_url_object() {
         let value = serde_json::json!({ "url": "https://github.com/test/repo" });
-        assert_eq!(extract_repository_url(&value), Some("https://github.com/test/repo".to_string()));
+        assert_eq!(
+            extract_repository_url(&value),
+            Some("https://github.com/test/repo".to_string())
+        );
     }
 
     #[test]

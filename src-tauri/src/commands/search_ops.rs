@@ -33,12 +33,16 @@ pub async fn search_in_files(
     root_path: String, options: SearchOptions,
 ) -> Result<Vec<SearchResult>, String> {
     // Move the blocking search operation to a background thread
-    tokio::task::spawn_blocking(move || perform_search(root_path, options).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| format!("Search task failed: {}", e))?
+    tokio::task::spawn_blocking(move || {
+        perform_search(root_path, options).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Search task failed: {}", e))?
 }
 
-fn perform_search(root_path: String, options: SearchOptions) -> Result<Vec<SearchResult>, CoreError> {
+fn perform_search(
+    root_path: String, options: SearchOptions,
+) -> Result<Vec<SearchResult>, CoreError> {
     let root = PathBuf::from(&root_path);
 
     if !root.exists() {
@@ -187,7 +191,9 @@ pub async fn replace_in_files(
     let root = PathBuf::from(&root_path);
 
     if !root.exists() {
-        return Err(CoreError::PathResolution(format!("Path does not exist: {}", root_path)).to_string());
+        return Err(
+            CoreError::PathResolution(format!("Path does not exist: {}", root_path)).to_string()
+        );
     }
 
     // First, find all matches

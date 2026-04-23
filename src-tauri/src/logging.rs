@@ -92,20 +92,19 @@ fn log_dir() -> Option<PathBuf> {
 }
 
 pub fn init() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("dscode=info"));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("dscode=info"));
 
     let pid = std::process::id();
     let version = env!("CARGO_PKG_VERSION");
     let os_info = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
 
     // Set up the layered subscriber with both stdout and file output
+    use tracing_subscriber::fmt;
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
-    use tracing_subscriber::fmt;
 
-    let stdout_layer = fmt::layer()
-        .with_writer(std::io::stdout);
+    let stdout_layer = fmt::layer().with_writer(std::io::stdout);
 
     if let Some(log_path) = log_dir() {
         // Ensure the log directory exists
@@ -116,21 +115,12 @@ pub fn init() {
         // Rolling file appender: daily rotation, keeps log files in the configured directory
         let file_appender = tracing_appender::rolling::daily(&log_path, "dscode.log");
 
-        let file_layer = fmt::layer()
-            .with_writer(file_appender)
-            .with_ansi(false);
+        let file_layer = fmt::layer().with_writer(file_appender).with_ansi(false);
 
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(stdout_layer)
-            .with(file_layer)
-            .init();
+        tracing_subscriber::registry().with(filter).with(stdout_layer).with(file_layer).init();
     } else {
         // Fallback: stdout only if no cache directory can be determined
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(stdout_layer)
-            .init();
+        tracing_subscriber::registry().with(filter).with(stdout_layer).init();
     }
 
     // Log structured fields: version, pid, and OS info

@@ -1,4 +1,6 @@
-use dscode_terminal::{TerminalError, TerminalInfo, TerminalManager, TerminalOptions, TerminalProfile};
+use dscode_terminal::{
+    TerminalError, TerminalInfo, TerminalManager, TerminalOptions, TerminalProfile,
+};
 use std::sync::Mutex;
 use tauri::State;
 
@@ -7,9 +9,12 @@ pub fn create_terminal(
     name: Option<String>, shell: Option<String>, cwd: Option<String>,
     terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<String, String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     manager.create_terminal(name, shell, cwd)
 }
 
@@ -17,9 +22,12 @@ pub fn create_terminal(
 pub fn write_to_terminal(
     terminal_id: String, data: String, terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<(), String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     manager.write_to_terminal(&terminal_id, &data)
 }
 
@@ -27,9 +35,12 @@ pub fn write_to_terminal(
 pub fn resize_terminal(
     terminal_id: String, cols: u16, rows: u16, terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<(), String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     manager.resize_terminal(&terminal_id, cols, rows)
 }
 
@@ -37,9 +48,12 @@ pub fn resize_terminal(
 pub fn close_terminal(
     terminal_id: String, terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<(), String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     manager.close_terminal(&terminal_id)
 }
 
@@ -47,9 +61,12 @@ pub fn close_terminal(
 pub fn list_terminals(
     terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<Vec<TerminalInfo>, String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     Ok(manager.list_terminals())
 }
 
@@ -57,9 +74,12 @@ pub fn list_terminals(
 pub fn terminal_ready(
     terminal_id: String, terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<(), String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     manager.start_reading(&terminal_id)
 }
 
@@ -67,12 +87,14 @@ pub fn terminal_ready(
 
 #[tauri::command]
 pub fn create_terminal_with_options(
-    options: TerminalOptions,
-    terminal_manager: State<Mutex<TerminalManager>>,
+    options: TerminalOptions, terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<String, String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     manager.create_terminal_with_options(options)
 }
 
@@ -82,9 +104,12 @@ pub fn create_terminal_with_options(
 pub fn register_terminal_profile(
     profile: TerminalProfile, terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<String, String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     manager.register_profile(profile)
 }
 
@@ -92,9 +117,12 @@ pub fn register_terminal_profile(
 pub fn unregister_terminal_profile(
     profile_id: String, terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<(), String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     manager.unregister_profile(&profile_id)
 }
 
@@ -102,9 +130,12 @@ pub fn unregister_terminal_profile(
 pub fn get_terminal_profile(
     profile_id: String, terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<TerminalProfile, String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     manager.get_profile(&profile_id)
 }
 
@@ -112,8 +143,11 @@ pub fn get_terminal_profile(
 pub fn list_terminal_profiles(
     terminal_manager: State<Mutex<TerminalManager>>,
 ) -> Result<Vec<TerminalProfile>, String> {
-    let manager = terminal_manager.lock().map_err(|e| {
-        TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
-    }).map_err(|e| e.to_string())?;
+    let manager = terminal_manager
+        .lock()
+        .map_err(|e| {
+            TerminalError::CreationFailed(format!("Terminal manager lock poisoned: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
     Ok(manager.list_profiles())
 }

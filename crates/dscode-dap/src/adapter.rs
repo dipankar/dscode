@@ -119,16 +119,25 @@ impl DebugAdapter {
         let valid = match *state {
             DebugAdapterState::Stopped => matches!(to, DebugAdapterState::Starting),
             DebugAdapterState::Starting => {
-                matches!(to, DebugAdapterState::Initializing | DebugAdapterState::Crashed)
+                matches!(
+                    to,
+                    DebugAdapterState::Initializing | DebugAdapterState::Crashed
+                )
             }
             DebugAdapterState::Initializing => {
-                matches!(to, DebugAdapterState::Configured | DebugAdapterState::Crashed)
+                matches!(
+                    to,
+                    DebugAdapterState::Configured | DebugAdapterState::Crashed
+                )
             }
             DebugAdapterState::Configured => {
                 matches!(to, DebugAdapterState::Running | DebugAdapterState::Crashed)
             }
             DebugAdapterState::Running => {
-                matches!(to, DebugAdapterState::ShuttingDown | DebugAdapterState::Crashed)
+                matches!(
+                    to,
+                    DebugAdapterState::ShuttingDown | DebugAdapterState::Crashed
+                )
             }
             DebugAdapterState::ShuttingDown => matches!(to, DebugAdapterState::Stopped),
             DebugAdapterState::Crashed => matches!(to, DebugAdapterState::Starting),
@@ -144,10 +153,7 @@ impl DebugAdapter {
             *state = to;
             Ok(())
         } else {
-            let msg = format!(
-                "Invalid state transition: {:?} -> {:?}",
-                *state, to
-            );
+            let msg = format!("Invalid state transition: {:?} -> {:?}", *state, to);
             error!(
                 id = %self.session.id,
                 from = ?*state,
@@ -361,7 +367,9 @@ impl DebugAdapter {
     }
 
     pub(crate) async fn send_request(
-        &self, command: &str, arguments: Option<Value>,
+        &self,
+        command: &str,
+        arguments: Option<Value>,
     ) -> Result<Value, String> {
         let seq = self.next_sequence().await;
 
@@ -383,7 +391,9 @@ impl DebugAdapter {
 
         {
             let mut writer_guard = self.writer.lock().await;
-            let writer = writer_guard.as_mut().ok_or("Debug adapter stdin not available")?;
+            let writer = writer_guard
+                .as_mut()
+                .ok_or("Debug adapter stdin not available")?;
 
             let body = serde_json::to_string(&request)
                 .map_err(|e| format!("Failed to serialize DAP request: {}", e))?;
@@ -432,7 +442,9 @@ impl DebugAdapter {
 
         {
             let mut writer_guard = self.writer.lock().await;
-            let writer = writer_guard.as_mut().ok_or("Debug adapter stdin not available")?;
+            let writer = writer_guard
+                .as_mut()
+                .ok_or("Debug adapter stdin not available")?;
 
             let body = serde_json::to_string(&event_msg)
                 .map_err(|e| format!("Failed to serialize DAP event: {}", e))?;
@@ -480,7 +492,9 @@ impl DebugAdapter {
     }
 
     pub async fn set_breakpoints(
-        &self, source: Value, breakpoints: Vec<crate::types::SourceBreakpoint>,
+        &self,
+        source: Value,
+        breakpoints: Vec<crate::types::SourceBreakpoint>,
     ) -> Result<Vec<crate::types::Breakpoint>, String> {
         let response = self
             .send_request(
@@ -579,25 +593,30 @@ mod tests {
             state: DebugState::Stopped,
             adapter_type: "test-adapter".to_string(),
         };
-        let adapter = DebugAdapter::new(
-            session,
-            "nonexistent-adapter".to_string(),
-            vec![],
-        );
+        let adapter = DebugAdapter::new(session, "nonexistent-adapter".to_string(), vec![]);
 
         // Initial state should be Stopped
         assert_eq!(adapter.get_state().await, DebugAdapterState::Stopped);
 
         // Valid: Stopped -> Starting
-        assert!(adapter.transition(DebugAdapterState::Starting).await.is_ok());
+        assert!(adapter
+            .transition(DebugAdapterState::Starting)
+            .await
+            .is_ok());
         assert_eq!(adapter.get_state().await, DebugAdapterState::Starting);
 
         // Valid: Starting -> Initializing
-        assert!(adapter.transition(DebugAdapterState::Initializing).await.is_ok());
+        assert!(adapter
+            .transition(DebugAdapterState::Initializing)
+            .await
+            .is_ok());
         assert_eq!(adapter.get_state().await, DebugAdapterState::Initializing);
 
         // Valid: Initializing -> Configured
-        assert!(adapter.transition(DebugAdapterState::Configured).await.is_ok());
+        assert!(adapter
+            .transition(DebugAdapterState::Configured)
+            .await
+            .is_ok());
         assert_eq!(adapter.get_state().await, DebugAdapterState::Configured);
 
         // Valid: Configured -> Running
@@ -605,7 +624,10 @@ mod tests {
         assert_eq!(adapter.get_state().await, DebugAdapterState::Running);
 
         // Valid: Running -> ShuttingDown
-        assert!(adapter.transition(DebugAdapterState::ShuttingDown).await.is_ok());
+        assert!(adapter
+            .transition(DebugAdapterState::ShuttingDown)
+            .await
+            .is_ok());
         assert_eq!(adapter.get_state().await, DebugAdapterState::ShuttingDown);
 
         // Valid: ShuttingDown -> Stopped
@@ -614,12 +636,18 @@ mod tests {
 
         // Test Crashed -> Starting restart path
         // First go Stopped -> Starting -> Crashed
-        assert!(adapter.transition(DebugAdapterState::Starting).await.is_ok());
+        assert!(adapter
+            .transition(DebugAdapterState::Starting)
+            .await
+            .is_ok());
         assert!(adapter.transition(DebugAdapterState::Crashed).await.is_ok());
         assert_eq!(adapter.get_state().await, DebugAdapterState::Crashed);
 
         // Valid: Crashed -> Starting (restart)
-        assert!(adapter.transition(DebugAdapterState::Starting).await.is_ok());
+        assert!(adapter
+            .transition(DebugAdapterState::Starting)
+            .await
+            .is_ok());
 
         // Test invalid transitions
         let adapter2 = DebugAdapter::new(
@@ -634,8 +662,14 @@ mod tests {
         );
 
         // Invalid: Stopped -> Running (must go through Starting first)
-        assert!(adapter2.transition(DebugAdapterState::Running).await.is_err());
+        assert!(adapter2
+            .transition(DebugAdapterState::Running)
+            .await
+            .is_err());
         // Invalid: Stopped -> ShuttingDown
-        assert!(adapter2.transition(DebugAdapterState::ShuttingDown).await.is_err());
+        assert!(adapter2
+            .transition(DebugAdapterState::ShuttingDown)
+            .await
+            .is_err());
     }
 }

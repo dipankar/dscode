@@ -32,17 +32,21 @@ download_and_extract() {
     local tmp_dir
     tmp_dir="$(mktemp -d)"
 
-    local filename="node-v${NODE_VERSION}-${os}-${arch}.tar.gz"
-    local url="https://nodejs.org/dist/v${NODE_VERSION}/${filename}"
-
-    curl -fsSL "$url" -o "$tmp_dir/$filename"
-    tar xzf "$tmp_dir/$filename" -C "$tmp_dir"
-
-    local extracted_dir="$tmp_dir/node-v${NODE_VERSION}-${os}-${arch}"
-
+    local filename
+    local url
     if [ "$os" = "win" ]; then
+        filename="node-v${NODE_VERSION}-${os}-${arch}.zip"
+        url="https://nodejs.org/dist/v${NODE_VERSION}/${filename}"
+        curl -fsSL "$url" -o "$tmp_dir/$filename"
+        unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
+        local extracted_dir="$tmp_dir/node-v${NODE_VERSION}-${os}-${arch}"
         cp "$extracted_dir/node.exe" "$target_dir/node.exe"
     else
+        filename="node-v${NODE_VERSION}-${os}-${arch}.tar.gz"
+        url="https://nodejs.org/dist/v${NODE_VERSION}/${filename}"
+        curl -fsSL "$url" -o "$tmp_dir/$filename"
+        tar xzf "$tmp_dir/$filename" -C "$tmp_dir"
+        local extracted_dir="$tmp_dir/node-v${NODE_VERSION}-${os}-${arch}"
         cp "$extracted_dir/bin/node" "$target_dir/node"
         chmod +x "$target_dir/node"
     fi

@@ -49,8 +49,10 @@ impl SessionLifecycle {
     pub fn can_transition_to(&self, to: SessionLifecycle) -> bool {
         matches!(
             (self, to),
-            (SessionLifecycle::Uninitialized, SessionLifecycle::Initializing)
-                | (SessionLifecycle::Initializing, SessionLifecycle::Ready)
+            (
+                SessionLifecycle::Uninitialized,
+                SessionLifecycle::Initializing
+            ) | (SessionLifecycle::Initializing, SessionLifecycle::Ready)
                 | (SessionLifecycle::Initializing, SessionLifecycle::Error)
                 | (SessionLifecycle::Ready, SessionLifecycle::ShuttingDown)
                 | (SessionLifecycle::ShuttingDown, SessionLifecycle::Shutdown)
@@ -193,10 +195,19 @@ pub enum SessionEvent {
     StatusBarItems { items: Vec<StatusBarItemState> },
 
     /// Window message request
-    WindowMessage { level: String, message: String, actions: Option<Vec<String>> },
+    WindowMessage {
+        level: String,
+        message: String,
+        actions: Option<Vec<String>>,
+    },
 
     /// Window message with actionable items (awaiting user response)
-    WindowActionRequest { id: String, level: String, message: String, actions: Vec<String> },
+    WindowActionRequest {
+        id: String,
+        level: String,
+        message: String,
+        actions: Vec<String>,
+    },
 
     /// Status bar transient message shown
     StatusBarMessageShown { id: String, text: String },
@@ -220,16 +231,27 @@ pub enum SessionEvent {
     OutputChannelVisibility { channel: String, visible: bool },
 
     /// Tree view reveal request from extension host
-    TreeViewReveal { view_id: String, element: serde_json::Value, options: serde_json::Value },
+    TreeViewReveal {
+        view_id: String,
+        element: serde_json::Value,
+        options: serde_json::Value,
+    },
 
     /// Configuration changed
-    ConfigurationChanged { section: Option<String>, key: Option<String> },
+    ConfigurationChanged {
+        section: Option<String>,
+        key: Option<String>,
+    },
 
     /// Document content changed
     DocumentChanged { path: String, content: String },
 
     /// Editor decorations updated
-    EditorDecorations { uri: String, key: String, decorations: serde_json::Value },
+    EditorDecorations {
+        uri: String,
+        key: String,
+        decorations: serde_json::Value,
+    },
 
     /// Quick pick selection required
     QuickPickRequest {
@@ -253,7 +275,11 @@ pub enum SessionEvent {
     },
 
     /// Execute command request from extension host
-    ExecuteCommandRequest { id: String, command: String, args: Vec<serde_json::Value> },
+    ExecuteCommandRequest {
+        id: String,
+        command: String,
+        args: Vec<serde_json::Value>,
+    },
 
     /// Language feature provider registered
     ProviderRegistered {
@@ -266,16 +292,25 @@ pub enum SessionEvent {
     },
 
     /// Language configuration changed
-    LanguageConfigurationChanged { language: String, configuration: serde_json::Value },
+    LanguageConfigurationChanged {
+        language: String,
+        configuration: serde_json::Value,
+    },
 
     /// Diagnostics updated
-    DiagnosticsUpdated { uri: String, diagnostics: serde_json::Value },
+    DiagnosticsUpdated {
+        uri: String,
+        diagnostics: serde_json::Value,
+    },
 
     /// Diagnostics cleared
     DiagnosticsCleared { uri: String },
 
     /// Context key changed (setContext)
-    ContextChanged { key: String, value: serde_json::Value },
+    ContextChanged {
+        key: String,
+        value: serde_json::Value,
+    },
 
     /// Request to show an open-folder dialog (from extension host)
     OpenFolderDialog,
@@ -429,7 +464,10 @@ mod tests {
             extension_id: "my.ext".to_string(),
         };
         let value = serde_json::to_value(&event).unwrap();
-        assert_eq!(value.get("type").and_then(|v| v.as_str()), Some("ExtensionInstalled"));
+        assert_eq!(
+            value.get("type").and_then(|v| v.as_str()),
+            Some("ExtensionInstalled")
+        );
         assert!(value.get("data").is_some());
     }
 }

@@ -156,9 +156,10 @@ impl FileSystemRegistry {
     pub fn register_file_system_provider(
         &self, provider: FileSystemProvider,
     ) -> Result<String, CoreError> {
-        let mut providers = self.providers.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut providers = self
+            .providers
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         // Check for duplicate scheme
         if providers.iter().any(|p| p.scheme == provider.scheme) {
@@ -183,9 +184,10 @@ impl FileSystemRegistry {
 
     /// Unregister a file system provider
     pub fn unregister_file_system_provider(&self, scheme: &str) -> Result<(), CoreError> {
-        let mut providers = self.providers.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut providers = self
+            .providers
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let initial_len = providers.len();
         providers.retain(|p| p.scheme != scheme);
@@ -209,20 +211,17 @@ impl FileSystemRegistry {
 
     /// Get file system provider for scheme
     pub fn get_file_system_provider(&self, scheme: &str) -> Result<FileSystemProvider, CoreError> {
-        let providers = self.providers.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let providers = self
+            .providers
+            .read()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
-        providers
-            .iter()
-            .find(|p| p.scheme == scheme)
-            .cloned()
-            .ok_or_else(|| {
-                CoreError::PathResolution(format!(
-                    "No file system provider found for scheme '{}'",
-                    scheme
-                ))
-            })
+        providers.iter().find(|p| p.scheme == scheme).cloned().ok_or_else(|| {
+            CoreError::PathResolution(format!(
+                "No file system provider found for scheme '{}'",
+                scheme
+            ))
+        })
     }
 
     /// Get all file system providers
@@ -236,9 +235,10 @@ impl FileSystemRegistry {
 
     /// Create a file watcher
     pub fn create_file_watcher(&self, watcher: FileWatcher) -> Result<String, CoreError> {
-        let mut watchers = self.watchers.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut watchers = self
+            .watchers
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let id = watcher.id.clone();
         watchers.insert(id.clone(), watcher.clone());
@@ -255,9 +255,10 @@ impl FileSystemRegistry {
 
     /// Dispose a file watcher
     pub fn dispose_file_watcher(&self, watcher_id: &str) -> Result<(), CoreError> {
-        let mut watchers = self.watchers.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut watchers = self
+            .watchers
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         if watchers.remove(watcher_id).is_none() {
             return Err(CoreError::PathResolution(format!(
@@ -278,16 +279,14 @@ impl FileSystemRegistry {
 
     /// Get file watcher by ID
     pub fn get_file_watcher(&self, watcher_id: &str) -> Result<FileWatcher, CoreError> {
-        let watchers = self.watchers.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let watchers = self
+            .watchers
+            .read()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
-        watchers
-            .get(watcher_id)
-            .cloned()
-            .ok_or_else(|| {
-                CoreError::PathResolution(format!("File watcher not found: {}", watcher_id))
-            })
+        watchers.get(watcher_id).cloned().ok_or_else(|| {
+            CoreError::PathResolution(format!("File watcher not found: {}", watcher_id))
+        })
     }
 
     /// Get all file watchers
@@ -301,9 +300,10 @@ impl FileSystemRegistry {
 
     /// Emit file change event
     pub fn emit_file_change_event(&self, event: FileChangeEvent) -> Result<(), CoreError> {
-        let watchers = self.watchers.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let watchers = self
+            .watchers
+            .read()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         // Find matching watchers
         for watcher in watchers.values() {
@@ -354,11 +354,10 @@ impl FileSystemRegistry {
     pub fn clear_filesystem_data(&self, owner: &str) {
         // Clear providers
         {
-            let mut providers =
-                self.providers.write().unwrap_or_else(|e| {
-                    warn!("filesystem_providers write lock poisoned, recovering: {}", e);
-                    e.into_inner()
-                });
+            let mut providers = self.providers.write().unwrap_or_else(|e| {
+                warn!("filesystem_providers write lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
             let before = providers.len();
             providers.retain(|p| p.owner != owner);
             let removed = before - providers.len();
@@ -369,11 +368,10 @@ impl FileSystemRegistry {
 
         // Clear watchers
         {
-            let mut watchers =
-                self.watchers.write().unwrap_or_else(|e| {
-                    warn!("filesystem_watchers write lock poisoned, recovering: {}", e);
-                    e.into_inner()
-                });
+            let mut watchers = self.watchers.write().unwrap_or_else(|e| {
+                warn!("filesystem_watchers write lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
             let before = watchers.len();
             watchers.retain(|_, w| w.owner != owner);
             let removed = before - watchers.len();

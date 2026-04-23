@@ -8,13 +8,12 @@ use dscode_dap::{DebugAdapterPool, DebugManager, SourceBreakpoint};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Register the debug adapter
     let pool = DebugAdapterPool::new();
-    pool
-        .register_adapter(
-            "cppdbg".to_string(),
-            "/usr/bin/gdb".to_string(),
-            vec!["--interpreter=dap".to_string()],
-        )
-        .await;
+    pool.register_adapter(
+        "cppdbg".to_string(),
+        "/usr/bin/gdb".to_string(),
+        vec!["--interpreter=dap".to_string()],
+    )
+    .await;
 
     // Create a debug session
     let manager = DebugManager::new();

@@ -45,7 +45,9 @@ impl TextBuffer {
     /// let buffer = TextBuffer::new("some text");
     /// ```
     pub fn new(content: &str) -> Self {
-        Self { rope: ropey::Rope::from_str(content) }
+        Self {
+            rope: ropey::Rope::from_str(content),
+        }
     }
 
     /// Get the full text content of the buffer as a [`String`].

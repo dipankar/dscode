@@ -5,24 +5,15 @@ use thiserror::Error;
 pub enum LspError {
     /// Failed to spawn a language server process.
     #[error("Failed to spawn language server for {language}: {reason}")]
-    SpawnFailed {
-        language: String,
-        reason: String,
-    },
+    SpawnFailed { language: String, reason: String },
 
     /// LSP initialize handshake failed.
     #[error("LSP handshake failed for {language}: {detail}")]
-    HandshakeFailed {
-        language: String,
-        detail: String,
-    },
+    HandshakeFailed { language: String, detail: String },
 
     /// An LSP request exceeded its timeout.
     #[error("LSP request timed out for {language} after {timeout_secs}s")]
-    RequestTimeout {
-        language: String,
-        timeout_secs: u64,
-    },
+    RequestTimeout { language: String, timeout_secs: u64 },
 
     /// The language server process exited unexpectedly.
     #[error("LSP server crashed: {language}")]

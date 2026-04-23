@@ -237,10 +237,7 @@ impl TerminalManager {
 
     // ===== Terminal Creation =====
 
-    pub fn create_terminal_with_options(
-        &self,
-        options: TerminalOptions,
-    ) -> Result<String, String> {
+    pub fn create_terminal_with_options(&self, options: TerminalOptions) -> Result<String, String> {
         // Resolve profile if specified
         let (shell_cmd, shell_args, mut env_vars, profile_cwd) =
             if let Some(profile_id) = &options.profile_id {
@@ -600,14 +597,20 @@ mod tests {
     fn test_list_terminals_on_empty_manager() {
         let manager = make_manager();
         let terminals = manager.list_terminals();
-        assert!(terminals.is_empty(), "list_terminals on empty manager should return empty vec");
+        assert!(
+            terminals.is_empty(),
+            "list_terminals on empty manager should return empty vec"
+        );
     }
 
     #[test]
     fn test_close_nonexistent_terminal() {
         let manager = make_manager();
         let result = manager.close_terminal("nonexistent-id");
-        assert!(result.is_err(), "Closing a nonexistent terminal should fail");
+        assert!(
+            result.is_err(),
+            "Closing a nonexistent terminal should fail"
+        );
         assert!(result.unwrap_err().contains("not found"));
     }
 
@@ -844,9 +847,21 @@ mod tests {
             profile_id: Some("default".to_string()),
         };
         let json = serde_json::to_string(&options).unwrap();
-        assert!(json.contains("shellPath"), "expected camelCase 'shellPath' in JSON: {}", json);
-        assert!(json.contains("shellArgs"), "expected camelCase 'shellArgs' in JSON: {}", json);
-        assert!(json.contains("profileId"), "expected camelCase 'profileId' in JSON: {}", json);
+        assert!(
+            json.contains("shellPath"),
+            "expected camelCase 'shellPath' in JSON: {}",
+            json
+        );
+        assert!(
+            json.contains("shellArgs"),
+            "expected camelCase 'shellArgs' in JSON: {}",
+            json
+        );
+        assert!(
+            json.contains("profileId"),
+            "expected camelCase 'profileId' in JSON: {}",
+            json
+        );
     }
 
     // ── TerminalProfile defaults ────────────────────────────────────────────────
@@ -907,7 +922,10 @@ mod tests {
         sender_ref.send_close("term-1");
 
         assert_eq!(sender.outputs.lock().unwrap().len(), 1);
-        assert_eq!(sender.outputs.lock().unwrap()[0], ("term-1".to_string(), "hello world".to_string()));
+        assert_eq!(
+            sender.outputs.lock().unwrap()[0],
+            ("term-1".to_string(), "hello world".to_string())
+        );
         assert_eq!(sender.closes.lock().unwrap().len(), 1);
         assert_eq!(sender.closes.lock().unwrap()[0], "term-1".to_string());
     }

@@ -1,7 +1,7 @@
-use dscode_core::AppDirectories;
-use dscode_extension_host::ExtensionHostError;
 use crate::marketplace;
 use crate::session::{ExtensionContribution, InstalledExtension, SessionManager};
+use dscode_core::AppDirectories;
+use dscode_extension_host::ExtensionHostError;
 use serde_json::Value;
 use std::sync::Arc;
 use tauri::State;
@@ -12,9 +12,7 @@ use tracing::info;
 // This command remains for compatibility with existing frontend calls.
 #[tauri::command]
 pub async fn start_extension_host() -> Result<(), String> {
-    info!(
-        "start_extension_host called - extension host is managed by SessionManager"
-    );
+    info!("start_extension_host called - extension host is managed by SessionManager");
     Ok(())
 }
 
@@ -23,7 +21,12 @@ pub fn get_extensions_dir(app_dirs: State<'_, AppDirectories>) -> Result<String,
     app_dirs
         .extensions_dir
         .to_str()
-        .ok_or_else(|| ExtensionHostError::ExtensionNotFound("Failed to convert extensions directory path to UTF-8 string".to_string()).to_string())
+        .ok_or_else(|| {
+            ExtensionHostError::ExtensionNotFound(
+                "Failed to convert extensions directory path to UTF-8 string".to_string(),
+            )
+            .to_string()
+        })
         .map(String::from)
 }
 

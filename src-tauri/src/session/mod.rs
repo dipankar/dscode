@@ -34,12 +34,12 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{oneshot, RwLock};
 use tokio::time::Duration;
 
+use configuration::ConfigurationStore;
 use dscode_core::AppDirectories;
 use dscode_dap::DebugAdapterPool;
 use dscode_extension_host::PathValidator;
 use dscode_extension_host::{ExtensionHostManager, IpcManager, SecretStorage};
 use dscode_lsp::{LspServerPool, LspServerStrategy};
-use configuration::ConfigurationStore;
 use tracing::{error, info, warn};
 
 /// STATE MACHINE: SessionLifecycle
@@ -479,8 +479,7 @@ impl SessionManager {
     const OUTPUT_CHANNEL_MAX_LINES: usize = 2000;
 
     pub fn new(
-        app_handle: AppHandle, app_dirs: AppDirectories,
-        path_validator: Arc<RwLock<PathValidator>>,
+        app_handle: AppHandle, app_dirs: AppDirectories, path_validator: Arc<RwLock<PathValidator>>,
     ) -> Self {
         let state = Arc::new(RwLock::new(SessionState {
             workspace_folders: Vec::new(),
@@ -555,10 +554,7 @@ impl SessionManager {
             *lifecycle = to;
             Ok(())
         } else {
-            let msg = format!(
-                "Invalid lifecycle transition: {:?} -> {:?}",
-                *lifecycle, to
-            );
+            let msg = format!("Invalid lifecycle transition: {:?} -> {:?}", *lifecycle, to);
             error!("{}", msg);
             Err(msg)
         }

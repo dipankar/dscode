@@ -4,7 +4,8 @@
 //! TerminalEventSender trait, TerminalProfile, and TerminalOptions.
 
 use dscode_terminal::{
-    TerminalEventSender, TerminalInfo, TerminalManager, TerminalOptions, TerminalProfile, TerminalState,
+    TerminalEventSender, TerminalInfo, TerminalManager, TerminalOptions, TerminalProfile,
+    TerminalState,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -84,9 +85,18 @@ fn test_mock_sender_records_output() {
     assert_eq!(sender.get_closes().len(), 0);
 
     let outputs = sender.get_outputs();
-    assert_eq!(outputs[0], ("term-1".to_string(), "Hello, World!".to_string()));
-    assert_eq!(outputs[1], ("term-1".to_string(), "Second line".to_string()));
-    assert_eq!(outputs[2], ("term-2".to_string(), "Other terminal".to_string()));
+    assert_eq!(
+        outputs[0],
+        ("term-1".to_string(), "Hello, World!".to_string())
+    );
+    assert_eq!(
+        outputs[1],
+        ("term-1".to_string(), "Second line".to_string())
+    );
+    assert_eq!(
+        outputs[2],
+        ("term-2".to_string(), "Other terminal".to_string())
+    );
 }
 
 #[test]
@@ -455,9 +465,21 @@ fn test_terminal_options_camel_case_serialization() {
 
     let json = serde_json::to_string(&options).unwrap();
     // With #[serde(rename_all = "camelCase")], keys should be camelCase
-    assert!(json.contains("shellPath"), "Expected camelCase 'shellPath' in JSON: {}", json);
-    assert!(json.contains("shellArgs"), "Expected camelCase 'shellArgs' in JSON: {}", json);
-    assert!(json.contains("profileId"), "Expected camelCase 'profileId' in JSON: {}", json);
+    assert!(
+        json.contains("shellPath"),
+        "Expected camelCase 'shellPath' in JSON: {}",
+        json
+    );
+    assert!(
+        json.contains("shellArgs"),
+        "Expected camelCase 'shellArgs' in JSON: {}",
+        json
+    );
+    assert!(
+        json.contains("profileId"),
+        "Expected camelCase 'profileId' in JSON: {}",
+        json
+    );
 }
 
 // ── Cross-component integration: profiles + options ──────────────────────────

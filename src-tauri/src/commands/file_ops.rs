@@ -21,7 +21,9 @@ pub struct FileSearchResult {
     pub node_type: String,
 }
 
-fn validate_path_sync(path: &str, validator: &PathValidator) -> Result<std::path::PathBuf, CoreError> {
+fn validate_path_sync(
+    path: &str, validator: &PathValidator,
+) -> Result<std::path::PathBuf, CoreError> {
     validator.validate_file_path(path).map_err(CoreError::PathResolution)
 }
 
@@ -118,11 +120,7 @@ pub async fn read_directory(
                 let node = FileNode {
                     name: name.to_string(),
                     path: path_str_inner,
-                    node_type: if is_dir {
-                        "directory".to_string()
-                    } else {
-                        "file".to_string()
-                    },
+                    node_type: if is_dir { "directory".to_string() } else { "file".to_string() },
                     children: None,
                 };
                 nodes.push(node);

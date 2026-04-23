@@ -95,10 +95,7 @@ impl DebugConfigurationRegistry {
         let id = provider.id.clone();
         providers.push(provider.clone());
 
-        info!(
-            "Registered configuration provider: {} (type: {})",
-            id, provider.debug_type
-        );
+        info!("Registered configuration provider: {} (type: {})", id, provider.debug_type);
 
         Ok(id)
     }
@@ -123,13 +120,10 @@ impl DebugConfigurationRegistry {
     pub fn get_debug_configuration_providers(
         &self, debug_type: &str,
     ) -> Vec<DebugConfigurationProvider> {
-        let providers = self
-            .configuration_providers
-            .read()
-            .unwrap_or_else(|e| {
-                warn!("debug_configuration_providers read lock poisoned, recovering: {}", e);
-                e.into_inner()
-            });
+        let providers = self.configuration_providers.read().unwrap_or_else(|e| {
+            warn!("debug_configuration_providers read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         providers.iter().filter(|p| p.debug_type == debug_type).cloned().collect()
     }
 
@@ -142,10 +136,7 @@ impl DebugConfigurationRegistry {
         let id = factory.id.clone();
         factories.push(factory.clone());
 
-        info!(
-            "Registered adapter descriptor factory: {} (type: {})",
-            id, factory.debug_type
-        );
+        info!("Registered adapter descriptor factory: {} (type: {})", id, factory.debug_type);
 
         Ok(id)
     }
@@ -172,13 +163,10 @@ impl DebugConfigurationRegistry {
     pub fn get_debug_adapter_descriptor_factories(
         &self, debug_type: &str,
     ) -> Vec<DebugAdapterDescriptorFactory> {
-        let factories = self
-            .descriptor_factories
-            .read()
-            .unwrap_or_else(|e| {
-                warn!("debug_descriptor_factories read lock poisoned, recovering: {}", e);
-                e.into_inner()
-            });
+        let factories = self.descriptor_factories.read().unwrap_or_else(|e| {
+            warn!("debug_descriptor_factories read lock poisoned, recovering: {}", e);
+            e.into_inner()
+        });
         factories.iter().filter(|f| f.debug_type == debug_type).cloned().collect()
     }
 
@@ -221,41 +209,29 @@ impl DebugConfigurationRegistry {
     pub fn clear_debug_configuration_data(&self, owner: &str) {
         // Clear configuration providers
         {
-            let mut providers = self
-                .configuration_providers
-                .write()
-                .unwrap_or_else(|e| {
-                    warn!("debug_configuration_providers write lock poisoned, recovering: {}", e);
-                    e.into_inner()
-                });
+            let mut providers = self.configuration_providers.write().unwrap_or_else(|e| {
+                warn!("debug_configuration_providers write lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
             let before = providers.len();
             providers.retain(|p| p.owner != owner);
             let removed = before - providers.len();
             if removed > 0 {
-                info!(
-                    "Cleared {} configuration provider(s) for owner: {}",
-                    removed, owner
-                );
+                info!("Cleared {} configuration provider(s) for owner: {}", removed, owner);
             }
         }
 
         // Clear descriptor factories
         {
-            let mut factories = self
-                .descriptor_factories
-                .write()
-                .unwrap_or_else(|e| {
-                    warn!("debug_descriptor_factories write lock poisoned, recovering: {}", e);
-                    e.into_inner()
-                });
+            let mut factories = self.descriptor_factories.write().unwrap_or_else(|e| {
+                warn!("debug_descriptor_factories write lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
             let before = factories.len();
             factories.retain(|f| f.owner != owner);
             let removed = before - factories.len();
             if removed > 0 {
-                info!(
-                    "Cleared {} adapter descriptor factory(ies) for owner: {}",
-                    removed, owner
-                );
+                info!("Cleared {} adapter descriptor factory(ies) for owner: {}", removed, owner);
             }
         }
     }

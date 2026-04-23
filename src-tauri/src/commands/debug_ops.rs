@@ -13,29 +13,33 @@ pub async fn create_debug_session(
     name: String, adapter_type: String,
 ) -> Result<String, String> {
     let session_id = {
-        let manager = debug_manager.lock().map_err(|e| {
-            DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-        })?;
+        let manager = debug_manager
+            .lock()
+            .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
         manager.create_session(name, adapter_type).map_err(|e| e.to_string())?
     };
 
     let session = {
-        let manager = debug_manager.lock().map_err(|e| {
-            DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-        })?;
+        let manager = debug_manager
+            .lock()
+            .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
         manager.get_session(&session_id).map_err(|e| e.to_string())?
     };
 
     let pool = debug_pool.read().await;
     let adapter = pool.create_session(session).await.map_err(|e| e.to_string())?;
 
-    adapter.initialize().await.map_err(|e| DapError::Protocol(format!("Failed to initialize debug adapter: {}", e)).to_string())?;
+    adapter.initialize().await.map_err(|e| {
+        DapError::Protocol(format!("Failed to initialize debug adapter: {}", e)).to_string()
+    })?;
 
     {
-        let manager = debug_manager.lock().map_err(|e| {
-            DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-        })?;
-        manager.update_session_state(&session_id, DebugState::Initialized).map_err(|e| e.to_string())?;
+        let manager = debug_manager
+            .lock()
+            .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
+        manager
+            .update_session_state(&session_id, DebugState::Initialized)
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(session_id)
@@ -45,9 +49,9 @@ pub async fn create_debug_session(
 pub fn get_debug_session(
     debug_manager: State<Mutex<DebugManager>>, session_id: String,
 ) -> Result<DebugSession, String> {
-    let manager = debug_manager.lock().map_err(|e| {
-        DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-    })?;
+    let manager = debug_manager
+        .lock()
+        .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
     manager.get_session(&session_id).map_err(|e| e.to_string())
 }
 
@@ -55,9 +59,9 @@ pub fn get_debug_session(
 pub fn list_debug_sessions(
     debug_manager: State<Mutex<DebugManager>>,
 ) -> Result<Vec<DebugSession>, String> {
-    let manager = debug_manager.lock().map_err(|e| {
-        DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-    })?;
+    let manager = debug_manager
+        .lock()
+        .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
     manager.list_sessions().map_err(|e| e.to_string())
 }
 
@@ -69,14 +73,22 @@ pub async fn start_debugging(
     let pool = debug_pool.read().await;
 
     if let Some(adapter) = pool.get_adapter(&session_id).await {
-        adapter.launch(serde_json::to_value(config).map_err(|e| DapError::Protocol(e.to_string()).to_string())?).await.map_err(|e| e.to_string())?;
+        adapter
+            .launch(
+                serde_json::to_value(config)
+                    .map_err(|e| DapError::Protocol(e.to_string()).to_string())?,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
     {
-        let manager = debug_manager.lock().map_err(|e| {
-            DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-        })?;
-        manager.update_session_state(&session_id, DebugState::Running).map_err(|e| e.to_string())?;
+        let manager = debug_manager
+            .lock()
+            .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
+        manager
+            .update_session_state(&session_id, DebugState::Running)
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -95,9 +107,9 @@ pub async fn pause_debugging(
     }
 
     {
-        let manager = debug_manager.lock().map_err(|e| {
-            DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-        })?;
+        let manager = debug_manager
+            .lock()
+            .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
         manager.update_session_state(&session_id, DebugState::Paused).map_err(|e| e.to_string())?;
     }
 
@@ -117,10 +129,12 @@ pub async fn continue_debugging(
     }
 
     {
-        let manager = debug_manager.lock().map_err(|e| {
-            DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-        })?;
-        manager.update_session_state(&session_id, DebugState::Running).map_err(|e| e.to_string())?;
+        let manager = debug_manager
+            .lock()
+            .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
+        manager
+            .update_session_state(&session_id, DebugState::Running)
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -144,9 +158,9 @@ pub async fn stop_debugging(
     }
 
     {
-        let manager = debug_manager.lock().map_err(|e| {
-            DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-        })?;
+        let manager = debug_manager
+            .lock()
+            .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
         manager.terminate_session(&session_id).map_err(|e| e.to_string())?;
     }
 
@@ -155,8 +169,8 @@ pub async fn stop_debugging(
 
 #[tauri::command]
 pub async fn step_over(
-    _debug_manager: State<'_, Mutex<DebugManager>>, debug_pool: State<'_, RwLock<DebugAdapterPool>>,
-    session_id: String,
+    _debug_manager: State<'_, Mutex<DebugManager>>,
+    debug_pool: State<'_, RwLock<DebugAdapterPool>>, session_id: String,
 ) -> Result<(), String> {
     let pool = debug_pool.read().await;
 
@@ -170,8 +184,8 @@ pub async fn step_over(
 
 #[tauri::command]
 pub async fn step_into(
-    _debug_manager: State<'_, Mutex<DebugManager>>, debug_pool: State<'_, RwLock<DebugAdapterPool>>,
-    session_id: String,
+    _debug_manager: State<'_, Mutex<DebugManager>>,
+    debug_pool: State<'_, RwLock<DebugAdapterPool>>, session_id: String,
 ) -> Result<(), String> {
     let pool = debug_pool.read().await;
 
@@ -185,8 +199,8 @@ pub async fn step_into(
 
 #[tauri::command]
 pub async fn step_out(
-    _debug_manager: State<'_, Mutex<DebugManager>>, debug_pool: State<'_, RwLock<DebugAdapterPool>>,
-    session_id: String,
+    _debug_manager: State<'_, Mutex<DebugManager>>,
+    debug_pool: State<'_, RwLock<DebugAdapterPool>>, session_id: String,
 ) -> Result<(), String> {
     let pool = debug_pool.read().await;
 
@@ -203,9 +217,9 @@ pub fn set_breakpoints(
     debug_manager: State<Mutex<DebugManager>>, file_path: String,
     breakpoints: Vec<SourceBreakpoint>,
 ) -> Result<(), String> {
-    let manager = debug_manager.lock().map_err(|e| {
-        DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-    })?;
+    let manager = debug_manager
+        .lock()
+        .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
     manager.set_breakpoints(file_path, breakpoints).map_err(|e| e.to_string())
 }
 
@@ -213,9 +227,9 @@ pub fn set_breakpoints(
 pub fn get_breakpoints(
     debug_manager: State<Mutex<DebugManager>>, file_path: String,
 ) -> Result<Vec<Breakpoint>, String> {
-    let manager = debug_manager.lock().map_err(|e| {
-        DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-    })?;
+    let manager = debug_manager
+        .lock()
+        .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
     manager.get_breakpoints(&file_path).map_err(|e| e.to_string())
 }
 
@@ -223,9 +237,9 @@ pub fn get_breakpoints(
 pub fn clear_breakpoints(
     debug_manager: State<Mutex<DebugManager>>, file_path: String,
 ) -> Result<(), String> {
-    let manager = debug_manager.lock().map_err(|e| {
-        DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-    })?;
+    let manager = debug_manager
+        .lock()
+        .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
     manager.clear_breakpoints(&file_path).map_err(|e| e.to_string())
 }
 
@@ -233,8 +247,8 @@ pub fn clear_breakpoints(
 pub fn get_all_breakpoints(
     debug_manager: State<Mutex<DebugManager>>,
 ) -> Result<std::collections::HashMap<String, Vec<Breakpoint>>, String> {
-    let manager = debug_manager.lock().map_err(|e| {
-        DapError::Io(format!("Failed to acquire debug manager lock: {}", e))
-    })?;
+    let manager = debug_manager
+        .lock()
+        .map_err(|e| DapError::Io(format!("Failed to acquire debug manager lock: {}", e)))?;
     manager.get_all_breakpoints().map_err(|e| e.to_string())
 }

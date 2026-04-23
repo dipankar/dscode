@@ -88,7 +88,10 @@ impl AppDirectories {
             .or_else(|| user_paths.extensions.clone())
             .unwrap_or_else(default_extensions_dir);
 
-        let storage_pref = user_paths.storage.clone().unwrap_or_else(default_storage_dir);
+        let storage_pref = user_paths
+            .storage
+            .clone()
+            .unwrap_or_else(default_storage_dir);
 
         let logs_pref = user_paths.logs.clone().unwrap_or_else(default_logs_dir);
 
@@ -109,7 +112,9 @@ impl AppDirectories {
 }
 
 fn resolve_env_extensions_dir() -> Option<PathBuf> {
-    std::env::var("DSCODE_EXTENSIONS_DIR").ok().map(PathBuf::from)
+    std::env::var("DSCODE_EXTENSIONS_DIR")
+        .ok()
+        .map(PathBuf::from)
 }
 
 fn resolve_user_config_dirs() -> UserConfiguredPaths {
@@ -121,7 +126,11 @@ fn resolve_user_config_dirs() -> UserConfiguredPaths {
                     extract_path(&value, &["extensionsDir", "extensions_dir"], Some("paths"));
                 let storage = extract_path(&value, &["storageDir", "storage_dir"], Some("paths"));
                 let logs = extract_path(&value, &["logsDir", "logs_dir"], Some("paths"));
-                return UserConfiguredPaths { extensions, storage, logs };
+                return UserConfiguredPaths {
+                    extensions,
+                    storage,
+                    logs,
+                };
             }
         }
     }
@@ -228,20 +237,33 @@ mod tests {
         assert!(dirs.is_ok(), "AppDirectories::resolve() should succeed");
 
         let dirs = dirs.unwrap();
-        assert!(dirs.extensions_dir.to_string_lossy().contains("dscode") || dirs.extensions_dir.to_string_lossy().contains("DSCode"));
-        assert!(dirs.storage_dir.to_string_lossy().contains("dscode") || dirs.storage_dir.to_string_lossy().contains("DSCode"));
-        assert!(dirs.logs_dir.to_string_lossy().contains("dscode") || dirs.logs_dir.to_string_lossy().contains("DSCode"));
+        assert!(
+            dirs.extensions_dir.to_string_lossy().contains("dscode")
+                || dirs.extensions_dir.to_string_lossy().contains("DSCode")
+        );
+        assert!(
+            dirs.storage_dir.to_string_lossy().contains("dscode")
+                || dirs.storage_dir.to_string_lossy().contains("DSCode")
+        );
+        assert!(
+            dirs.logs_dir.to_string_lossy().contains("dscode")
+                || dirs.logs_dir.to_string_lossy().contains("DSCode")
+        );
     }
 
     #[test]
     fn test_env_override_extensions_dir() {
         let _lock = ENV_TEST_MUTEX.lock().unwrap();
-        let custom_dir = std::env::temp_dir().join(format!("dscode-test-ext-{}", std::process::id()));
+        let custom_dir =
+            std::env::temp_dir().join(format!("dscode-test-ext-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&custom_dir);
 
         std::env::set_var("DSCODE_EXTENSIONS_DIR", &custom_dir);
         let dirs = AppDirectories::resolve().expect("resolve should work with env override");
-        assert!(dirs.extensions_dir.starts_with(&custom_dir) || dirs.extensions_dir == canonicalize_or_original(custom_dir.clone()));
+        assert!(
+            dirs.extensions_dir.starts_with(&custom_dir)
+                || dirs.extensions_dir == canonicalize_or_original(custom_dir.clone())
+        );
 
         std::env::remove_var("DSCODE_EXTENSIONS_DIR");
         let _ = std::fs::remove_dir_all(&custom_dir);
@@ -250,11 +272,13 @@ mod tests {
     #[test]
     fn test_env_override_set_resolve_clear() {
         let _lock = ENV_TEST_MUTEX.lock().unwrap();
-        let custom_dir = std::env::temp_dir().join(format!("dscode-test-cycle-{}", std::process::id()));
+        let custom_dir =
+            std::env::temp_dir().join(format!("dscode-test-cycle-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&custom_dir);
 
         std::env::set_var("DSCODE_EXTENSIONS_DIR", &custom_dir);
-        let dirs_with_env = AppDirectories::resolve().expect("resolve should work with env override");
+        let dirs_with_env =
+            AppDirectories::resolve().expect("resolve should work with env override");
         assert!(
             dirs_with_env.extensions_dir.starts_with(&custom_dir)
                 || dirs_with_env.extensions_dir == canonicalize_or_original(custom_dir.clone()),
@@ -262,7 +286,8 @@ mod tests {
         );
 
         std::env::remove_var("DSCODE_EXTENSIONS_DIR");
-        let dirs_without_env = AppDirectories::resolve().expect("resolve should work without env override");
+        let dirs_without_env =
+            AppDirectories::resolve().expect("resolve should work without env override");
         assert!(
             !dirs_without_env.extensions_dir.starts_with(&custom_dir),
             "Extensions dir should revert to default after clearing env"
@@ -275,26 +300,42 @@ mod tests {
     fn test_resolve_creates_directories() {
         // resolve() should create the directories if they don't exist
         let dirs = AppDirectories::resolve().unwrap();
-        assert!(dirs.extensions_dir.exists(), "extensions_dir should exist after resolve");
-        assert!(dirs.storage_dir.exists(), "storage_dir should exist after resolve");
-        assert!(dirs.logs_dir.exists(), "logs_dir should exist after resolve");
+        assert!(
+            dirs.extensions_dir.exists(),
+            "extensions_dir should exist after resolve"
+        );
+        assert!(
+            dirs.storage_dir.exists(),
+            "storage_dir should exist after resolve"
+        );
+        assert!(
+            dirs.logs_dir.exists(),
+            "logs_dir should exist after resolve"
+        );
     }
 
     #[test]
     fn test_normalize_path_tilde() {
         // Tilde should expand to the home directory
         let expanded = normalize_path(PathBuf::from("~")).unwrap();
-        assert!(!expanded.to_string_lossy().starts_with('~'), "Tilde should be expanded");
+        assert!(
+            !expanded.to_string_lossy().starts_with('~'),
+            "Tilde should be expanded"
+        );
 
         let expanded_prefix = normalize_path(PathBuf::from("~/subdir")).unwrap();
-        assert!(!expanded_prefix.to_string_lossy().starts_with('~'), "Tilde prefix should be expanded");
+        assert!(
+            !expanded_prefix.to_string_lossy().starts_with('~'),
+            "Tilde prefix should be expanded"
+        );
         assert!(expanded_prefix.to_string_lossy().contains("subdir"));
     }
 
     #[test]
     fn test_extract_path_from_nested_json() {
         // extract_path should find keys in scoped objects
-        let value: Value = serde_json::from_str(r#"{"paths": {"extensionsDir": "/custom/ext"}}"#).unwrap();
+        let value: Value =
+            serde_json::from_str(r#"{"paths": {"extensionsDir": "/custom/ext"}}"#).unwrap();
         let result = extract_path(&value, &["extensionsDir", "extensions_dir"], Some("paths"));
         assert_eq!(result, Some(PathBuf::from("/custom/ext")));
 
@@ -313,6 +354,10 @@ mod tests {
     fn test_default_base_dir_contains_dscode() {
         let base = default_base_dir();
         let base_str = base.to_string_lossy();
-        assert!(base_str.contains("dscode"), "Default base dir should contain 'dscode': {:?}", base);
+        assert!(
+            base_str.contains("dscode"),
+            "Default base dir should contain 'dscode': {:?}",
+            base
+        );
     }
 }

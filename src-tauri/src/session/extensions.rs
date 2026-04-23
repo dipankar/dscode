@@ -79,10 +79,7 @@ impl SessionManager {
             if path.is_dir() {
                 match self.read_extension_manifest(&path) {
                     Ok(info) => extensions.push(info),
-                    Err(e) => warn!(
-                        "Failed to read extension manifest at {:?}: {}",
-                        path, e
-                    ),
+                    Err(e) => warn!("Failed to read extension manifest at {:?}: {}", path, e),
                 }
             }
         }
@@ -478,10 +475,7 @@ impl SessionManager {
 
         let storage_dir = self.app_dirs.storage_dir.join(extension_id);
         if let Err(e) = remove_dir_if_exists(&storage_dir) {
-            error!(
-                "[SessionManager] Failed to delete storage directory {:?}: {}",
-                storage_dir, e
-            );
+            error!("[SessionManager] Failed to delete storage directory {:?}: {}", storage_dir, e);
         }
 
         let logs_dir = self.app_dirs.logs_dir.join(extension_id);
@@ -819,7 +813,8 @@ fn remove_dir_if_exists(path: &Path) -> Result<(), std::io::Error> {
 
 /// Computes the SHA256 hash of a file and returns the hex-encoded digest.
 fn compute_file_hash(path: &Path) -> Result<String, String> {
-    let mut file = fs::File::open(path).map_err(|e| format!("Failed to open file for hashing: {}", e))?;
+    let mut file =
+        fs::File::open(path).map_err(|e| format!("Failed to open file for hashing: {}", e))?;
     let mut hasher = Sha256::new();
     io::copy(&mut file, &mut hasher).map_err(|e| format!("Failed to compute hash: {}", e))?;
     Ok(format!("{:x}", hasher.finalize()))
@@ -850,7 +845,8 @@ fn parse_vsix_manifest_xml(xml: &str) -> Result<VsixManifestIdentity, String> {
 
                 if current_name_matches(&local_name, "Identity") {
                     for attr_result in e.attributes() {
-                        let attr = attr_result.map_err(|e| format!("Failed to parse XML attribute: {}", e))?;
+                        let attr = attr_result
+                            .map_err(|e| format!("Failed to parse XML attribute: {}", e))?;
                         let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
                         let value = String::from_utf8_lossy(&attr.value).to_string();
                         match key.as_str() {
@@ -870,8 +866,10 @@ fn parse_vsix_manifest_xml(xml: &str) -> Result<VsixManifestIdentity, String> {
     }
 
     let id = id.ok_or("Missing 'Id' attribute in Identity element of vsixmanifest")?;
-    let version = version.ok_or("Missing 'Version' attribute in Identity element of vsixmanifest")?;
-    let publisher = publisher.ok_or("Missing 'Publisher' attribute in Identity element of vsixmanifest")?;
+    let version =
+        version.ok_or("Missing 'Version' attribute in Identity element of vsixmanifest")?;
+    let publisher =
+        publisher.ok_or("Missing 'Publisher' attribute in Identity element of vsixmanifest")?;
 
     Ok(VsixManifestIdentity { id, version, publisher })
 }
@@ -887,8 +885,7 @@ fn current_name_matches(tag: &str, expected: &str) -> bool {
 /// 2. That the manifest XML contains a valid `<Identity>` element with publisher, id, version
 /// 3. That the extracted `package.json` matches the manifest identity
 fn verify_vsix_manifest(
-    archive: &mut ZipArchive<fs::File>,
-    extracted_dir: &Path,
+    archive: &mut ZipArchive<fs::File>, extracted_dir: &Path,
 ) -> Result<(), String> {
     // 1. Locate and read extension.vsixmanifest from the archive
     let manifest_xml = {
@@ -896,7 +893,8 @@ fn verify_vsix_manifest(
             .by_name("extension.vsixmanifest")
             .map_err(|e| format!("extension.vsixmanifest not found in archive: {}", e))?;
         let mut contents = String::new();
-        manifest_file.read_to_string(&mut contents)
+        manifest_file
+            .read_to_string(&mut contents)
             .map_err(|e| format!("Failed to read extension.vsixmanifest: {}", e))?;
         contents
     };
@@ -1033,10 +1031,7 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
                 if parent.exists() {
                     if let Ok(canonical_parent) = fs::canonicalize(parent) {
                         if !canonical_parent.starts_with(&canonical_install) {
-                            warn!(
-                                "Skipping path outside install dir: {}",
-                                relative_path
-                            );
+                            warn!("Skipping path outside install dir: {}", relative_path);
                             continue;
                         }
                     }
@@ -1049,10 +1044,7 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
                             std::path::Component::ParentDir => {
                                 depth -= 1;
                                 if depth < 0 {
-                                    warn!(
-                                        "Skipping path with traversal: {}",
-                                        relative_path
-                                    );
+                                    warn!("Skipping path with traversal: {}", relative_path);
                                     continue;
                                 }
                             }
@@ -1073,11 +1065,7 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
                 // Enforce maximum single file size of 500MB
                 const MAX_SINGLE_FILE_SIZE: u64 = 500 * 1024 * 1024;
                 if file.size() > MAX_SINGLE_FILE_SIZE {
-                    warn!(
-                        "Skipping oversized file: {} ({} bytes)",
-                        relative_path,
-                        file.size()
-                    );
+                    warn!("Skipping oversized file: {} ({} bytes)", relative_path, file.size());
                     continue;
                 }
 
@@ -1098,10 +1086,10 @@ fn install_vsix(vsix_path: String, extensions_root: PathBuf) -> Result<Installed
         );
     } else {
         // Re-open the archive for manifest verification (the previous archive was consumed during extraction)
-        let verify_file =
-            fs::File::open(&vsix_path).map_err(|e| format!("Failed to reopen .vsix for verification: {}", e))?;
-        let mut verify_archive =
-            ZipArchive::new(verify_file).map_err(|e| format!("Failed to read .vsix archive for verification: {}", e))?;
+        let verify_file = fs::File::open(&vsix_path)
+            .map_err(|e| format!("Failed to reopen .vsix for verification: {}", e))?;
+        let mut verify_archive = ZipArchive::new(verify_file)
+            .map_err(|e| format!("Failed to read .vsix archive for verification: {}", e))?;
 
         verify_vsix_manifest(&mut verify_archive, &install_path)?;
     }

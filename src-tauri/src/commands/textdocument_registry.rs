@@ -153,9 +153,10 @@ impl TextDocumentRegistry {
 
     /// Register a text document
     pub fn register_text_document(&self, document: TextDocument) -> Result<(), CoreError> {
-        let mut documents = self.documents.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut documents = self
+            .documents
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let uri = document.uri.clone();
         documents.insert(uri.clone(), document.clone());
@@ -172,9 +173,10 @@ impl TextDocumentRegistry {
 
     /// Unregister a text document
     pub fn unregister_text_document(&self, uri: &str) -> Result<(), CoreError> {
-        let mut documents = self.documents.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut documents = self
+            .documents
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let document = documents
             .remove(uri)
@@ -194,9 +196,10 @@ impl TextDocumentRegistry {
     pub fn update_text_document(
         &self, uri: &str, version: u64, content_changes: Vec<TextDocumentContentChange>,
     ) -> Result<(), CoreError> {
-        let mut documents = self.documents.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut documents = self
+            .documents
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let document = documents
             .get_mut(uri)
@@ -217,9 +220,10 @@ impl TextDocumentRegistry {
 
     /// Mark document as saved
     pub fn mark_document_saved(&self, uri: &str) -> Result<(), CoreError> {
-        let mut documents = self.documents.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut documents = self
+            .documents
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let document = documents
             .get_mut(uri)
@@ -237,9 +241,10 @@ impl TextDocumentRegistry {
 
     /// Get text document
     pub fn get_text_document(&self, uri: &str) -> Result<TextDocument, CoreError> {
-        let documents = self.documents.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let documents = self
+            .documents
+            .read()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         documents
             .get(uri)
@@ -258,9 +263,10 @@ impl TextDocumentRegistry {
 
     /// Register text editor
     pub fn register_text_editor(&self, editor: TextEditor) -> Result<(), CoreError> {
-        let mut editors = self.editors.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut editors = self
+            .editors
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let id = editor.id.clone();
         editors.insert(id.clone(), editor.clone());
@@ -277,9 +283,10 @@ impl TextDocumentRegistry {
 
     /// Unregister text editor
     pub fn unregister_text_editor(&self, editor_id: &str) -> Result<(), CoreError> {
-        let mut editors = self.editors.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut editors = self
+            .editors
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         editors
             .remove(editor_id)
@@ -294,9 +301,10 @@ impl TextDocumentRegistry {
     pub fn update_editor_selections(
         &self, editor_id: &str, selections: Vec<Selection>,
     ) -> Result<(), CoreError> {
-        let mut editors = self.editors.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut editors = self
+            .editors
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let editor = editors
             .get_mut(editor_id)
@@ -316,9 +324,10 @@ impl TextDocumentRegistry {
     pub fn update_editor_visible_ranges(
         &self, editor_id: &str, visible_ranges: Vec<Range>,
     ) -> Result<(), CoreError> {
-        let mut editors = self.editors.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut editors = self
+            .editors
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let editor = editors
             .get_mut(editor_id)
@@ -337,9 +346,8 @@ impl TextDocumentRegistry {
 
     /// Get text editor
     pub fn get_text_editor(&self, editor_id: &str) -> Result<TextEditor, CoreError> {
-        let editors = self.editors.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let editors =
+            self.editors.read().map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         editors
             .get(editor_id)
@@ -360,9 +368,10 @@ impl TextDocumentRegistry {
     pub fn create_decoration_type(
         &self, decoration_type: DecorationType,
     ) -> Result<String, CoreError> {
-        let mut decoration_types = self.decoration_types.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut decoration_types = self
+            .decoration_types
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let id = decoration_type.id.clone();
         decoration_types.insert(id.clone(), decoration_type);
@@ -374,18 +383,20 @@ impl TextDocumentRegistry {
 
     /// Dispose decoration type
     pub fn dispose_decoration_type(&self, decoration_type_id: &str) -> Result<(), CoreError> {
-        let mut decoration_types = self.decoration_types.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut decoration_types = self
+            .decoration_types
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         decoration_types.remove(decoration_type_id).ok_or_else(|| {
             CoreError::Config(format!("Decoration type not found: {}", decoration_type_id))
         })?;
 
         // Also remove all decorations of this type
-        let mut decorations = self.decorations.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut decorations = self
+            .decorations
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
         for decoration_list in decorations.values_mut() {
             decoration_list.retain(|d| d.decoration_type != decoration_type_id);
         }
@@ -399,9 +410,10 @@ impl TextDocumentRegistry {
     pub fn set_editor_decorations(
         &self, editor_id: &str, decoration_type_id: &str, ranges: Vec<Range>, owner: &str,
     ) -> Result<(), CoreError> {
-        let mut decorations = self.decorations.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut decorations = self
+            .decorations
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let editor_decorations = decorations.entry(editor_id.to_string()).or_insert_with(Vec::new);
 
@@ -441,29 +453,24 @@ impl TextDocumentRegistry {
     pub fn clear_textdocument_data(&self, owner: &str) {
         // Clear decoration types
         {
-            let mut decoration_types =
-                self.decoration_types.write().unwrap_or_else(|e| {
-                    warn!("decoration_types write lock poisoned, recovering: {}", e);
-                    e.into_inner()
-                });
+            let mut decoration_types = self.decoration_types.write().unwrap_or_else(|e| {
+                warn!("decoration_types write lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
             let before = decoration_types.len();
             decoration_types.retain(|_, dt| dt.owner != owner);
             let removed = before - decoration_types.len();
             if removed > 0 {
-                info!(
-                    "Cleared {} decoration type(s) for owner: {}",
-                    removed, owner
-                );
+                info!("Cleared {} decoration type(s) for owner: {}", removed, owner);
             }
         }
 
         // Clear decorations
         {
-            let mut decorations =
-                self.decorations.write().unwrap_or_else(|e| {
-                    warn!("decorations write lock poisoned, recovering: {}", e);
-                    e.into_inner()
-                });
+            let mut decorations = self.decorations.write().unwrap_or_else(|e| {
+                warn!("decorations write lock poisoned, recovering: {}", e);
+                e.into_inner()
+            });
             let mut total_removed = 0;
             for decoration_list in decorations.values_mut() {
                 let before = decoration_list.len();
@@ -471,10 +478,7 @@ impl TextDocumentRegistry {
                 total_removed += before - decoration_list.len();
             }
             if total_removed > 0 {
-                info!(
-                    "Cleared {} decoration(s) for owner: {}",
-                    total_removed, owner
-                );
+                info!("Cleared {} decoration(s) for owner: {}", total_removed, owner);
             }
         }
     }

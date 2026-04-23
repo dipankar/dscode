@@ -25,8 +25,12 @@ impl DebugManager {
 
     pub fn create_session(&self, name: String, adapter_type: String) -> Result<String, String> {
         let session_id = Uuid::new_v4().to_string();
-        let session =
-            DebugSession { id: session_id.clone(), name, state: DebugState::Stopped, adapter_type };
+        let session = DebugSession {
+            id: session_id.clone(),
+            name,
+            state: DebugState::Stopped,
+            adapter_type,
+        };
 
         let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
         sessions.insert(session_id.clone(), session);
@@ -37,7 +41,10 @@ impl DebugManager {
 
     pub fn get_session(&self, session_id: &str) -> Result<DebugSession, String> {
         let sessions = self.sessions.lock().map_err(|e| e.to_string())?;
-        sessions.get(session_id).cloned().ok_or_else(|| format!("Session {} not found", session_id))
+        sessions
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| format!("Session {} not found", session_id))
     }
 
     pub fn list_sessions(&self) -> Result<Vec<DebugSession>, String> {
@@ -64,7 +71,9 @@ impl DebugManager {
     }
 
     pub fn set_breakpoints(
-        &self, file_path: String, breakpoints: Vec<SourceBreakpoint>,
+        &self,
+        file_path: String,
+        breakpoints: Vec<SourceBreakpoint>,
     ) -> Result<(), String> {
         // Convert SourceBreakpoint to Breakpoint
         let converted_bps: Vec<Breakpoint> = breakpoints
@@ -155,8 +164,12 @@ mod tests {
         assert!(manager.list_sessions().unwrap().is_empty());
 
         // Create multiple sessions
-        let id1 = manager.create_session("S1".to_string(), "cppdbg".to_string()).unwrap();
-        let id2 = manager.create_session("S2".to_string(), "python".to_string()).unwrap();
+        let id1 = manager
+            .create_session("S1".to_string(), "cppdbg".to_string())
+            .unwrap();
+        let id2 = manager
+            .create_session("S2".to_string(), "python".to_string())
+            .unwrap();
 
         let sessions = manager.list_sessions().unwrap();
         assert_eq!(sessions.len(), 2);
@@ -258,7 +271,10 @@ mod tests {
     fn test_debug_manager_get_breakpoints_missing_file() {
         let manager = DebugManager::new();
         let result = manager.get_breakpoints("/nonexistent/file.rs").unwrap();
-        assert!(result.is_empty(), "Missing file should return empty breakpoints");
+        assert!(
+            result.is_empty(),
+            "Missing file should return empty breakpoints"
+        );
     }
 
     #[test]
@@ -348,8 +364,12 @@ mod tests {
             },
         ];
 
-        manager.set_breakpoints("/file.rs".to_string(), bp1).unwrap();
-        manager.set_breakpoints("/file.rs".to_string(), bp2).unwrap();
+        manager
+            .set_breakpoints("/file.rs".to_string(), bp1)
+            .unwrap();
+        manager
+            .set_breakpoints("/file.rs".to_string(), bp2)
+            .unwrap();
 
         let result = manager.get_breakpoints("/file.rs").unwrap();
         assert_eq!(result.len(), 2);
@@ -359,11 +379,19 @@ mod tests {
     fn test_debug_manager_multiple_sessions_independent() {
         let manager = DebugManager::new();
 
-        let id1 = manager.create_session("S1".to_string(), "cppdbg".to_string()).unwrap();
-        let id2 = manager.create_session("S2".to_string(), "python".to_string()).unwrap();
+        let id1 = manager
+            .create_session("S1".to_string(), "cppdbg".to_string())
+            .unwrap();
+        let id2 = manager
+            .create_session("S2".to_string(), "python".to_string())
+            .unwrap();
 
-        manager.update_session_state(&id1, DebugState::Running).unwrap();
-        manager.update_session_state(&id2, DebugState::Paused).unwrap();
+        manager
+            .update_session_state(&id1, DebugState::Running)
+            .unwrap();
+        manager
+            .update_session_state(&id2, DebugState::Paused)
+            .unwrap();
 
         let s1 = manager.get_session(&id1).unwrap();
         let s2 = manager.get_session(&id2).unwrap();

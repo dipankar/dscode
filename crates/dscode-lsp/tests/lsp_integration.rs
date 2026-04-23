@@ -3,7 +3,9 @@
 //! Tests multiple LSP components working together: LspManager, LspServerPool,
 //! LspServerStrategy, and LspClientState transitions.
 
-use dscode_lsp::{LspClient, LspClientState, LspManager, LspPoolStats, LspServerPool, LspServerStrategy};
+use dscode_lsp::{
+    LspClient, LspClientState, LspManager, LspPoolStats, LspServerPool, LspServerStrategy,
+};
 
 // ── LspManager integration tests ────────────────────────────────────────────
 
@@ -41,9 +43,7 @@ async fn test_lsp_manager_register_multiple_servers() {
     manager
         .register_server("python", "pyright-langserver", vec!["--stdio".to_string()])
         .await;
-    manager
-        .register_server("go", "gopls", vec![])
-        .await;
+    manager.register_server("go", "gopls", vec![]).await;
 
     // All three should be findable
     assert!(manager.get_client("rust").await.is_some());
@@ -64,7 +64,11 @@ async fn test_lsp_manager_replace_server() {
 
     // Re-register the same language with a different command
     manager
-        .register_server("rust", "rust-analyzer-alt", vec!["--alternative".to_string()])
+        .register_server(
+            "rust",
+            "rust-analyzer-alt",
+            vec!["--alternative".to_string()],
+        )
         .await;
 
     let client = manager.get_client("rust").await.unwrap();

@@ -120,8 +120,7 @@ pub async fn fs_create_directory(uri: String) -> Result<(), String> {
 pub async fn fs_delete(uri: String, recursive: bool) -> Result<(), String> {
     let path = uri_to_path(&uri).map_err(|e| e.to_string())?;
 
-    let metadata =
-        fs::metadata(&path).map_err(|e| CoreError::from(e).to_string())?;
+    let metadata = fs::metadata(&path).map_err(|e| CoreError::from(e).to_string())?;
 
     if metadata.is_dir() {
         if recursive {
@@ -142,8 +141,7 @@ pub async fn fs_rename(old_uri: String, new_uri: String) -> Result<(), String> {
 
     // Create parent directory for new path if needed
     if let Some(parent) = new_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| CoreError::from(e).to_string())?;
+        fs::create_dir_all(parent).map_err(|e| CoreError::from(e).to_string())?;
     }
 
     fs::rename(&old_path, &new_path).map_err(|e| CoreError::from(e).to_string())
@@ -155,16 +153,14 @@ pub async fn fs_copy(source_uri: String, destination_uri: String) -> Result<(), 
     let source = uri_to_path(&source_uri).map_err(|e| e.to_string())?;
     let destination = uri_to_path(&destination_uri).map_err(|e| e.to_string())?;
 
-    let metadata =
-        fs::metadata(&source).map_err(|e| CoreError::from(e).to_string())?;
+    let metadata = fs::metadata(&source).map_err(|e| CoreError::from(e).to_string())?;
 
     if metadata.is_dir() {
         copy_dir_recursive(&source, &destination).map_err(|e| e.to_string())
     } else {
         // Create parent directory if needed
         if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| CoreError::from(e).to_string())?;
+            fs::create_dir_all(parent).map_err(|e| CoreError::from(e).to_string())?;
         }
 
         fs::copy(&source, &destination).map_err(|e| CoreError::from(e).to_string())?;
@@ -253,36 +249,31 @@ pub async fn apply_workspace_edit(
                             continue;
                         }
                         if !opts.overwrite {
-                            return Err(CoreError::Config(format!(
-                                "File already exists: {}",
-                                uri
-                            ))
-                            .to_string());
+                            return Err(CoreError::Config(format!("File already exists: {}", uri))
+                                .to_string());
                         }
                     } else {
-                        return Err(CoreError::Config(format!(
-                            "File already exists: {}",
-                            uri
-                        ))
-                        .to_string());
+                        return Err(
+                            CoreError::Config(format!("File already exists: {}", uri)).to_string()
+                        );
                     }
                 }
 
                 // Create parent directory
                 if let Some(parent) = path.parent() {
-                    fs::create_dir_all(parent)
-                        .map_err(|e| CoreError::from(e).to_string())?;
+                    fs::create_dir_all(parent).map_err(|e| CoreError::from(e).to_string())?;
                 }
 
                 // Create empty file
                 fs::write(&path, b"").map_err(|e| CoreError::from(e).to_string())?;
 
                 // Emit event
-                registry.emit_file_change_event(FileChangeEvent {
-                    uri: uri.clone(),
-                    change_type: FileChangeType::Created,
-                })
-                .map_err(|e| e.to_string())?;
+                registry
+                    .emit_file_change_event(FileChangeEvent {
+                        uri: uri.clone(),
+                        change_type: FileChangeType::Created,
+                    })
+                    .map_err(|e| e.to_string())?;
             }
             FileEdit::DeleteFile { uri, options } => {
                 let path = uri_to_path(&uri).map_err(|e| e.to_string())?;
@@ -294,36 +285,32 @@ pub async fn apply_workspace_edit(
                             continue;
                         }
                     }
-                    return Err(CoreError::PathResolution(format!(
-                        "File not found: {}",
-                        uri
-                    ))
-                    .to_string());
+                    return Err(
+                        CoreError::PathResolution(format!("File not found: {}", uri)).to_string()
+                    );
                 }
 
                 let recursive = options.map(|o| o.recursive).unwrap_or(false);
 
-                let metadata =
-                    fs::metadata(&path).map_err(|e| CoreError::from(e).to_string())?;
+                let metadata = fs::metadata(&path).map_err(|e| CoreError::from(e).to_string())?;
 
                 if metadata.is_dir() {
                     if recursive {
-                        fs::remove_dir_all(&path)
-                            .map_err(|e| CoreError::from(e).to_string())?;
+                        fs::remove_dir_all(&path).map_err(|e| CoreError::from(e).to_string())?;
                     } else {
-                        fs::remove_dir(&path)
-                            .map_err(|e| CoreError::from(e).to_string())?;
+                        fs::remove_dir(&path).map_err(|e| CoreError::from(e).to_string())?;
                     }
                 } else {
                     fs::remove_file(&path).map_err(|e| CoreError::from(e).to_string())?;
                 }
 
                 // Emit event
-                registry.emit_file_change_event(FileChangeEvent {
-                    uri: uri.clone(),
-                    change_type: FileChangeType::Deleted,
-                })
-                .map_err(|e| e.to_string())?;
+                registry
+                    .emit_file_change_event(FileChangeEvent {
+                        uri: uri.clone(),
+                        change_type: FileChangeType::Deleted,
+                    })
+                    .map_err(|e| e.to_string())?;
             }
             FileEdit::RenameFile { old_uri, new_uri, options } => {
                 let old_path = uri_to_path(&old_uri).map_err(|e| e.to_string())?;
@@ -340,35 +327,32 @@ pub async fn apply_workspace_edit(
                             .to_string());
                         }
                     } else {
-                        return Err(CoreError::Config(format!(
-                            "File already exists: {}",
-                            new_uri
-                        ))
-                        .to_string());
+                        return Err(CoreError::Config(format!("File already exists: {}", new_uri))
+                            .to_string());
                     }
                 }
 
                 // Create parent directory for new path
                 if let Some(parent) = new_path.parent() {
-                    fs::create_dir_all(parent)
-                        .map_err(|e| CoreError::from(e).to_string())?;
+                    fs::create_dir_all(parent).map_err(|e| CoreError::from(e).to_string())?;
                 }
 
-                fs::rename(&old_path, &new_path)
-                    .map_err(|e| CoreError::from(e).to_string())?;
+                fs::rename(&old_path, &new_path).map_err(|e| CoreError::from(e).to_string())?;
 
                 // Emit events
-                registry.emit_file_change_event(FileChangeEvent {
-                    uri: old_uri.clone(),
-                    change_type: FileChangeType::Deleted,
-                })
-                .map_err(|e| e.to_string())?;
+                registry
+                    .emit_file_change_event(FileChangeEvent {
+                        uri: old_uri.clone(),
+                        change_type: FileChangeType::Deleted,
+                    })
+                    .map_err(|e| e.to_string())?;
 
-                registry.emit_file_change_event(FileChangeEvent {
-                    uri: new_uri.clone(),
-                    change_type: FileChangeType::Created,
-                })
-                .map_err(|e| e.to_string())?;
+                registry
+                    .emit_file_change_event(FileChangeEvent {
+                        uri: new_uri.clone(),
+                        change_type: FileChangeType::Created,
+                    })
+                    .map_err(|e| e.to_string())?;
             }
             FileEdit::TextEdit { uri, edits } => {
                 // Text edits are applied through the frontend (Monaco editor)
@@ -376,11 +360,12 @@ pub async fn apply_workspace_edit(
                 info!("Text edit requested for {}: {} edit(s)", uri, edits.len());
 
                 // Emit change event
-                registry.emit_file_change_event(FileChangeEvent {
-                    uri: uri.clone(),
-                    change_type: FileChangeType::Changed,
-                })
-                .map_err(|e| e.to_string())?;
+                registry
+                    .emit_file_change_event(FileChangeEvent {
+                        uri: uri.clone(),
+                        change_type: FileChangeType::Changed,
+                    })
+                    .map_err(|e| e.to_string())?;
             }
         }
     }

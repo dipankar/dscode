@@ -135,13 +135,22 @@ impl ExtensionHostManager {
         let valid = match self.state {
             ExtensionHostState::Stopped => matches!(to, ExtensionHostState::Starting),
             ExtensionHostState::Starting => {
-                matches!(to, ExtensionHostState::Running | ExtensionHostState::Crashed)
+                matches!(
+                    to,
+                    ExtensionHostState::Running | ExtensionHostState::Crashed
+                )
             }
             ExtensionHostState::Running => {
-                matches!(to, ExtensionHostState::Unhealthy | ExtensionHostState::Stopping)
+                matches!(
+                    to,
+                    ExtensionHostState::Unhealthy | ExtensionHostState::Stopping
+                )
             }
             ExtensionHostState::Unhealthy => {
-                matches!(to, ExtensionHostState::Restarting | ExtensionHostState::Crashed)
+                matches!(
+                    to,
+                    ExtensionHostState::Restarting | ExtensionHostState::Crashed
+                )
             }
             ExtensionHostState::Restarting => matches!(to, ExtensionHostState::Starting),
             ExtensionHostState::Stopping => matches!(to, ExtensionHostState::Stopped),
@@ -153,10 +162,7 @@ impl ExtensionHostManager {
             self.state = to;
             Ok(())
         } else {
-            let msg = format!(
-                "Invalid state transition: {:?} -> {:?}",
-                self.state, to
-            );
+            let msg = format!("Invalid state transition: {:?} -> {:?}", self.state, to);
             error!(state_from = ?self.state, state_to = ?to, "Invalid state transition attempted");
             Err(msg)
         }
@@ -192,7 +198,10 @@ impl ExtensionHostManager {
 
     #[instrument(skip(self))]
     pub fn start(
-        &mut self, extension_host_path: &str, outgoing_socket: &str, incoming_socket: &str,
+        &mut self,
+        extension_host_path: &str,
+        outgoing_socket: &str,
+        incoming_socket: &str,
     ) -> Result<(), String> {
         self.transition(ExtensionHostState::Starting)?;
 
@@ -233,7 +242,10 @@ impl ExtensionHostManager {
             if let Some(exe_dir) = exe.parent() {
                 let resource_path = exe_dir.join("resources");
                 if resource_path.exists() {
-                    cmd.env("DSCODE_RESOURCE_PATH", resource_path.to_string_lossy().to_string());
+                    cmd.env(
+                        "DSCODE_RESOURCE_PATH",
+                        resource_path.to_string_lossy().to_string(),
+                    );
                 }
             }
         }
@@ -338,16 +350,18 @@ impl ExtensionHostManager {
                 debug!(path = ?path, "Using system Node.js");
                 Ok(path.to_string_lossy().to_string())
             }
-            Err(_) => {
-                Err("Node.js not found. Install Node.js or bundle it with the application."
-                    .to_string())
-            }
+            Err(_) => Err(
+                "Node.js not found. Install Node.js or bundle it with the application.".to_string(),
+            ),
         }
     }
 
     #[instrument(skip(self))]
     pub async fn restart_if_needed(
-        &mut self, extension_host_path: &str, outgoing_socket: &str, incoming_socket: &str,
+        &mut self,
+        extension_host_path: &str,
+        outgoing_socket: &str,
+        incoming_socket: &str,
     ) -> Result<(), String> {
         // If we think we're running, check whether the process actually exited.
         if self.state == ExtensionHostState::Running {
@@ -362,7 +376,10 @@ impl ExtensionHostManager {
         }
 
         if self.restart_count >= MAX_RESTART_ATTEMPTS {
-            error!(max_attempts = MAX_RESTART_ATTEMPTS, "Max restart attempts exceeded");
+            error!(
+                max_attempts = MAX_RESTART_ATTEMPTS,
+                "Max restart attempts exceeded"
+            );
             let _ = self.transition(ExtensionHostState::Crashed);
             return Err(format!(
                 "Extension host crashed and max restart attempts ({}) exceeded",
@@ -418,7 +435,9 @@ impl ExtensionHostManager {
 
             match child.try_wait() {
                 Ok(None) => {
-                    child.kill().map_err(|e| format!("Failed to kill extension host: {}", e))?;
+                    child
+                        .kill()
+                        .map_err(|e| format!("Failed to kill extension host: {}", e))?;
 
                     match child.wait() {
                         Ok(status) => {

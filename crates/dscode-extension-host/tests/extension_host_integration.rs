@@ -162,22 +162,30 @@ fn test_path_validator_set_special_dirs() {
     // Files in the extensions dir should be allowed
     let ext_file = ext_dir.path().join("extension.js");
     std::fs::write(&ext_file, "// ext").unwrap();
-    assert!(validator.validate_file_path(&ext_file.to_string_lossy()).is_ok());
+    assert!(validator
+        .validate_file_path(&ext_file.to_string_lossy())
+        .is_ok());
 
     // Files in the storage dir should be allowed
     let storage_file = storage_dir.path().join("state.json");
     std::fs::write(&storage_file, "{}").unwrap();
-    assert!(validator.validate_file_path(&storage_file.to_string_lossy()).is_ok());
+    assert!(validator
+        .validate_file_path(&storage_file.to_string_lossy())
+        .is_ok());
 
     // Files in the logs dir should be allowed
     let log_file = logs_dir.path().join("app.log");
     std::fs::write(&log_file, "log entry").unwrap();
-    assert!(validator.validate_file_path(&log_file.to_string_lossy()).is_ok());
+    assert!(validator
+        .validate_file_path(&log_file.to_string_lossy())
+        .is_ok());
 
     // Files in the temp dir should be allowed
     let tmp_file = temp_dir.path().join("scratch.txt");
     std::fs::write(&tmp_file, "temp data").unwrap();
-    assert!(validator.validate_file_path(&tmp_file.to_string_lossy()).is_ok());
+    assert!(validator
+        .validate_file_path(&tmp_file.to_string_lossy())
+        .is_ok());
 }
 
 #[test]
@@ -439,8 +447,14 @@ fn test_secret_storage_multiple_keys() {
     storage.set(&ext, &key2, "xyz789").unwrap();
     storage.set(&ext, &key3, "42").unwrap();
 
-    assert_eq!(storage.get(&ext, &key1).unwrap(), Some("abc123".to_string()));
-    assert_eq!(storage.get(&ext, &key2).unwrap(), Some("xyz789".to_string()));
+    assert_eq!(
+        storage.get(&ext, &key1).unwrap(),
+        Some("abc123".to_string())
+    );
+    assert_eq!(
+        storage.get(&ext, &key2).unwrap(),
+        Some("xyz789".to_string())
+    );
     assert_eq!(storage.get(&ext, &key3).unwrap(), Some("42".to_string()));
 
     // Clean up
@@ -504,8 +518,8 @@ fn test_permission_from_manifest_empty() {
     let perms = ExtensionPermissions::from_manifest("my.ext".to_string(), None).unwrap();
     assert!(!perms.has_permission(&Permission::FileSystemRead));
 
-    let perms_empty = ExtensionPermissions::from_manifest("my.ext".to_string(), Some(vec![]))
-        .unwrap();
+    let perms_empty =
+        ExtensionPermissions::from_manifest("my.ext".to_string(), Some(vec![])).unwrap();
     assert!(!perms_empty.has_permission(&Permission::FileSystemRead));
 }
 
@@ -623,7 +637,10 @@ fn test_extension_host_state_and_permissions_integration() {
 
     let perms = ExtensionPermissions::from_manifest(
         "perm-test".to_string(),
-        Some(vec!["fileSystem.read".to_string(), "network.http".to_string()]),
+        Some(vec![
+            "fileSystem.read".to_string(),
+            "network.http".to_string(),
+        ]),
     )
     .unwrap();
 
@@ -652,7 +669,9 @@ fn test_path_validator_and_permissions_integration() {
 
     let test_file = ws_dir.path().join("data.txt");
     std::fs::write(&test_file, "content").unwrap();
-    assert!(validator.validate_file_path(&test_file.to_string_lossy()).is_ok());
+    assert!(validator
+        .validate_file_path(&test_file.to_string_lossy())
+        .is_ok());
 
     // An extension without write permission should not be able to write
     assert!(!perms.has_permission(&Permission::FileSystemWrite));

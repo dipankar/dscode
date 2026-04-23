@@ -28,7 +28,10 @@ pub struct RangePayload {
 
 impl RangePayload {
     pub fn from_position(pos: PositionPayload) -> Self {
-        Self { start: pos.clone(), end: pos }
+        Self {
+            start: pos.clone(),
+            end: pos,
+        }
     }
 }
 
@@ -77,7 +80,10 @@ impl DocumentManager {
     pub async fn persist_document(&self, path: &str, content: &str) -> Result<i32, String> {
         if let Some(parent) = Path::new(path).parent() {
             if let Err(err) = fs::create_dir_all(parent) {
-                return Err(format!("Failed to prepare document directory {:?}: {}", parent, err));
+                return Err(format!(
+                    "Failed to prepare document directory {:?}: {}",
+                    parent, err
+                ));
             }
         }
 
@@ -137,7 +143,10 @@ impl DocumentManager {
         }
 
         if ranges.is_empty() {
-            ranges.push(RangePayload::from_position(PositionPayload { line: 0, character: 0 }));
+            ranges.push(RangePayload::from_position(PositionPayload {
+                line: 0,
+                character: 0,
+            }));
         }
 
         ranges
@@ -145,7 +154,9 @@ impl DocumentManager {
 
     /// Apply text edits to a document, returning the modified text.
     pub fn apply_text_edits(
-        original: &str, edits: &mut [TextEditPayload], end_of_line: Option<i32>,
+        original: &str,
+        edits: &mut [TextEditPayload],
+        end_of_line: Option<i32>,
     ) -> Result<String, String> {
         let mut normalized = original.replace("\r\n", "\n");
         let original_crlf = original.contains("\r\n");
@@ -178,14 +189,21 @@ impl DocumentManager {
             }
         };
 
-        let result = if newline == "\n" { normalized } else { normalized.replace("\n", newline) };
+        let result = if newline == "\n" {
+            normalized
+        } else {
+            normalized.replace("\n", newline)
+        };
 
         Ok(result)
     }
 
     /// Update decorations for a given URI/key.
     pub async fn update_decorations(
-        &self, uri: &str, key: &str, decorations: Value,
+        &self,
+        uri: &str,
+        key: &str,
+        decorations: Value,
     ) -> Result<Vec<Value>, String> {
         let normalized = self.normalize_decorations(key, decorations).await?;
 
@@ -226,7 +244,9 @@ impl DocumentManager {
     }
 
     async fn normalize_decorations(
-        &self, key: &str, decorations: Value,
+        &self,
+        key: &str,
+        decorations: Value,
     ) -> Result<Vec<Value>, String> {
         let base_options = {
             let map = self.decoration_types.read().await;
@@ -241,23 +261,28 @@ impl DocumentManager {
         };
 
         for entry in entries {
-            let (range, hover, specific_options) = if let Ok(range) =
-                serde_json::from_value::<RangePayload>(entry.clone())
-            {
-                (range, None, None)
-            } else if let Some(range_value) = entry.get("range") {
-                let range = serde_json::from_value::<RangePayload>(range_value.clone())
-                    .map_err(|e| format!("Invalid decoration range payload: {}", e))?;
-                let hover = entry.get("hoverMessage").cloned();
-                let specific = entry.get("renderOptions").or_else(|| entry.get("options")).cloned();
-                (range, hover, specific)
-            } else {
-                continue;
-            };
+            let (range, hover, specific_options) =
+                if let Ok(range) = serde_json::from_value::<RangePayload>(entry.clone()) {
+                    (range, None, None)
+                } else if let Some(range_value) = entry.get("range") {
+                    let range = serde_json::from_value::<RangePayload>(range_value.clone())
+                        .map_err(|e| format!("Invalid decoration range payload: {}", e))?;
+                    let hover = entry.get("hoverMessage").cloned();
+                    let specific = entry
+                        .get("renderOptions")
+                        .or_else(|| entry.get("options"))
+                        .cloned();
+                    (range, hover, specific)
+                } else {
+                    continue;
+                };
 
             let merged_options = merge_decoration_options(&base_options, specific_options.as_ref());
             let mut map = Map::new();
-            map.insert("range".into(), serde_json::to_value(&range).unwrap_or(Value::Null));
+            map.insert(
+                "range".into(),
+                serde_json::to_value(&range).unwrap_or(Value::Null),
+            );
             map.insert("options".into(), merged_options);
             if let Some(hover_msg) = hover {
                 map.insert("hoverMessage".into(), hover_msg);
@@ -326,7 +351,9 @@ fn build_line_offsets(text: &str) -> Vec<usize> {
 }
 
 fn offset_for_position(
-    text: &str, offsets: &[usize], position: &PositionPayload,
+    text: &str,
+    offsets: &[usize],
+    position: &PositionPayload,
 ) -> Result<usize, String> {
     if offsets.is_empty() {
         return Ok(0);
@@ -451,9 +478,15 @@ mod tests {
 
     #[test]
     fn test_snippet_to_plain() {
-        assert_eq!(DocumentManager::snippet_to_plain("hello ${1:world}"), "hello world");
+        assert_eq!(
+            DocumentManager::snippet_to_plain("hello ${1:world}"),
+            "hello world"
+        );
         assert_eq!(DocumentManager::snippet_to_plain("foo $1 bar"), "foo  bar");
-        assert_eq!(DocumentManager::snippet_to_plain("dollar \\$ sign"), "dollar $ sign");
+        assert_eq!(
+            DocumentManager::snippet_to_plain("dollar \\$ sign"),
+            "dollar $ sign"
+        );
     }
 
     #[test]
@@ -475,7 +508,10 @@ mod tests {
 
     #[test]
     fn test_position_payload_serde_roundtrip() {
-        let pos = PositionPayload { line: 3, character: 15 };
+        let pos = PositionPayload {
+            line: 3,
+            character: 15,
+        };
         let json = serde_json::to_string(&pos).unwrap();
         let deserialized: PositionPayload = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.line, pos.line);
@@ -485,8 +521,14 @@ mod tests {
     #[test]
     fn test_range_payload_serde_roundtrip() {
         let range = RangePayload {
-            start: PositionPayload { line: 0, character: 5 },
-            end: PositionPayload { line: 0, character: 10 },
+            start: PositionPayload {
+                line: 0,
+                character: 5,
+            },
+            end: PositionPayload {
+                line: 0,
+                character: 10,
+            },
         };
         let json = serde_json::to_string(&range).unwrap();
         let deserialized: RangePayload = serde_json::from_str(&json).unwrap();
@@ -498,7 +540,10 @@ mod tests {
 
     #[test]
     fn test_range_payload_from_position() {
-        let pos = PositionPayload { line: 2, character: 8 };
+        let pos = PositionPayload {
+            line: 2,
+            character: 8,
+        };
         let range = RangePayload::from_position(pos);
         assert_eq!(range.start.line, range.end.line);
         assert_eq!(range.start.character, range.end.character);
@@ -511,8 +556,14 @@ mod tests {
         let original = "hello world";
         let mut edits = vec![TextEditPayload {
             range: RangePayload {
-                start: PositionPayload { line: 0, character: 0 },
-                end: PositionPayload { line: 0, character: 5 },
+                start: PositionPayload {
+                    line: 0,
+                    character: 0,
+                },
+                end: PositionPayload {
+                    line: 0,
+                    character: 5,
+                },
             },
             new_text: "goodbye".to_string(),
         }];
@@ -526,15 +577,27 @@ mod tests {
         let mut edits = vec![
             TextEditPayload {
                 range: RangePayload {
-                    start: PositionPayload { line: 0, character: 4 },
-                    end: PositionPayload { line: 0, character: 7 },
+                    start: PositionPayload {
+                        line: 0,
+                        character: 4,
+                    },
+                    end: PositionPayload {
+                        line: 0,
+                        character: 7,
+                    },
                 },
                 new_text: "XYZ".to_string(),
             },
             TextEditPayload {
                 range: RangePayload {
-                    start: PositionPayload { line: 0, character: 0 },
-                    end: PositionPayload { line: 0, character: 3 },
+                    start: PositionPayload {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: PositionPayload {
+                        line: 0,
+                        character: 3,
+                    },
                 },
                 new_text: "123".to_string(),
             },

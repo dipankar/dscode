@@ -71,11 +71,15 @@ pub struct ExtensionPermissions {
 
 impl ExtensionPermissions {
     pub fn new(extension_id: String, permissions: Vec<Permission>) -> Self {
-        Self { extension_id, granted_permissions: permissions.into_iter().collect() }
+        Self {
+            extension_id,
+            granted_permissions: permissions.into_iter().collect(),
+        }
     }
 
     pub fn from_manifest(
-        extension_id: String, manifest_permissions: Option<Vec<String>>,
+        extension_id: String,
+        manifest_permissions: Option<Vec<String>>,
     ) -> Result<Self, String> {
         let permissions = match manifest_permissions {
             Some(perms) => {
@@ -90,7 +94,10 @@ impl ExtensionPermissions {
             None => HashSet::new(), // No permissions by default
         };
 
-        Ok(Self { extension_id, granted_permissions: permissions })
+        Ok(Self {
+            extension_id,
+            granted_permissions: permissions,
+        })
     }
 
     pub fn has_permission(&self, permission: &Permission) -> bool {
@@ -151,7 +158,10 @@ mod tests {
     fn test_permission_parsing() {
         let perms = ExtensionPermissions::from_manifest(
             "test.extension".to_string(),
-            Some(vec!["fileSystem.read".to_string(), "fileSystem.write".to_string()]),
+            Some(vec![
+                "fileSystem.read".to_string(),
+                "fileSystem.write".to_string(),
+            ]),
         )
         .unwrap();
 
@@ -169,7 +179,9 @@ mod tests {
         .unwrap();
 
         assert!(perms.check_permission(&Permission::FileSystemRead).is_ok());
-        assert!(perms.check_permission(&Permission::FileSystemWrite).is_err());
+        assert!(perms
+            .check_permission(&Permission::FileSystemWrite)
+            .is_err());
     }
 
     #[test]
@@ -238,22 +250,16 @@ mod tests {
     #[test]
     fn test_extension_permissions_default() {
         // No permissions granted when manifest has None
-        let no_perms = ExtensionPermissions::from_manifest(
-            "default.ext".to_string(),
-            None,
-        )
-        .unwrap();
+        let no_perms =
+            ExtensionPermissions::from_manifest("default.ext".to_string(), None).unwrap();
         assert!(!no_perms.has_permission(&Permission::FileSystemRead));
         assert!(!no_perms.has_permission(&Permission::NetworkHttp));
         assert!(!no_perms.has_permission(&Permission::ShowNotifications));
         assert!(!no_perms.has_permission(&Permission::DebugStart));
 
         // No permissions granted when manifest has empty list
-        let empty_perms = ExtensionPermissions::from_manifest(
-            "empty.ext".to_string(),
-            Some(vec![]),
-        )
-        .unwrap();
+        let empty_perms =
+            ExtensionPermissions::from_manifest("empty.ext".to_string(), Some(vec![])).unwrap();
         assert!(!empty_perms.has_permission(&Permission::FileSystemRead));
 
         // Invalid permission string should fail
@@ -446,7 +452,11 @@ mod tests {
         let mut set = HashSet::new();
         set.insert(Permission::FileSystemRead);
         set.insert(Permission::FileSystemRead);
-        assert_eq!(set.len(), 1, "Duplicate permissions should deduplicate in HashSet");
+        assert_eq!(
+            set.len(),
+            1,
+            "Duplicate permissions should deduplicate in HashSet"
+        );
         set.insert(Permission::FileSystemWrite);
         assert_eq!(set.len(), 2);
     }
@@ -470,8 +480,13 @@ mod tests {
         )
         .unwrap();
 
-        let err = perms.check_permission(&Permission::FileSystemWrite).unwrap_err();
+        let err = perms
+            .check_permission(&Permission::FileSystemWrite)
+            .unwrap_err();
         assert!(err.contains("my.ext"), "Error should mention extension id");
-        assert!(err.contains("FileSystemWrite"), "Error should mention the permission");
+        assert!(
+            err.contains("FileSystemWrite"),
+            "Error should mention the permission"
+        );
     }
 }

@@ -58,7 +58,8 @@ impl SecretStorage {
         let counter = self.nonce_counter.fetch_add(1, Ordering::Relaxed);
         let nonce_bytes = Self::derive_nonce(counter);
         let nonce = Nonce::from_slice(&nonce_bytes);
-        let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes())
+        let ciphertext = cipher
+            .encrypt(nonce, plaintext.as_bytes())
             .map_err(|e| format!("Encryption failed: {}", e))?;
         // Prepend nonce so we can decrypt later
         let mut out = Vec::with_capacity(12 + ciphertext.len());
@@ -75,7 +76,8 @@ impl SecretStorage {
         let cipher = self.cipher()?;
         let (nonce_bytes, ciphertext) = blob.split_at(12);
         let nonce = Nonce::from_slice(nonce_bytes);
-        let plaintext = cipher.decrypt(nonce, ciphertext)
+        let plaintext = cipher
+            .decrypt(nonce, ciphertext)
             .map_err(|_| String::from("Decryption failed (tampered or wrong key)"))?;
         String::from_utf8(plaintext)
             .map_err(|e| format!("Decrypted value is not valid UTF-8: {}", e))
@@ -143,10 +145,13 @@ impl SecretStorage {
                             warn!("Secrets cache lock poisoned, recovering");
                             e.into_inner()
                         });
-                        cache.insert(full_key, CachedSecret {
-                            ciphertext,
-                            cached_at: Self::now_secs(),
-                        });
+                        cache.insert(
+                            full_key,
+                            CachedSecret {
+                                ciphertext,
+                                cached_at: Self::now_secs(),
+                            },
+                        );
                         Ok(Some(password))
                     }
                     Err(keyring::Error::NoEntry) => Ok(None),
@@ -164,7 +169,9 @@ impl SecretStorage {
         // Store in OS keychain
         match Entry::new(SERVICE_NAME, &full_key) {
             Ok(entry) => {
-                entry.set_password(value).map_err(|e| format!("Failed to store secret: {}", e))?;
+                entry
+                    .set_password(value)
+                    .map_err(|e| format!("Failed to store secret: {}", e))?;
 
                 // Update cache (encrypted)
                 let ciphertext = self.encrypt(value)?;
@@ -172,10 +179,13 @@ impl SecretStorage {
                     warn!("Secrets cache lock poisoned, recovering");
                     e.into_inner()
                 });
-                cache.insert(full_key, CachedSecret {
-                    ciphertext,
-                    cached_at: Self::now_secs(),
-                });
+                cache.insert(
+                    full_key,
+                    CachedSecret {
+                        ciphertext,
+                        cached_at: Self::now_secs(),
+                    },
+                );
 
                 Ok(())
             }

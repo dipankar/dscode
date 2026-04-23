@@ -80,9 +80,10 @@ impl ConfigurationRegistry {
 
     /// Set settings file path
     pub fn set_settings_path(&self, path: PathBuf) -> Result<(), CoreError> {
-        let mut settings_path = self.settings_path.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut settings_path = self
+            .settings_path
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
         *settings_path = Some(path.clone());
 
         // Load user settings
@@ -94,9 +95,10 @@ impl ConfigurationRegistry {
 
     /// Set workspace path
     pub fn set_workspace_path(&self, path: PathBuf) -> Result<(), CoreError> {
-        let mut workspace_path = self.workspace_path.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut workspace_path = self
+            .workspace_path
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
         *workspace_path = Some(path.clone());
 
         // Load workspace settings
@@ -110,9 +112,10 @@ impl ConfigurationRegistry {
     pub fn register_configuration_schema(
         &self, contribution: ConfigurationContribution,
     ) -> Result<(), CoreError> {
-        let mut schemas = self.schemas.write().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let mut schemas = self
+            .schemas
+            .write()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         let count = contribution.properties.len();
         let extension_id = contribution.extension_id.clone();
@@ -132,22 +135,25 @@ impl ConfigurationRegistry {
     ) -> Result<Option<Value>, CoreError> {
         match scope {
             ConfigurationScope::User => {
-                let user_settings = self.user_settings.read().map_err(|e| {
-                    CoreError::Io(std::io::Error::other(e.to_string()))
-                })?;
+                let user_settings = self
+                    .user_settings
+                    .read()
+                    .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
                 Ok(user_settings.get(key).cloned())
             }
             ConfigurationScope::Workspace => {
-                let workspace_settings = self.workspace_settings.read().map_err(|e| {
-                    CoreError::Io(std::io::Error::other(e.to_string()))
-                })?;
+                let workspace_settings = self
+                    .workspace_settings
+                    .read()
+                    .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
                 Ok(workspace_settings.get(key).cloned())
             }
             ConfigurationScope::WorkspaceFolder => {
                 // For now, return workspace settings
-                let workspace_settings = self.workspace_settings.read().map_err(|e| {
-                    CoreError::Io(std::io::Error::other(e.to_string()))
-                })?;
+                let workspace_settings = self
+                    .workspace_settings
+                    .read()
+                    .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
                 Ok(workspace_settings.get(key).cloned())
             }
         }
@@ -177,9 +183,8 @@ impl ConfigurationRegistry {
         }
 
         // Finally, check schema for default value
-        let schemas = self.schemas.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let schemas =
+            self.schemas.read().map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
         if let Some(schema) = schemas.get(key) {
             return Ok(Some(schema.default.clone()));
         }
@@ -192,9 +197,8 @@ impl ConfigurationRegistry {
         &self, key: String, value: Value, scope: ConfigurationScope,
     ) -> Result<(), CoreError> {
         // Validate against schema if exists
-        let schemas = self.schemas.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let schemas =
+            self.schemas.read().map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
         if let Some(schema) = schemas.get(&key) {
             self.validate_value(&value, schema)?;
         }
@@ -203,9 +207,10 @@ impl ConfigurationRegistry {
         // Update in-memory settings
         match scope {
             ConfigurationScope::User => {
-                let mut user_settings = self.user_settings.write().map_err(|e| {
-                    CoreError::Io(std::io::Error::other(e.to_string()))
-                })?;
+                let mut user_settings = self
+                    .user_settings
+                    .write()
+                    .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
                 user_settings.insert(key.clone(), value.clone());
                 drop(user_settings);
 
@@ -213,9 +218,10 @@ impl ConfigurationRegistry {
                 self.save_user_settings()?;
             }
             ConfigurationScope::Workspace => {
-                let mut workspace_settings = self.workspace_settings.write().map_err(|e| {
-                    CoreError::Io(std::io::Error::other(e.to_string()))
-                })?;
+                let mut workspace_settings = self
+                    .workspace_settings
+                    .write()
+                    .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
                 workspace_settings.insert(key.clone(), value.clone());
                 drop(workspace_settings);
 
@@ -223,9 +229,10 @@ impl ConfigurationRegistry {
                 self.save_workspace_settings()?;
             }
             ConfigurationScope::WorkspaceFolder => {
-                let mut workspace_settings = self.workspace_settings.write().map_err(|e| {
-                    CoreError::Io(std::io::Error::other(e.to_string()))
-                })?;
+                let mut workspace_settings = self
+                    .workspace_settings
+                    .write()
+                    .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
                 workspace_settings.insert(key.clone(), value.clone());
                 drop(workspace_settings);
 
@@ -279,20 +286,24 @@ impl ConfigurationRegistry {
 
     /// Load user settings from file
     fn load_user_settings(&self) -> Result<(), CoreError> {
-        let settings_path = self.settings_path.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let settings_path = self
+            .settings_path
+            .read()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         if let Some(path) = settings_path.as_ref() {
             if path.exists() {
                 let content = fs::read_to_string(path).map_err(CoreError::from)?;
 
-                let settings: HashMap<String, Value> = serde_json::from_str(&content)
-                    .map_err(|e| CoreError::Config(format!("Failed to parse user settings: {}", e)))?;
+                let settings: HashMap<String, Value> =
+                    serde_json::from_str(&content).map_err(|e| {
+                        CoreError::Config(format!("Failed to parse user settings: {}", e))
+                    })?;
 
-                let mut user_settings = self.user_settings.write().map_err(|e| {
-                    CoreError::Io(std::io::Error::other(e.to_string()))
-                })?;
+                let mut user_settings = self
+                    .user_settings
+                    .write()
+                    .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
                 *user_settings = settings;
 
                 info!("Loaded user settings from: {:?}", path);
@@ -304,9 +315,10 @@ impl ConfigurationRegistry {
 
     /// Load workspace settings from file
     fn load_workspace_settings(&self) -> Result<(), CoreError> {
-        let workspace_path = self.workspace_path.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let workspace_path = self
+            .workspace_path
+            .read()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         if let Some(path) = workspace_path.as_ref() {
             let settings_file = path.join(".vscode").join("settings.json");
@@ -314,12 +326,15 @@ impl ConfigurationRegistry {
             if settings_file.exists() {
                 let content = fs::read_to_string(&settings_file).map_err(CoreError::from)?;
 
-                let settings: HashMap<String, Value> = serde_json::from_str(&content)
-                    .map_err(|e| CoreError::Config(format!("Failed to parse workspace settings: {}", e)))?;
+                let settings: HashMap<String, Value> =
+                    serde_json::from_str(&content).map_err(|e| {
+                        CoreError::Config(format!("Failed to parse workspace settings: {}", e))
+                    })?;
 
-                let mut workspace_settings = self.workspace_settings.write().map_err(|e| {
-                    CoreError::Io(std::io::Error::other(e.to_string()))
-                })?;
+                let mut workspace_settings = self
+                    .workspace_settings
+                    .write()
+                    .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
                 *workspace_settings = settings;
 
                 info!("Loaded workspace settings from: {:?}", settings_file);
@@ -331,17 +346,20 @@ impl ConfigurationRegistry {
 
     /// Save user settings to file
     fn save_user_settings(&self) -> Result<(), CoreError> {
-        let settings_path = self.settings_path.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let settings_path = self
+            .settings_path
+            .read()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         if let Some(path) = settings_path.as_ref() {
-            let user_settings = self.user_settings.read().map_err(|e| {
-                CoreError::Io(std::io::Error::other(e.to_string()))
-            })?;
+            let user_settings = self
+                .user_settings
+                .read()
+                .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
-            let content = serde_json::to_string_pretty(&*user_settings)
-                .map_err(|e| CoreError::Config(format!("Failed to serialize user settings: {}", e)))?;
+            let content = serde_json::to_string_pretty(&*user_settings).map_err(|e| {
+                CoreError::Config(format!("Failed to serialize user settings: {}", e))
+            })?;
 
             // Create parent directory if needed
             if let Some(parent) = path.parent() {
@@ -358,18 +376,21 @@ impl ConfigurationRegistry {
 
     /// Save workspace settings to file
     fn save_workspace_settings(&self) -> Result<(), CoreError> {
-        let workspace_path = self.workspace_path.read().map_err(|e| {
-            CoreError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let workspace_path = self
+            .workspace_path
+            .read()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
         if let Some(path) = workspace_path.as_ref() {
             let settings_file = path.join(".vscode").join("settings.json");
-            let workspace_settings = self.workspace_settings.read().map_err(|e| {
-                CoreError::Io(std::io::Error::other(e.to_string()))
-            })?;
+            let workspace_settings = self
+                .workspace_settings
+                .read()
+                .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?;
 
-            let content = serde_json::to_string_pretty(&*workspace_settings)
-                .map_err(|e| CoreError::Config(format!("Failed to serialize workspace settings: {}", e)))?;
+            let content = serde_json::to_string_pretty(&*workspace_settings).map_err(|e| {
+                CoreError::Config(format!("Failed to serialize workspace settings: {}", e))
+            })?;
 
             // Create .vscode directory if needed
             let vscode_dir = path.join(".vscode");

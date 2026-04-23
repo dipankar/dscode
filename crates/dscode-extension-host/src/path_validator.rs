@@ -160,7 +160,9 @@ impl PathValidator {
                             if self.is_path_allowed(&joined) {
                                 return Ok(joined);
                             } else {
-                                return Err("Access denied: Path outside allowed directories".to_string());
+                                return Err(
+                                    "Access denied: Path outside allowed directories".to_string()
+                                );
                             }
                         }
                         match ancestor.parent() {
@@ -316,14 +318,15 @@ mod tests {
         validator.add_workspace_folder(current_dir);
 
         // Paths with ../ should be blocked (or resolve outside workspace)
-        let traversal_uris = [
-            "file://../../../etc/passwd",
-            "file://../../tmp/malicious",
-        ];
+        let traversal_uris = ["file://../../../etc/passwd", "file://../../tmp/malicious"];
 
         for uri in &traversal_uris {
             let result = validator.validate_path(uri);
-            assert!(result.is_err(), "Expected path traversal to be blocked: {}", uri);
+            assert!(
+                result.is_err(),
+                "Expected path traversal to be blocked: {}",
+                uri
+            );
         }
     }
 
@@ -333,10 +336,16 @@ mod tests {
 
         // A validator with no allowed roots should block everything
         let result = validator.validate_file_path("/etc/passwd");
-        assert!(result.is_err(), "Absolute path should be blocked with no workspace roots");
+        assert!(
+            result.is_err(),
+            "Absolute path should be blocked with no workspace roots"
+        );
 
         let result = validator.validate_file_path("/usr/bin/python");
-        assert!(result.is_err(), "Absolute path should be blocked with no workspace roots");
+        assert!(
+            result.is_err(),
+            "Absolute path should be blocked with no workspace roots"
+        );
     }
 
     #[test]
@@ -381,7 +390,10 @@ mod tests {
         if cargo_path.exists() {
             let uri = format!("file:///{}", cargo_path.display());
             let result = validator.validate_path(&uri);
-            assert!(result.is_ok(), "file:/// URI should resolve for workspace file");
+            assert!(
+                result.is_ok(),
+                "file:/// URI should resolve for workspace file"
+            );
         }
     }
 
@@ -396,7 +408,10 @@ mod tests {
         if cargo_path.exists() {
             let uri = format!("file://localhost{}", cargo_path.display());
             let result = validator.validate_path(&uri);
-            assert!(result.is_ok(), "file://localhost URI should resolve for workspace file");
+            assert!(
+                result.is_ok(),
+                "file://localhost URI should resolve for workspace file"
+            );
         }
     }
 
@@ -406,7 +421,10 @@ mod tests {
         let validator = PathValidator::new();
         let result = validator.validate_path("file:/etc/passwd");
         // With no allowed roots, this should be denied
-        assert!(result.is_err(), "file:/ path should be blocked with no workspace roots");
+        assert!(
+            result.is_err(),
+            "file:/ path should be blocked with no workspace roots"
+        );
     }
 
     #[test]
@@ -414,7 +432,10 @@ mod tests {
         // A plain path (no file:// prefix) should be used as-is
         let validator = PathValidator::new();
         let result = validator.validate_path("/etc/passwd");
-        assert!(result.is_err(), "Plain path should be blocked with no workspace roots");
+        assert!(
+            result.is_err(),
+            "Plain path should be blocked with no workspace roots"
+        );
     }
 
     #[test]
@@ -434,7 +455,10 @@ mod tests {
         let child_path = current_dir.join("src").join("main.rs");
         let relative = validator.get_relative_path(&child_path);
         // Should be relative to workspace root
-        assert!(!relative.to_string_lossy().starts_with('/'), "Relative path should not start with /");
+        assert!(
+            !relative.to_string_lossy().starts_with('/'),
+            "Relative path should not start with /"
+        );
     }
 
     #[test]
@@ -450,15 +474,24 @@ mod tests {
     fn test_path_validator_sanitize_error_no_path() {
         let error = "Something went wrong";
         let sanitized = PathValidator::sanitize_error(&error);
-        assert_eq!(sanitized, "Something went wrong", "Error without paths should pass through");
+        assert_eq!(
+            sanitized, "Something went wrong",
+            "Error without paths should pass through"
+        );
     }
 
     #[test]
     fn test_path_validator_sanitize_error_with_path() {
         let error = "Failed to access /home/user/secret/file.txt";
         let sanitized = PathValidator::sanitize_error(&error);
-        assert!(!sanitized.contains("/home"), "Sanitized error should not contain file paths");
-        assert!(!sanitized.contains("secret"), "Sanitized error should not contain file paths");
+        assert!(
+            !sanitized.contains("/home"),
+            "Sanitized error should not contain file paths"
+        );
+        assert!(
+            !sanitized.contains("secret"),
+            "Sanitized error should not contain file paths"
+        );
     }
 
     #[test]
@@ -468,13 +501,14 @@ mod tests {
         validator.add_workspace_folder(current_dir);
 
         // Direct ../ in URI
-        let attack_uris = [
-            "file:///../../../etc/shadow",
-            "file:///../../tmp/evil",
-        ];
+        let attack_uris = ["file:///../../../etc/shadow", "file:///../../tmp/evil"];
         for uri in &attack_uris {
             let result = validator.validate_path(uri);
-            assert!(result.is_err(), "Path traversal attack should be blocked: {}", uri);
+            assert!(
+                result.is_err(),
+                "Path traversal attack should be blocked: {}",
+                uri
+            );
         }
     }
 

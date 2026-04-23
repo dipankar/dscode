@@ -13,7 +13,9 @@ pub struct LspManager {
 impl LspManager {
     /// Creates a new `LspManager` with no registered language servers.
     pub fn new() -> Self {
-        Self { clients: Arc::new(Mutex::new(HashMap::new())) }
+        Self {
+            clients: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     /// Registers a language server for the given language.
@@ -26,7 +28,11 @@ impl LspManager {
     pub async fn register_server(&self, language_id: &str, command: &str, args: Vec<String>) {
         let mut clients = self.clients.lock().await;
 
-        let client = Arc::new(LspClient::new(language_id.to_string(), command.to_string(), args));
+        let client = Arc::new(LspClient::new(
+            language_id.to_string(),
+            command.to_string(),
+            args,
+        ));
 
         clients.insert(language_id.to_string(), client);
         info!(language = language_id, "Registered language server");
@@ -82,7 +88,8 @@ impl LspManager {
     /// Register all default language servers asynchronously
     pub async fn register_defaults(&self) {
         // Python - pyright
-        self.register_server("python", "pyright-langserver", vec!["--stdio".to_string()]).await;
+        self.register_server("python", "pyright-langserver", vec!["--stdio".to_string()])
+            .await;
 
         // Rust - rust-analyzer
         self.register_server("rust", "rust-analyzer", vec![]).await;
@@ -91,8 +98,12 @@ impl LspManager {
         self.register_server("go", "gopls", vec![]).await;
 
         // JSON - vscode-json-language-server
-        self.register_server("json", "vscode-json-language-server", vec!["--stdio".to_string()])
-            .await;
+        self.register_server(
+            "json",
+            "vscode-json-language-server",
+            vec!["--stdio".to_string()],
+        )
+        .await;
 
         info!("Default language servers registered");
     }
@@ -133,7 +144,9 @@ mod tests {
         let manager = LspManager::new();
 
         // Register a server
-        manager.register_server("rust", "rust-analyzer", vec![]).await;
+        manager
+            .register_server("rust", "rust-analyzer", vec![])
+            .await;
 
         // Should now be retrievable
         let client = manager.get_client("rust").await;
@@ -149,8 +162,12 @@ mod tests {
         let manager = LspManager::new();
 
         // Register twice with the same language_id
-        manager.register_server("python", "pyright-old", vec![]).await;
-        manager.register_server("python", "pyright-new", vec!["--stdio".to_string()]).await;
+        manager
+            .register_server("python", "pyright-old", vec![])
+            .await;
+        manager
+            .register_server("python", "pyright-new", vec!["--stdio".to_string()])
+            .await;
 
         // Should still return a client (the latest one)
         let client = manager.get_client("python").await;
@@ -184,7 +201,9 @@ mod tests {
         // Attempting to start a server that was never registered should fail
         let result = manager.start_server("nonexistent").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("No language server registered"));
+        assert!(result
+            .unwrap_err()
+            .contains("No language server registered"));
     }
 
     #[tokio::test]
@@ -194,15 +213,21 @@ mod tests {
         // Attempting to stop a server that was never registered should fail
         let result = manager.stop_server("nonexistent").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("No language server registered"));
+        assert!(result
+            .unwrap_err()
+            .contains("No language server registered"));
     }
 
     #[tokio::test]
     async fn test_lsp_manager_multiple_registrations() {
         let manager = LspManager::new();
 
-        manager.register_server("rust", "rust-analyzer", vec![]).await;
-        manager.register_server("python", "pyright-langserver", vec!["--stdio".to_string()]).await;
+        manager
+            .register_server("rust", "rust-analyzer", vec![])
+            .await;
+        manager
+            .register_server("python", "pyright-langserver", vec!["--stdio".to_string()])
+            .await;
         manager.register_server("go", "gopls", vec![]).await;
 
         assert!(manager.get_client("rust").await.is_some());

@@ -48,7 +48,8 @@ async fn read_message<R: AsyncReadExt + Unpin>(reader: &mut R) -> Result<IPCMess
 }
 
 async fn write_message<W: AsyncWriteExt + Unpin>(
-    writer: &mut W, msg: &IPCMessage,
+    writer: &mut W,
+    msg: &IPCMessage,
 ) -> Result<(), String> {
     let body =
         serde_json::to_vec(msg).map_err(|e| format!("Failed to serialize IPC message: {}", e))?;
@@ -57,8 +58,14 @@ async fn write_message<W: AsyncWriteExt + Unpin>(
         .write_all(&len.to_be_bytes())
         .await
         .map_err(|e| format!("Failed to write message length: {}", e))?;
-    writer.write_all(&body).await.map_err(|e| format!("Failed to write message body: {}", e))?;
-    writer.flush().await.map_err(|e| format!("Failed to flush message: {}", e))?;
+    writer
+        .write_all(&body)
+        .await
+        .map_err(|e| format!("Failed to write message body: {}", e))?;
+    writer
+        .flush()
+        .await
+        .map_err(|e| format!("Failed to flush message: {}", e))?;
     Ok(())
 }
 
@@ -75,8 +82,7 @@ impl ExtensionIpc {
     pub fn new(stream: UnixStream) -> Self {
         let (read_half, write_half) = stream.into_split();
         let write = Arc::new(Mutex::new(write_half));
-        let pending_requests: PendingRequestMap =
-            Arc::new(Mutex::new(HashMap::new()));
+        let pending_requests: PendingRequestMap = Arc::new(Mutex::new(HashMap::new()));
         let message_id = Arc::new(Mutex::new(0u64));
         let alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
@@ -125,7 +131,12 @@ impl ExtensionIpc {
             pending.clear();
         });
 
-        Self { write, pending_requests, message_id, alive }
+        Self {
+            write,
+            pending_requests,
+            message_id,
+            alive,
+        }
     }
 
     pub fn is_alive(&self) -> bool {
@@ -152,7 +163,11 @@ impl ExtensionIpc {
             pending.insert(id.clone(), tx);
         }
 
-        let message = IPCMessage { id: id.clone(), r#type: msg_type.to_string(), payload };
+        let message = IPCMessage {
+            id: id.clone(),
+            r#type: msg_type.to_string(),
+            payload,
+        };
 
         {
             let mut writer = self.write.lock().await;
@@ -199,7 +214,11 @@ impl ExtensionIpc {
             format!("msg_{}", *message_id)
         };
 
-        let message = IPCMessage { id, r#type: msg_type.to_string(), payload };
+        let message = IPCMessage {
+            id,
+            r#type: msg_type.to_string(),
+            payload,
+        };
 
         {
             let mut writer = self.write.lock().await;
@@ -309,7 +328,9 @@ impl IncomingIpc {
 }
 
 async fn handle_incoming_connection(
-    stream: tokio::net::UnixStream, handler: IncomingRequestHandler, running_flag: Arc<Mutex<bool>>,
+    stream: tokio::net::UnixStream,
+    handler: IncomingRequestHandler,
+    running_flag: Arc<Mutex<bool>>,
 ) -> Result<(), String> {
     let (read_half, write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
@@ -416,7 +437,10 @@ impl IpcManager {
     }
 
     pub async fn setup_incoming(
-        &self, id: &str, socket_path: &str, handler: IncomingRequestHandler,
+        &self,
+        id: &str,
+        socket_path: &str,
+        handler: IncomingRequestHandler,
     ) -> Result<(), String> {
         debug!(id = id, socket_path = socket_path, "Setting up incoming");
 

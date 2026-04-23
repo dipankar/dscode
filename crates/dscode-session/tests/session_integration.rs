@@ -137,8 +137,12 @@ fn test_configuration_store_persistence_roundtrip() {
         let mut store = ConfigurationStore::new(path.clone()).unwrap();
         store.update(None, "theme", json!("monokai")).unwrap();
         store.update(Some("editor"), "fontSize", json!(14)).unwrap();
-        store.update(Some("editor"), "fontFamily", json!("Fira Code")).unwrap();
-        store.update(Some("workbench"), "colorTheme", json!("Default Dark+")).unwrap();
+        store
+            .update(Some("editor"), "fontFamily", json!("Fira Code"))
+            .unwrap();
+        store
+            .update(Some("workbench"), "colorTheme", json!("Default Dark+"))
+            .unwrap();
     }
 
     // Reload and verify all settings persisted
@@ -245,7 +249,10 @@ async fn test_document_manager_persist_and_open() {
     let dm = DocumentManager::new();
 
     // Persist a document
-    let version = dm.persist_document(&file_path_str, "fn main() {}").await.unwrap();
+    let version = dm
+        .persist_document(&file_path_str, "fn main() {}")
+        .await
+        .unwrap();
     assert_eq!(version, 2); // Initial 1 + bump
 
     // Open it and verify content
@@ -257,7 +264,10 @@ async fn test_document_manager_persist_and_open() {
 #[tokio::test]
 async fn test_document_manager_open_nonexistent_file() {
     let dm = DocumentManager::new();
-    let doc = dm.open_text_document("/nonexistent/path/file.rs").await.unwrap();
+    let doc = dm
+        .open_text_document("/nonexistent/path/file.rs")
+        .await
+        .unwrap();
     // Nonexistent file should have empty text
     assert_eq!(doc.get("text").unwrap().as_str(), Some(""));
     assert_eq!(doc.get("languageId").unwrap().as_str(), Some("rust"));
@@ -334,7 +344,9 @@ async fn test_workspace_manager_update_with_scope() {
     .await
     .unwrap();
 
-    let config = wm.get_workspace_configuration("editor", Some("workspace")).await;
+    let config = wm
+        .get_workspace_configuration("editor", Some("workspace"))
+        .await;
     assert!(config.is_some());
     let config = config.unwrap();
     assert_eq!(config.values.get("tabSize"), Some(&json!(4)));
@@ -352,7 +364,9 @@ async fn test_workspace_manager_file_decorations() {
         id: "git-provider".to_string(),
         owner: "git".to_string(),
     };
-    wm.register_file_decoration_provider(provider).await.unwrap();
+    wm.register_file_decoration_provider(provider)
+        .await
+        .unwrap();
 
     // Update decorations
     let decorations = vec![FileDecoration {
@@ -382,7 +396,9 @@ async fn test_workspace_manager_clear_workspace_data() {
         id: "test-provider".to_string(),
         owner: "test-owner".to_string(),
     };
-    wm.register_file_decoration_provider(provider).await.unwrap();
+    wm.register_file_decoration_provider(provider)
+        .await
+        .unwrap();
 
     // Clear data for the owner
     wm.clear_workspace_data("test-owner").await.unwrap();
@@ -738,9 +754,7 @@ async fn test_configuration_and_document_manager_integration() {
     config
         .update(Some("editor"), "fontSize", json!(14))
         .unwrap();
-    config
-        .update(Some("editor"), "tabSize", json!(4))
-        .unwrap();
+    config.update(Some("editor"), "tabSize", json!(4)).unwrap();
 
     let dm = DocumentManager::new();
 

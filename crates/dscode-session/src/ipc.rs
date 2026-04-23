@@ -68,10 +68,12 @@ pub struct SessionManager {
     app_dirs: dscode_core::AppDirectories,
     command_map: Arc<tokio::sync::RwLock<HashMap<String, Vec<String>>>>,
     status_bar_items: Arc<tokio::sync::RwLock<HashMap<String, crate::types::StatusBarItemState>>>,
-    pending_message_requests: Arc<tokio::sync::RwLock<HashMap<String, oneshot::Sender<Option<String>>>>>,
+    pending_message_requests:
+        Arc<tokio::sync::RwLock<HashMap<String, oneshot::Sender<Option<String>>>>>,
     pending_quick_pick_requests:
         Arc<tokio::sync::RwLock<HashMap<String, oneshot::Sender<Option<Value>>>>>,
-    pending_input_requests: Arc<tokio::sync::RwLock<HashMap<String, oneshot::Sender<Option<String>>>>>,
+    pending_input_requests:
+        Arc<tokio::sync::RwLock<HashMap<String, oneshot::Sender<Option<String>>>>>,
     configuration: Arc<tokio::sync::RwLock<crate::configuration::ConfigurationStore>>,
     document_versions: Arc<tokio::sync::RwLock<HashMap<String, i32>>>,
     editor_decorations: Arc<tokio::sync::RwLock<HashMap<String, HashMap<String, Value>>>>,
@@ -98,7 +100,8 @@ impl SessionManager {
 
     /// Create a new session manager.
     pub fn new(
-        app_handle: AppHandle, app_dirs: dscode_core::AppDirectories,
+        app_handle: AppHandle,
+        app_dirs: dscode_core::AppDirectories,
         path_validator: Arc<tokio::sync::RwLock<PathValidator>>,
     ) -> Self {
         use crate::types::SessionState;
@@ -113,14 +116,15 @@ impl SessionManager {
             status_bar_items: Vec::new(),
         }));
 
-        let extension_host =
-            Arc::new(tokio::sync::Mutex::new(ExtensionHostManager::new("main".to_string())));
+        let extension_host = Arc::new(tokio::sync::Mutex::new(ExtensionHostManager::new(
+            "main".to_string(),
+        )));
 
         let ipc_manager = Arc::new(IpcManager::new());
 
-        let lsp_pool = Arc::new(tokio::sync::RwLock::new(
-            dscode_lsp::LspServerPool::new(LspServerStrategy::OnePerLanguage),
-        ));
+        let lsp_pool = Arc::new(tokio::sync::RwLock::new(dscode_lsp::LspServerPool::new(
+            LspServerStrategy::OnePerLanguage,
+        )));
         let debug_pool = Arc::new(tokio::sync::RwLock::new(dscode_dap::DebugAdapterPool::new()));
 
         let configuration_store =
