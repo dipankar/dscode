@@ -52,7 +52,9 @@ jobs:
           - platform: 'macos-latest'
             target: 'aarch64-apple-darwin'
             args: '--target aarch64-apple-darwin'
-          - platform: 'macos-latest'
+          # macos-13 is Intel-based; cross-compiling x86_64 from ARM runners
+          # is complex due to missing x86_64 Homebrew dependencies.
+          - platform: 'macos-13'
             target: 'x86_64-apple-darwin'
             args: '--target x86_64-apple-darwin'
           - platform: 'ubuntu-22.04'
@@ -81,7 +83,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         continue-on-error: ${{ matrix.platform == 'windows-latest' }}
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ (matrix.platform == 'macos-latest' || matrix.platform == 'macos-13') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Verify Rust installation
         if: matrix.platform == 'windows-latest'
@@ -98,14 +100,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-
-      # Intel macOS cross-compilation requires x86_64 Homebrew OpenSSL
-      - name: Install x86_64 OpenSSL (macOS Intel cross-build)
-        if: matrix.target == 'x86_64-apple-darwin'
-        run: |
-          arch -x86_64 /usr/local/bin/brew install openssl@3 || true
-          echo "OPENSSL_DIR=$(arch -x86_64 /usr/local/bin/brew --prefix openssl@3 2>/dev/null || echo /usr/local/opt/openssl@3)" >> "$GITHUB_ENV"
-        shell: bash
 
       - name: Install frontend dependencies
         run: npm ci
@@ -126,7 +120,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CODESIGN_IDENTITY: ${{ matrix.platform == 'macos-latest' && '-' || '' }}
+          CODESIGN_IDENTITY: ${{ (matrix.platform == 'macos-latest' || matrix.platform == 'macos-13') && '-' || '' }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'DSCode ${{ github.ref_name }}'
