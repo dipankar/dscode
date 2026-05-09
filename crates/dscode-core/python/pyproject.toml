@@ -26,6 +26,3 @@ classifiers = [
 [project.urls]
 Repository = "https://github.com/dipankar/dscode"
 Documentation = "https://github.com/dipankar/dscode/tree/main/crates/dscode-core/python"
-
-[tool.maturin]
-features = ["python"]

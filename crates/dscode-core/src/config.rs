@@ -232,6 +232,10 @@ mod tests {
 
     #[test]
     fn test_app_directories_resolve() {
+        // Serialize with env-override tests to avoid races on DSCODE_EXTENSIONS_DIR.
+        let _lock = ENV_TEST_MUTEX.lock().unwrap();
+        std::env::remove_var("DSCODE_EXTENSIONS_DIR");
+
         // This test verifies that AppDirectories can resolve without error
         let dirs = AppDirectories::resolve();
         assert!(dirs.is_ok(), "AppDirectories::resolve() should succeed");
@@ -298,6 +302,11 @@ mod tests {
 
     #[test]
     fn test_resolve_creates_directories() {
+        // Serialize with env-override tests to avoid races on DSCODE_EXTENSIONS_DIR.
+        let _lock = ENV_TEST_MUTEX.lock().unwrap();
+        // Clear any lingering env override so we test default paths.
+        std::env::remove_var("DSCODE_EXTENSIONS_DIR");
+
         // resolve() should create the directories if they don't exist
         let dirs = AppDirectories::resolve().unwrap();
         assert!(
