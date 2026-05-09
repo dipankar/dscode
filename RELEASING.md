@@ -25,6 +25,8 @@ DSCode uses a **tag-triggered release pipeline**:
 
 All publishing to crates.io, PyPI, and npm uses **OIDC-based trusted publishing** where possible, eliminating long-lived API tokens from repository secrets.
 
+> **Important:** Two new packages — `dscode` on npm and `dscode` on PyPI — are **binary wrappers** that download the platform-native DSCode application from GitHub Releases. These are distinct from the internal library packages (`dscode-extension-host`, `@dscode/monaco-wasm`, `dscode-core`).
+
 ## Making a Release
 
 ### Prerequisites
@@ -50,8 +52,9 @@ The script will:
 2. Bump versions in:
    - `Cargo.toml` (workspace + path deps)
    - `src-tauri/Cargo.toml` and `tauri.conf.json`
-   - `package.json` (root + extension-host + monaco-wasm)
+   - `package.json` (root + extension-host + monaco-wasm + packages/dscode)
    - `crates/dscode-core/python/pyproject.toml`
+   - `packages/pypi/pyproject.toml`
    - Lock files (`package-lock.json`)
 3. Run frontend checks (`npm run check`).
 4. Run Rust tests (`cargo test --workspace`).
@@ -69,21 +72,21 @@ The following workflows run automatically after the tag is pushed:
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| `release.yml` | Push tag `v*` | Builds Tauri installers for macOS (Intel + Apple Silicon), Linux (x86_64 + aarch64), and Windows (x86_64). Creates a GitHub Release with artifacts. Generates build attestations via OIDC. |
-| `publish-crates.yml` | Release `published` | Publishes Rust crates to crates.io in dependency order using OIDC Trusted Publishing. |
-| `publish-python.yml` | Release `published` | Builds wheels for x86_64/aarch64 on Linux, macOS, and Windows. Publishes to PyPI using OIDC Trusted Publishing. |
-| `publish-npm.yml` | Release `published` | Publishes `dscode-extension-host` and `@dscode/monaco-wasm` to npm with provenance attestations. |
+| `release.yml` | Push tag `v*` | Builds Tauri installers for macOS (Intel + Apple Silicon), Linux (x86_64 + aarch64), and Windows (x86_64). Creates portable archives (`.tar.gz`, `.zip`, `.AppImage`) for wrapper packages. Creates a GitHub Release with artifacts. Generates build attestations via OIDC. |
+| `publish-crates.yml` | Release `published` | Publishes Rust library crates to crates.io in dependency order using OIDC Trusted Publishing. |
+| `publish-python.yml` | Release `published` | Builds `dscode-core` wheels (Rust Python bindings). Publishes `dscode` binary wrapper to PyPI using OIDC Trusted Publishing. |
+| `publish-npm.yml` | Release `published` | Publishes `dscode-extension-host` and `@dscode/monaco-wasm` library packages. Publishes `dscode` binary wrapper to npm with provenance attestations. |
 | `homebrew.yml` | Release `published` | Bumps the `dscode` cask in `dipankar/homebrew-tap`. |
 
 ### Release Artifacts
 
 | Platform | Formats |
 |----------|---------|
-| macOS Apple Silicon | `.dmg` |
-| macOS Intel | `.dmg` |
+| macOS Apple Silicon | `.dmg`, `.tar.gz` (portable) |
+| macOS Intel | `.dmg`, `.tar.gz` (portable) |
 | Linux x86_64 | `.deb`, `.AppImage` |
 | Linux aarch64 | `.deb`, `.AppImage` |
-| Windows x86_64 | `.msi`, `.exe` |
+| Windows x86_64 | `.msi`, `.exe`, `.zip` (portable) |
 
 ### Artifact Attestations
 
@@ -127,7 +130,7 @@ After setup, published crates will display a **"VIA GITHUB"** badge on crates.io
 
 PyPI supports **Trusted Publishing** (OIDC). No API tokens are stored in GitHub secrets.
 
-**One-time setup:**
+**One-time setup for `dscode-core` (Python bindings):**
 
 1. Go to `https://pypi.org/manage/project/dscode-core/settings/publishing/`.
 2. Click **Add**.
@@ -139,7 +142,30 @@ PyPI supports **Trusted Publishing** (OIDC). No API tokens are stored in GitHub 
    - Environment name: `release` (optional)
 4. Save.
 
-After the first manual release, all subsequent releases will use short-lived OIDC tokens.
+**One-time setup for `dscode` (binary wrapper):**
+
+1. Go to `https://pypi.org/manage/project/dscode/settings/publishing/`.
+2. Click **Add**.
+3. Enter:
+   - Publisher: `GitHub`
+   - Owner: `dipankar`
+   - Repository name: `dscode`
+   - Workflow name: `publish-python.yml`
+   - Environment name: `release` (optional)
+4. Save.
+
+**Initial manual publish:**
+
+For PyPI Trusted Publishing, the project does **not** need to exist first — you can configure the trusted publisher before the first release. However, if you prefer to push the initial release manually:
+
+```bash
+cd packages/pypi
+pip install build twine
+python -m build
+twine upload dist/*
+```
+
+After the first release, all subsequent releases will use short-lived OIDC tokens automatically.
 
 ### npm
 
@@ -148,7 +174,21 @@ npm does **not** support fully tokenless OIDC publishing. However, npm **provena
 **Current setup:**
 - The `publish-npm.yml` workflow passes `--provenance` to `npm publish`.
 - The workflow has `id-token: write` permission, enabling the OIDC attestation.
-- Authentication still requires an **automation token** (`NPM_AUTOMATION_TOKEN` secret) scoped to `dscode-extension-host` and `@dscode/monaco-wasm`.
+- Authentication still requires an **automation token** (`NPM_AUTOMATION_TOKEN` secret) scoped to:
+  - `dscode-extension-host`
+  - `@dscode/monaco-wasm`
+  - `dscode` (binary wrapper)
+
+**Initial manual publish for `dscode`:**
+
+If this is the first time publishing the `dscode` binary wrapper package:
+
+```bash
+cd packages/dscode
+npm publish --access public
+```
+
+Subsequent releases will be handled automatically by `publish-npm.yml`.
 
 **Published packages will show a "Provenance"** section on npmjs.com with a link to the GitHub workflow run.
 
@@ -220,11 +260,13 @@ gh workflow run publish-npm.yml
    ```bash
    npm unpublish dscode-extension-host@0.3.0
    npm unpublish @dscode/monaco-wasm@0.3.0
+   npm unpublish dscode@0.3.0
    ```
 5. **Yank the PyPI release**:
    ```bash
    pip install pypi-cleanup
    pypi-cleanup -u <username> -p dscode-core -r 0.3.0
+   pypi-cleanup -u <username> -p dscode -r 0.3.0
    ```
 
 ### Rotating secrets

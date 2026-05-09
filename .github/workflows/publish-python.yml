@@ -91,3 +91,39 @@ jobs:
           command: upload
           args: dist/*
         # No MATURIN_PYPI_TOKEN needed — Trusted Publishing uses OIDC automatically
+
+  publish-dscode-wrapper:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify version (if specified)
+        if: github.event.inputs.version != ''
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          PY_VERSION=$(grep '^version = ' packages/pypi/pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$PY_VERSION" != "$VERSION" ]; then
+            echo "Error: dscode PyPI version is $PY_VERSION, expected $VERSION"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: |
+          pip install build
+          cd packages/pypi
+          python -m build
+
+      - name: Publish dscode wrapper to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/pypi/dist
+          # Trusted Publishing (OIDC) — no API token needed

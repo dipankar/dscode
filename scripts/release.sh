@@ -160,6 +160,17 @@ if [[ "$DRY_RUN" == "false" ]]; then
         bump_files+=("monaco-wasm/package.json")
     fi
 
+    # packages/dscode/package.json (binary wrapper)
+    if [[ -f "packages/dscode/package.json" ]] && command -v node >/dev/null 2>&1; then
+        node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('packages/dscode/package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('packages/dscode/package.json', JSON.stringify(pkg, null, 2) + '\n');
+        "
+        bump_files+=("packages/dscode/package.json")
+    fi
+
     # Bump all Cargo.toml files that contain version declarations
     # (top-level package versions AND path dependency versions)
     bump_cargo_version "Cargo.toml"
@@ -187,12 +198,14 @@ if [[ "$DRY_RUN" == "false" ]]; then
         bump_files+=("index.html")
     fi
 
-    # Update Python pyproject.toml version
-    if [[ -f "crates/dscode-core/python/pyproject.toml" ]] && command -v sed >/dev/null 2>&1; then
-        sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" crates/dscode-core/python/pyproject.toml 2>/dev/null || \
-            sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" crates/dscode-core/python/pyproject.toml
-        bump_files+=("crates/dscode-core/python/pyproject.toml")
-    fi
+    # Update Python pyproject.toml versions
+    for pyproject in "crates/dscode-core/python/pyproject.toml" "packages/pypi/pyproject.toml"; do
+        if [[ -f "$pyproject" ]] && command -v sed >/dev/null 2>&1; then
+            sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" "$pyproject" 2>/dev/null || \
+                sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" "$pyproject"
+            bump_files+=("$pyproject")
+        fi
+    done
 
     # Update lock files after version bumps
     if command -v npm >/dev/null 2>&1; then
@@ -212,6 +225,8 @@ else
     echo "    - crates/dscode-session/Cargo.toml (path deps)"
     echo "    - examples/custom-editor/Cargo.toml (path deps)"
     echo "    - crates/dscode-core/python/pyproject.toml"
+    echo "    - packages/pypi/pyproject.toml"
+    echo "    - packages/dscode/package.json"
     echo "    - src-tauri/tauri.conf.json"
     echo "    - index.html (loading screen version)"
     echo "    - package-lock.json (regenerated)"

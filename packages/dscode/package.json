@@ -1,0 +1,41 @@
+{
+  "name": "dscode",
+  "version": "0.2.0",
+  "description": "DSCode — a fast, hackable Visual Studio Code alternative built in Rust. Installs the native binary automatically.",
+  "keywords": [
+    "vscode",
+    "code-editor",
+    "ide",
+    "dscode",
+    "tauri",
+    "rust",
+    "visual-studio-code",
+    "editor"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dipankar/dscode",
+    "directory": "packages/dscode"
+  },
+  "bugs": {
+    "url": "https://github.com/dipankar/dscode/issues"
+  },
+  "homepage": "https://github.com/dipankar/dscode#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "dscode": "./bin/dscode.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js",
+    "prepublishOnly": "node -e \"console.log('Ready to publish')\""
+  },
+  "files": [
+    "bin/",
+    "install.js",
+    "README.md",
+    "LICENSE"
+  ]
+}

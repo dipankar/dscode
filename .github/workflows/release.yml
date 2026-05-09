@@ -154,3 +154,64 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: 'src-tauri/target/release/bundle/*'
+
+      # ── Create portable archives for npm/PyPI wrapper packages ──
+      - name: Create portable archive (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCH="${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}"
+          APP_PATH="src-tauri/target/release/bundle/macos/DSCode.app"
+          if [ -d "$APP_PATH" ]; then
+            tar czf "DSCode-darwin-${ARCH}-${VERSION}.tar.gz" -C "src-tauri/target/release/bundle/macos" DSCode.app
+            echo "Created DSCode-darwin-${ARCH}-${VERSION}.tar.gz"
+          else
+            echo "WARNING: DSCode.app not found at $APP_PATH"
+          fi
+
+      - name: Create portable archive (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: powershell
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v',''
+          $releaseDir = "src-tauri/target/release"
+          $dest = "DSCode-win32-x64-${version}.zip"
+          if (Test-Path $releaseDir) {
+            # Exclude debug symbols and build artifacts
+            $files = Get-ChildItem -Path $releaseDir -Exclude "*.pdb","*.lib","*.exp","*.ilk","*.d","build","deps",".fingerprint","incremental",".cargo-lock","examples"
+            $files = $files | Where-Object { $_.Name -notmatch '^\.' }
+            Compress-Archive -Path $files.FullName -DestinationPath $dest -Force
+            Write-Host "Created $dest"
+          } else {
+            Write-Host "WARNING: Release directory not found at $releaseDir"
+          }
+
+      - name: Create portable archive (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCH="${{ matrix.target == 'aarch64-unknown-linux-gnu' && 'arm64' || 'x64' }}"
+          SRC_DIR="src-tauri/target/release/bundle/appimage"
+          if [ -d "$SRC_DIR" ]; then
+            # Find the AppImage (Tauri names it e.g. DSCode_0.2.0_amd64.AppImage)
+            APPIMAGE=$(find "$SRC_DIR" -maxdepth 1 -name "*.AppImage" | head -n1)
+            if [ -n "$APPIMAGE" ]; then
+              cp "$APPIMAGE" "DSCode-linux-${ARCH}-${VERSION}.AppImage"
+              echo "Created DSCode-linux-${ARCH}-${VERSION}.AppImage"
+            else
+              echo "WARNING: No AppImage found in $SRC_DIR"
+            fi
+          else
+            echo "WARNING: AppImage directory not found at $SRC_DIR"
+          fi
+
+      - name: Upload portable archives to release
+        if: startsWith(matrix.platform, 'macos') || matrix.platform == 'windows-latest' || runner.os == 'Linux'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            DSCode-darwin-*.tar.gz
+            DSCode-win32-*.zip
+            DSCode-linux-*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
