@@ -5,7 +5,7 @@
 [![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Debug Adapter Protocol client, manager, and pool for DSCode.
+Debug Adapter Protocol (DAP) client, manager, and pool for [DSCode](https://github.com/dipankar/dscode) — a hackable VS Code alternative built in Rust.
 
 ```bash
 cargo add dscode-dap

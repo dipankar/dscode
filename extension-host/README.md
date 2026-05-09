@@ -1,6 +1,12 @@
 # DSCode Extension Host
 
-A VS Code-compatible extension host for running VS Code extensions in any editor or IDE. This package provides a Node.js runtime that implements the VS Code Extension API, enabling existing VS Code extensions to run with minimal or no modifications.
+[![npm version](https://img.shields.io/npm/v/dscode-extension-host.svg)](https://www.npmjs.com/package/dscode-extension-host)
+[![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A **VS Code-compatible extension host** for running VS Code extensions in any editor or IDE. This package provides a Node.js runtime that implements the VS Code Extension API, enabling existing VS Code extensions to run with minimal or no modifications.
+
+Part of [DSCode](https://github.com/dipankar/dscode) — a fully hackable Visual Studio Code alternative built in Rust.
 
 ## Architecture
 

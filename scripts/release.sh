@@ -180,6 +180,13 @@ if [[ "$DRY_RUN" == "false" ]]; then
         bump_files+=("src-tauri/tauri.conf.json")
     fi
 
+    # Update index.html loading screen version
+    if command -v sed >/dev/null 2>&1; then
+        sed -i '' "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v${VERSION}/g" index.html 2>/dev/null || \
+            sed -i "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v${VERSION}/g" index.html
+        bump_files+=("index.html")
+    fi
+
     # Update Python pyproject.toml version
     if [[ -f "crates/dscode-core/python/pyproject.toml" ]] && command -v sed >/dev/null 2>&1; then
         sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" crates/dscode-core/python/pyproject.toml 2>/dev/null || \
@@ -206,6 +213,7 @@ else
     echo "    - examples/custom-editor/Cargo.toml (path deps)"
     echo "    - crates/dscode-core/python/pyproject.toml"
     echo "    - src-tauri/tauri.conf.json"
+    echo "    - index.html (loading screen version)"
     echo "    - package-lock.json (regenerated)"
     echo "    - extension-host/package-lock.json (regenerated)"
 fi

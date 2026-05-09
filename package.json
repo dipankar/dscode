@@ -2,6 +2,15 @@
   "name": "dscode",
   "version": "0.2.0",
   "description": "A fully hackable Visual Studio Code alternative. Built in Rust.",
+  "keywords": [
+    "vscode-alternative",
+    "code-editor",
+    "tauri",
+    "svelte",
+    "monaco",
+    "ide",
+    "rust"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",

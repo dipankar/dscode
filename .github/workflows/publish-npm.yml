@@ -1,7 +1,16 @@
 name: Publish npm Packages
 
-# Publishes npm packages to the npm registry.
-# Triggered after a GitHub Release is published.
+# Publishes npm packages to the npm registry with provenance attestations.
+# Provenance uses OIDC to cryptographically link the package to this
+# GitHub Actions workflow run, providing supply-chain transparency.
+#
+# NOTE: npm authentication still requires a token (npm does not support
+# fully tokenless OIDC publishing like PyPI/crates.io). We use a
+# dedicated automation token scoped to the two packages below.
+#
+# Prerequisites:
+#   - Set secret NPM_AUTOMATION_TOKEN (npm automation token with
+#     publish-only scope for dscode-extension-host and @dscode/monaco-wasm)
 
 on:
   release:
@@ -16,9 +25,10 @@ on:
 jobs:
   publish-extension-host:
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: read
-      id-token: write
+      id-token: write   # Required for npm provenance / OIDC attestation
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,13 +57,14 @@ jobs:
           cd extension-host
           npm publish --access public --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}
 
   publish-monaco-wasm:
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: read
-      id-token: write
+      id-token: write   # Required for npm provenance / OIDC attestation
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -84,4 +95,4 @@ jobs:
           cd monaco-wasm
           npm publish --access public --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}

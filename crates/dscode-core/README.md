@@ -5,7 +5,7 @@
 [![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Core types, text buffer, and configuration for DSCode.
+Core types, text buffer, and configuration for [DSCode](https://github.com/dipankar/dscode) — a hackable VS Code alternative built in Rust.
 
 ## Install
 
@@ -66,6 +66,13 @@ See the `examples/` directory for more complete samples.
 ## State Machine
 
 `TextBuffer` uses the `ropey` rope data structure internally for O(log n) insertions, deletions, and slicing on large files.
+
+## Related Crates
+
+- `dscode-session` — Session manager that uses `dscode-core` types.
+- `dscode-lsp` — Language Server Protocol client.
+- `dscode-extension-host` — Extension host process management.
+- `dscode-terminal` — Terminal manager.
 
 ## Full API Docs
 

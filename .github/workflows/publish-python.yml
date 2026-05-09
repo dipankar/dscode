@@ -3,6 +3,13 @@ name: Publish Python Package
 # Builds and publishes Python wheels for dscode-core to PyPI.
 # Uses maturin for building Rust-based Python packages.
 # Triggered after a GitHub Release is published.
+#
+# Uses PyPI Trusted Publishing (OIDC) — no long-lived API tokens required.
+#
+# Prerequisites:
+#   - Configure Trusted Publishing on PyPI:
+#     https://pypi.org/manage/project/dscode-core/settings/publishing/
+#     Add a new publisher: GitHub → dipankar/dscode → publish-python.yml
 
 on:
   release:
@@ -67,9 +74,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
+    environment: release
     permissions:
-      contents: read
       id-token: write
+      contents: read
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -82,5 +90,4 @@ jobs:
         with:
           command: upload
           args: dist/*
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        # No MATURIN_PYPI_TOKEN needed — Trusted Publishing uses OIDC automatically

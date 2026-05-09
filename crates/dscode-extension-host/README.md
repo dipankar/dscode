@@ -5,7 +5,7 @@
 [![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Extension host process management, IPC, sandbox, and security for DSCode.
+Extension host process management, IPC, sandbox, and security for [DSCode](https://github.com/dipankar/dscode) — a hackable VS Code alternative built in Rust.
 
 ## Install
 
@@ -143,6 +143,13 @@ host.shutdown();
 - **Restarting**: Waiting for exponential backoff (1s, 2s, 4s) before re-spawn
 - **Stopping**: Graceful shutdown in progress
 - **Crashed**: Terminal state after 3 failed restart attempts
+
+## Related Crates
+
+- `dscode-core` — Core types and text buffer.
+- `dscode-session` — Session manager that uses the extension host.
+- `dscode-lsp` — Language Server Protocol client.
+- `dscode-terminal` — Terminal manager.
 
 ## Full API Docs
 

@@ -1,0 +1,31 @@
+name: Bump Homebrew Cask
+
+# Bumps the DSCode cask in dipankar/homebrew-tap after a GitHub Release
+# is published. This makes `brew install --cask dscode` serve the latest
+# version immediately.
+#
+# Prerequisites:
+#   - The cask file must exist in dipankar/homebrew-tap/Casks/dscode.rb
+#     (create manually for the first release if it doesn't exist yet).
+#   - Secret HOMEBREW_TAP_TOKEN must be a GitHub PAT with
+#     `contents:write` and `pull_requests:write` on dipankar/homebrew-tap.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to bump to (e.g. 0.2.0)'
+        required: true
+
+jobs:
+  bump-cask:
+    runs-on: macos-latest
+    steps:
+      - name: Bump DSCode cask
+        uses: macauley/action-homebrew-bump-cask@v1
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          cask: dscode
+          tap: dipankar/homebrew-tap

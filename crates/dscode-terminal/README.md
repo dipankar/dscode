@@ -5,7 +5,7 @@
 [![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Terminal manager and PTY lifecycle management for DSCode.
+Terminal manager and PTY lifecycle management for [DSCode](https://github.com/dipankar/dscode) — a hackable VS Code alternative built in Rust.
 
 This crate provides a portable PTY-backed terminal manager that can be used
 independently of any UI framework. Event forwarding is abstracted behind the

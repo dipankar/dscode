@@ -84,5 +84,13 @@
         }
       ]
     }
+  },
+  "plugins": {
+    "updater": {
+      "active": false,
+      "dialog": true,
+      "endpoints": [],
+      "pubkey": ""
+    }
   }
 }

@@ -3,8 +3,13 @@ name: Release
 # Triggered by pushing a version tag (e.g. v0.2.0).
 # The release.sh script creates these tags.
 #
-# This workflow builds signed installers for all platforms and creates a
-# GitHub Release with the artifacts attached.
+# This workflow builds signed installers for all platforms, creates a
+# GitHub Release with the artifacts attached, and generates build
+# attestations via OIDC for supply-chain verification.
+#
+# Code signing:
+#   - macOS: ad-hoc signing (replace with Apple Developer ID when available)
+#   - Windows: unsigned (add Authenticode signing when certificate available)
 
 on:
   push:
@@ -45,6 +50,9 @@ jobs:
     needs: [build-extension-host]
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+    environment: release
     strategy:
       fail-fast: false
       matrix:
@@ -59,6 +67,9 @@ jobs:
             args: '--target x86_64-apple-darwin'
           - platform: 'ubuntu-22.04'
             target: 'x86_64-unknown-linux-gnu'
+            args: ''
+          - platform: 'ubuntu-24.04-arm'
+            target: 'aarch64-unknown-linux-gnu'
             args: ''
           - platform: 'windows-latest'
             target: 'x86_64-pc-windows-msvc'
@@ -94,9 +105,11 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
       - name: Install Tauri dependencies (Ubuntu)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
@@ -116,6 +129,14 @@ jobs:
       # Ad-hoc codesigning on macOS prevents "damaged" Gatekeeper errors
       # on Apple Silicon. Will be replaced with proper Developer ID signing
       # once an Apple Developer account is available.
+      #
+      # To enable proper macOS signing, set these secrets:
+      #   APPLE_CERTIFICATE: Base64-encoded .p12 certificate
+      #   APPLE_CERTIFICATE_PASSWORD: Certificate password
+      #   APPLE_SIGNING_IDENTITY: Developer ID Application identity
+      #   APPLE_ID: Apple ID for notarization
+      #   APPLE_PASSWORD: App-specific password for notarization
+      #   APPLE_TEAM_ID: Apple Developer Team ID
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -124,16 +145,12 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'DSCode ${{ github.ref_name }}'
-          releaseBody: |
-            ## What's New
-            See the [CHANGELOG](../blob/main/CHANGELOG.md) for full details.
-
-            ## Assets
-            Download the installer for your platform below:
-            - **macOS (Apple Silicon)**: `.dmg`
-            - **macOS (Intel)**: `.dmg`
-            - **Linux (x86_64)**: `.deb` or `.AppImage`
-            - **Windows (x86_64)**: `.msi` or `.exe`
-          releaseDraft: true
-          prerelease: false
+          releaseBody: 'See the [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for full details.'
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
           args: ${{ matrix.args }}
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'src-tauri/target/release/bundle/*'
