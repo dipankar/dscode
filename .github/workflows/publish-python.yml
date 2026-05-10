@@ -112,7 +112,7 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
           PY_VERSION=$(grep '^version = ' packages/pypi/pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           if [ "$PY_VERSION" != "$VERSION" ]; then
-            echo "Error: dscode PyPI version is $PY_VERSION, expected $VERSION"
+            echo "Error: dscode-app PyPI version is $PY_VERSION, expected $VERSION"
             exit 1
           fi
 
@@ -122,7 +122,7 @@ jobs:
           cd packages/pypi
           python -m build
 
-      - name: Publish dscode wrapper to PyPI
+      - name: Publish dscode-app wrapper to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: packages/pypi/dist

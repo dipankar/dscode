@@ -160,15 +160,15 @@ if [[ "$DRY_RUN" == "false" ]]; then
         bump_files+=("monaco-wasm/package.json")
     fi
 
-    # packages/dscode/package.json (binary wrapper)
-    if [[ -f "packages/dscode/package.json" ]] && command -v node >/dev/null 2>&1; then
+    # packages/npm/package.json (binary wrapper)
+    if [[ -f "packages/npm/package.json" ]] && command -v node >/dev/null 2>&1; then
         node -e "
             const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('packages/dscode/package.json', 'utf8'));
+            const pkg = JSON.parse(fs.readFileSync('packages/npm/package.json', 'utf8'));
             pkg.version = '${VERSION}';
-            fs.writeFileSync('packages/dscode/package.json', JSON.stringify(pkg, null, 2) + '\n');
+            fs.writeFileSync('packages/npm/package.json', JSON.stringify(pkg, null, 2) + '\n');
         "
-        bump_files+=("packages/dscode/package.json")
+        bump_files+=("packages/npm/package.json")
     fi
 
     # Bump all Cargo.toml files that contain version declarations
@@ -226,7 +226,7 @@ else
     echo "    - examples/custom-editor/Cargo.toml (path deps)"
     echo "    - crates/dscode-core/python/pyproject.toml"
     echo "    - packages/pypi/pyproject.toml"
-    echo "    - packages/dscode/package.json"
+    echo "    - packages/npm/package.json"
     echo "    - src-tauri/tauri.conf.json"
     echo "    - index.html (loading screen version)"
     echo "    - package-lock.json (regenerated)"

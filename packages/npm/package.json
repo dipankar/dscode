@@ -1,5 +1,5 @@
 {
-  "name": "dscode",
+  "name": "dscode-app",
   "version": "0.3.0",
   "description": "DSCode — a fast, hackable Visual Studio Code alternative built in Rust. Installs the native binary automatically.",
   "keywords": [
@@ -16,7 +16,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/dipankar/dscode",
-    "directory": "packages/dscode"
+    "directory": "packages/npm"
   },
   "bugs": {
     "url": "https://github.com/dipankar/dscode/issues"

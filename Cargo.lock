@@ -1093,7 +1093,7 @@ dependencies = [
 
 [[package]]
 name = "dscode"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1141,7 +1141,7 @@ dependencies = [
 
 [[package]]
 name = "dscode-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "directories",
  "pyo3",
@@ -1155,7 +1155,7 @@ dependencies = [
 
 [[package]]
 name = "dscode-core-python"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "dscode-core",
  "pyo3",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "dscode-dap"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1175,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "dscode-extension-host"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aes-gcm",
  "governor",
@@ -1197,7 +1197,7 @@ dependencies = [
 
 [[package]]
 name = "dscode-lsp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "lsp-types",
  "serde",
@@ -1209,7 +1209,7 @@ dependencies = [
 
 [[package]]
 name = "dscode-session"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "dscode-core",
@@ -1237,7 +1237,7 @@ dependencies = [
 
 [[package]]
 name = "dscode-terminal"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "portable-pty",
  "serde",
@@ -3183,7 +3183,7 @@ dependencies = [
 
 [[package]]
 name = "monaco-wasm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "js-sys",
  "wasm-bindgen",

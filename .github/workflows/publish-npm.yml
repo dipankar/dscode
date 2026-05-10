@@ -114,15 +114,15 @@ jobs:
         if: github.event.inputs.version != ''
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          PKG_VERSION=$(node -p "require('./packages/dscode/package.json').version")
+          PKG_VERSION=$(node -p "require('./packages/npm/package.json').version")
           if [ "$PKG_VERSION" != "$VERSION" ]; then
-            echo "Error: dscode package version is $PKG_VERSION, expected $VERSION"
+            echo "Error: dscode-app package version is $PKG_VERSION, expected $VERSION"
             exit 1
           fi
 
-      - name: Publish dscode binary wrapper
+      - name: Publish dscode-app binary wrapper
         run: |
-          cd packages/dscode
+          cd packages/npm
           npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}

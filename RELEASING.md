@@ -25,7 +25,7 @@ DSCode uses a **tag-triggered release pipeline**:
 
 All publishing to crates.io, PyPI, and npm uses **OIDC-based trusted publishing** where possible, eliminating long-lived API tokens from repository secrets.
 
-> **Important:** Two new packages — `dscode` on npm and `dscode` on PyPI — are **binary wrappers** that download the platform-native DSCode application from GitHub Releases. These are distinct from the internal library packages (`dscode-extension-host`, `@dscode/monaco-wasm`, `dscode-core`).
+> **Important:** Two new packages — `dscode-app` on npm and `dscode-app` on PyPI — are **binary wrappers** that download the platform-native DSCode application from GitHub Releases. These are distinct from the internal library packages (`dscode-extension-host`, `@dscode/monaco-wasm`, `dscode-core`).
 
 ## Making a Release
 
@@ -52,7 +52,7 @@ The script will:
 2. Bump versions in:
    - `Cargo.toml` (workspace + path deps)
    - `src-tauri/Cargo.toml` and `tauri.conf.json`
-   - `package.json` (root + extension-host + monaco-wasm + packages/dscode)
+   - `package.json` (root + extension-host + monaco-wasm + packages/npm)
    - `crates/dscode-core/python/pyproject.toml`
    - `packages/pypi/pyproject.toml`
    - Lock files (`package-lock.json`)
@@ -74,8 +74,8 @@ The following workflows run automatically after the tag is pushed:
 |----------|---------|--------------|
 | `release.yml` | Push tag `v*` | Builds Tauri installers for macOS (Intel + Apple Silicon), Linux (x86_64 + aarch64), and Windows (x86_64). Creates portable archives (`.tar.gz`, `.zip`, `.AppImage`) for wrapper packages. Creates a GitHub Release with artifacts. Generates build attestations via OIDC. |
 | `publish-crates.yml` | Release `published` | Publishes Rust library crates to crates.io in dependency order using OIDC Trusted Publishing. |
-| `publish-python.yml` | Release `published` | Builds `dscode-core` wheels (Rust Python bindings). Publishes `dscode` binary wrapper to PyPI using OIDC Trusted Publishing. |
-| `publish-npm.yml` | Release `published` | Publishes `dscode-extension-host` and `@dscode/monaco-wasm` library packages. Publishes `dscode` binary wrapper to npm with provenance attestations. |
+| `publish-python.yml` | Release `published` | Builds `dscode-core` wheels (Rust Python bindings). Publishes `dscode-app` binary wrapper to PyPI using OIDC Trusted Publishing. |
+| `publish-npm.yml` | Release `published` | Publishes `dscode-extension-host` and `@dscode/monaco-wasm` library packages. Publishes `dscode-app` binary wrapper to npm with provenance attestations. |
 | `homebrew.yml` | Release `published` | Bumps the `dscode` cask in `dipankar/homebrew-tap`. |
 
 ### Release Artifacts
@@ -142,9 +142,9 @@ PyPI supports **Trusted Publishing** (OIDC). No API tokens are stored in GitHub 
    - Environment name: `release` (optional)
 4. Save.
 
-**One-time setup for `dscode` (binary wrapper):**
+**One-time setup for `dscode-app` (binary wrapper):**
 
-1. Go to `https://pypi.org/manage/project/dscode/settings/publishing/`.
+1. Go to `https://pypi.org/manage/project/dscode-app/settings/publishing/`.
 2. Click **Add**.
 3. Enter:
    - Publisher: `GitHub`
@@ -177,14 +177,14 @@ npm does **not** support fully tokenless OIDC publishing. However, npm **provena
 - Authentication still requires an **automation token** (`NPM_AUTOMATION_TOKEN` secret) scoped to:
   - `dscode-extension-host`
   - `@dscode/monaco-wasm`
-  - `dscode` (binary wrapper)
+  - `dscode-app` (binary wrapper)
 
-**Initial manual publish for `dscode`:**
+**Initial manual publish for `dscode-app`:**
 
-If this is the first time publishing the `dscode` binary wrapper package:
+If this is the first time publishing the `dscode-app` binary wrapper package:
 
 ```bash
-cd packages/dscode
+cd packages/npm
 npm publish --access public
 ```
 
@@ -260,13 +260,13 @@ gh workflow run publish-npm.yml
    ```bash
    npm unpublish dscode-extension-host@0.3.0
    npm unpublish @dscode/monaco-wasm@0.3.0
-   npm unpublish dscode@0.3.0
+   npm unpublish dscode-app@0.3.0
    ```
 5. **Yank the PyPI release**:
    ```bash
    pip install pypi-cleanup
    pypi-cleanup -u <username> -p dscode-core -r 0.3.0
-   pypi-cleanup -u <username> -p dscode -r 0.3.0
+   pypi-cleanup -u <username> -p dscode-app -r 0.3.0
    ```
 
 ### Rotating secrets
