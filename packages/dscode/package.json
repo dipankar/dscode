@@ -1,6 +1,6 @@
 {
   "name": "dscode",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "DSCode — a fast, hackable Visual Studio Code alternative built in Rust. Installs the native binary automatically.",
   "keywords": [
     "vscode",

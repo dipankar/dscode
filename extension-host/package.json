@@ -1,6 +1,6 @@
 {
   "name": "dscode-extension-host",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "VS Code-compatible extension host for running VS Code extensions in any editor",
   "author": "DSCode Contributors",
   "license": "MIT",

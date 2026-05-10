@@ -1,6 +1,6 @@
 [package]
 name = "dscode-core-python"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Python bindings for dscode-core: text buffer and configuration utilities"
@@ -11,5 +11,5 @@ name = "dscode_core_python"
 crate-type = ["cdylib"]
 
 [dependencies]
-dscode-core = { path = "..", version = "0.2.0", features = ["python"] }
+dscode-core = { path = "..", version = "0.3.0", features = ["python"] }
 pyo3 = "0.23"

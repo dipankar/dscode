@@ -1,12 +1,12 @@
 [package]
 name = "custom-editor"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 publish = false
 
 [dependencies]
-dscode-core = { path = "../../crates/dscode-core", version = "0.2.0" }
-dscode-lsp = { path = "../../crates/dscode-lsp", version = "0.2.0" }
+dscode-core = { path = "../../crates/dscode-core", version = "0.3.0" }
+dscode-lsp = { path = "../../crates/dscode-lsp", version = "0.3.0" }
 tokio = { version = "1", features = ["full"] }
 
 [[bin]]
