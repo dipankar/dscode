@@ -60,9 +60,9 @@ jobs:
           - platform: 'macos-latest'
             target: 'aarch64-apple-darwin'
             args: '--target aarch64-apple-darwin'
-          # macos-13 is Intel-based; cross-compiling x86_64 from ARM runners
-          # is complex due to missing x86_64 Homebrew dependencies.
-          - platform: 'macos-13'
+          # x86_64 macOS is cross-compiled on the Apple Silicon runner.
+          # The x86_64 Homebrew OpenSSL step below handles native deps.
+          - platform: 'macos-latest'
             target: 'x86_64-apple-darwin'
             args: '--target x86_64-apple-darwin'
           - platform: 'ubuntu-22.04'
@@ -113,6 +113,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      # Intel macOS cross-compilation on Apple Silicon runners needs
+      # x86_64 Homebrew OpenSSL for git2 and other native deps.
+      - name: Install x86_64 OpenSSL (macOS Intel cross-build)
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: |
+          arch -x86_64 /usr/local/bin/brew install openssl@3 || true
+          echo "OPENSSL_DIR=$(arch -x86_64 /usr/local/bin/brew --prefix openssl@3 2>/dev/null || echo /usr/local/opt/openssl@3)" >> "$GITHUB_ENV"
+        shell: bash
 
       - name: Install frontend dependencies
         run: npm ci
