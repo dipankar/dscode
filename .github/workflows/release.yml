@@ -138,6 +138,7 @@ jobs:
       #   APPLE_PASSWORD: App-specific password for notarization
       #   APPLE_TEAM_ID: Apple Developer Team ID
       - name: Build Tauri app
+        id: build-tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -153,7 +154,7 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: 'src-tauri/target/release/bundle/**/*'
+          subject-path: ${{ join(fromJSON(steps.build-tauri.outputs.artifactPaths), ',') }}
 
       # ── Create portable archives for npm/PyPI wrapper packages ──
       - name: Create portable archive (macOS)
