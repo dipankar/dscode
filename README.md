@@ -1,6 +1,7 @@
 # DSCode
 
-> A fully hackable Visual Studio Code alternative. Built in Rust. Every subsystem is a library you can replace.
+> **The code editor you can take apart.**
+> A familiar VS Code experience on top of a Rust core that ships as libraries — swap the editor, replace the terminal, or embed the whole session in your own app.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/dipankar/dscode/actions/workflows/ci.yml/badge.svg)](https://github.com/dipankar/dscode/actions/workflows/ci.yml)
@@ -20,296 +21,286 @@
 [![npm: dscode-extension-host](https://img.shields.io/npm/v/dscode-extension-host?label=extension-host)](https://www.npmjs.com/package/dscode-extension-host)
 [![PyPI: dscode-core](https://img.shields.io/pypi/v/dscode-core?label=dscode-core%20python)](https://pypi.org/project/dscode-core/)
 
-## Overview
+---
 
-DSCode is a **hackable code editor** built with a Rust backend (Tauri) and Svelte frontend. Unlike VS Code, which is a monolithic Electron app, DSCode is a **loosely coupled system of libraries** — each designed to be used independently, replaced, or embedded in your own projects.
+## Built for two audiences
 
-The default application gives you a familiar VS Code-like experience out of the box. But the real goal is that **nothing is hardcoded**: swap the editor, replace the terminal, write your own extension host, or embed the entire session layer in a headless CI runner.
+| If you want to… | DSCode gives you |
+|---|---|
+| **Edit code, fast** | A VS Code-like desktop app with sub-second startup and ~60% less memory |
+| **Keep your existing extensions** | A full Node.js extension host with the `vscode.*` API, sandboxed by default |
+| **Build your own tool on top** | Six Rust crates — text buffer, LSP, DAP, terminal, extension host, session — that compose any way you like |
+| **Run an editor headlessly** | The same session, workspace, and extension layer with no UI attached |
 
-### Why DSCode?
+---
 
-- **Hackable by Design**: Every subsystem is a separate crate with a clean API. Don't like Monaco? Plug in your own renderer. Don't need the UI? Use `dscode-session` headlessly.
-- **VS Code Extension Compatible**: Run existing VS Code extensions via a Node.js-based extension host with full `vscode.*` API support.
-- **Rust-Native Performance**: Sub-second startup, ~60% less memory than Electron, rope-based text buffers, and native file watching.
-- **Secure by Default**: Extensions run in a deny-by-default sandbox with OS-native isolation (macOS sandbox-exec, Linux bubblewrap, Windows Job Objects).
-- **Built as Libraries First**: The app is a thin shell around crates you can `cargo add` into your own projects.
+## For users: a familiar editor that doesn't cost you a gigabyte of RAM
 
-### Key Features
+- **Sub-second startup.** Native Rust binary, no Electron boot.
+- **~60% less memory** than VS Code on the same workspace.
+- **Your extensions still work.** ESLint, Prettier, GitLens, Python — they run unchanged on the bundled Node.js host.
+- **Secure by default.** Every extension starts with zero permissions, isolated by an OS-native sandbox (macOS `sandbox-exec`, Linux `bubblewrap`, Windows Job Objects).
+- **Familiar UI.** Monaco editor, xterm.js terminal, VS Code theme compatibility, ARIA-correct components.
+- **Cross-platform.** macOS, Linux, and Windows.
 
-- **Fast**: Sub-second startup times, Rust-powered backend
-- **Monaco Editor**: Same editor engine as VS Code, pixel-perfect experience
-- **Full Extension Compatibility**: Run existing VS Code extensions with Node.js runtime
-- **Svelte UI**: Reactive, lightweight component system with custom theming
-- **xterm.js Terminal**: Built-in terminal with PTY support
-- **Memory Efficient**: ~60% less memory than Electron-based VS Code
-- **Secure by Design**: Process isolation, sandboxed extensions, deny-by-default permissions
-- **LSP Support**: Language Server Protocol integration for intelligent code editing
-- **Git Integration**: Full SCM via libgit2
-- **Cross-Platform**: Linux, macOS, and Windows support
-- **Reusable Libraries**: Core components available as Cargo crates for use in other Rust projects
+> Download a prebuilt release from the [**Releases**](https://github.com/dipankar/dscode/releases) page, or build from source — see [Quickstart](#quickstart).
 
-## Library Crates
+---
 
-DSCode is not a single binary — it is a **workspace of libraries** that happen to ship with a default UI. Every crate is designed for independent use:
+## For developers: an IDE that ships as a kit, not a black box
 
-| Crate | Description | Install |
-|-------|-------------|---------|
-| `dscode-core` | TextBuffer (rope-based), AppDirectories, CoreError | `cargo add dscode-core` |
-| `dscode-lsp` | LSP client, manager, connection pool | `cargo add dscode-lsp` |
-| `dscode-dap` | Debug Adapter Protocol client, manager, pool | `cargo add dscode-dap` |
-| `dscode-extension-host` | Extension host manager, IPC, sandbox, permissions, rate limiter, secrets | `cargo add dscode-extension-host` |
-| `dscode-terminal` | Terminal manager, PTY lifecycle, TerminalEventSender trait | `cargo add dscode-terminal` |
-| `dscode-session` | Session manager, extension lifecycle, workspace, configuration | `cargo add dscode-session` |
+Every subsystem is a separate crate with a clean API. `cargo add` what you need, ignore the rest. The desktop app itself is just one composition of these crates — yours can be different.
 
-### Using as a Library
+```toml
+[dependencies]
+dscode-core           = "0.3"   # rope text buffer, app directories
+dscode-lsp            = "0.3"   # LSP client, manager, pool
+dscode-dap            = "0.3"   # Debug Adapter Protocol
+dscode-terminal       = "0.3"   # PTY lifecycle, event sender trait
+dscode-extension-host = "0.3"   # sandbox, IPC, permissions, rate limiter
+dscode-session        = "0.3"   # workspace, configuration, lifecycle
+```
 
-Import just what you need. No UI, no Tauri, no frontend required:
+Beyond Rust: `npm i @dscode/monaco-wasm`, `pip install dscode-core`.
 
 ```rust
 use dscode_core::{TextBuffer, AppDirectories};
 
-fn main() {
-    let buffer = TextBuffer::new("Hello, world!");
-    println!("Buffer length: {} chars", buffer.len_chars());
+let buffer = TextBuffer::new("Hello, world!");
+println!("{} chars", buffer.len_chars());
 
-    let app_dirs = AppDirectories::resolve(None);
-    println!("Config dir: {:?}", app_dirs.config_dir);
-}
+let dirs = AppDirectories::resolve(None);
+println!("Config dir: {:?}", dirs.config_dir);
 ```
 
 ```rust
 use dscode_lsp::{LspManager, LspServerPool, LspServerStrategy};
 
-fn main() {
-    let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
-    let manager = LspManager::new(pool);
-    manager.register_server("rust", "rust-analyzer", vec!["--stdio".to_string()]);
-}
+let pool = LspServerPool::new(LspServerStrategy::OnePerLanguage);
+let manager = LspManager::new(pool);
+manager.register_server("rust", "rust-analyzer", vec!["--stdio".into()]);
 ```
 
-Each crate has optional Tauri integration via feature flags:
+Each crate has optional Tauri integration via a feature flag, so the same crate works in a desktop app or a headless CI runner:
+
 ```toml
-[dependencies]
-dscode-terminal = { version = "0.2", features = ["tauri"] }
+dscode-terminal = { version = "0.3", features = ["tauri"] }
 ```
 
-## Design Principles
+See the [**Library Guide**](docs/library-guide.md) for the full tour.
 
-1. **Everything is a library**: The application is a thin composition layer. The real value is in the crates.
-2. **APIs over implementations**: We standardize on interfaces (`TerminalEventSender`, `LspClient`, `TextBuffer`) so you can swap implementations without touching the rest of the system.
-3. **VS Code compatibility is a feature, not a constraint**: We support VS Code extensions because they are useful. We do not let their limitations dictate our architecture.
-4. **Security by default**: Extensions should not be able to read your SSH keys by accident. Deny-by-default sandboxing is non-negotiable.
-5. **Performance is table stakes**: Rust gives us sub-second startup and low memory usage. We do not trade this away for convenience.
+### The crates
+
+| Crate | What it gives you | Install |
+|---|---|---|
+| [`dscode-core`](https://crates.io/crates/dscode-core) | Rope-based `TextBuffer`, `AppDirectories`, `CoreError` | `cargo add dscode-core` |
+| [`dscode-lsp`](https://crates.io/crates/dscode-lsp) | LSP client, manager, connection pool | `cargo add dscode-lsp` |
+| [`dscode-dap`](https://crates.io/crates/dscode-dap) | Debug Adapter Protocol client, manager, pool | `cargo add dscode-dap` |
+| [`dscode-extension-host`](https://crates.io/crates/dscode-extension-host) | Host manager, IPC, sandbox, permissions, rate limiter, secrets | `cargo add dscode-extension-host` |
+| [`dscode-terminal`](https://crates.io/crates/dscode-terminal) | Terminal manager, PTY lifecycle, `TerminalEventSender` trait | `cargo add dscode-terminal` |
+| [`dscode-session`](https://crates.io/crates/dscode-session) | Session manager, extension lifecycle, workspace, configuration | `cargo add dscode-session` |
+
+---
+
+## For hackers: replace anything
+
+| Subsystem | Default | Swap for |
+|---|---|---|
+| **Editor** | Monaco (via `monaco-wasm`) | A WebGL renderer, a Vim core, or a plain textarea |
+| **Extension host** | Node.js + NNG IPC | A Wasm runtime, a Lua engine, or nothing at all |
+| **Terminal** | xterm.js + `portable-pty` | Alacritty, your own ANSI parser, or a remote SSH session |
+| **UI framework** | Svelte 4 | React, Solid, Vue, or raw DOM |
+| **Session state** | `dscode-session` with Tauri | The same crate without Tauri, for headless CI |
+| **Text storage** | `ropey` (`dscode-core::TextBuffer`) | A gap buffer, a piece table, or a CRDT |
+| **LSP client** | `dscode-lsp::LspManager` | Direct `LspClient` use, or a custom protocol handler |
+
+### Recipes
+
+- **Headless CI runner** — use `dscode-session` without the `tauri` feature to scan workspaces, run extensions, and emit diagnostics as JSON.
+- **Custom terminal UI** — implement `TerminalEventSender` from `dscode-terminal` and forward PTY output to a websocket, a log file, or your own renderer.
+- **Embed in your own Tauri app** — pull in `dscode-session` with the `tauri` feature and you have the full IDE session inside your application.
+- **Write a different LSP client** — `dscode-lsp` exposes `LspClient` directly if you'd rather build a bespoke manager.
+- **Build a live theme editor** — combine `dscode-core::AppDirectories` with the CSS-custom-property theme layer to preview themes in real time.
+
+Code examples for each are in [docs/library-guide.md](docs/library-guide.md).
+
+---
+
+## Design principles
+
+1. **Everything is a library.** The application is a thin composition layer; the real value is in the crates.
+2. **APIs over implementations.** We standardise on interfaces (`TerminalEventSender`, `LspClient`, `TextBuffer`) so you can swap implementations without touching the rest of the system.
+3. **VS Code compatibility is a feature, not a constraint.** We support VS Code extensions because they're useful — but their limitations don't dictate our architecture.
+4. **Security by default.** Extensions can't read your SSH keys by accident. Deny-by-default sandboxing is non-negotiable.
+5. **Performance is table stakes.** Sub-second startup and low memory aren't traded for convenience.
+
+---
 
 ## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │             Tauri Window (WebKit/Chromium)                   │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │   Frontend (Svelte 4 + TypeScript)                     │ │
-│  │   - Monaco Editor                                      │ │
-│  │   - Svelte Components (38 components)                   │ │
-│  │   - CSS Custom Properties (VS Code theme compat)        │ │
-│  │   - ARIA accessibility, focus traps                     │ │
-│  └──────────────────────┬─────────────────────────────────┘ │
-│                          │ Tauri IPC (invoke/emit)            │
-│  ┌───────────────────────▼─────────────────────────────────┐ │
-│  │   Rust Binary (src-tauri)                               │ │
-│  │   - SessionManager (central coordinator)                │ │
-│  │   - Tauri Command Handlers (45 modules)                 │ │
-│  │   - Bootstrap, Logging, Monitoring, File Watcher        │ │
-│  └──────────┬──────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │   Frontend (Svelte 4 + TypeScript)                     │  │
+│  │   - Monaco Editor                                      │  │
+│  │   - Svelte Components (38 components)                  │  │
+│  │   - CSS Custom Properties (VS Code theme compat)       │  │
+│  │   - ARIA accessibility, focus traps                    │  │
+│  └──────────────────────┬─────────────────────────────────┘  │
+│                         │ Tauri IPC (invoke/emit)             │
+│  ┌──────────────────────▼─────────────────────────────────┐  │
+│  │   Rust Binary (src-tauri)                              │  │
+│  │   - SessionManager (central coordinator)               │  │
+│  │   - Tauri Command Handlers (45 modules)                │  │
+│  │   - Bootstrap, Logging, Monitoring, File Watcher       │  │
+│  └──────────┬─────────────────────────────────────────────┘  │
 └─────────────┼────────────────────────────────────────────────┘
               │ depends on
 ┌─────────────▼────────────────────────────────────────────────┐
 │  Cargo Workspace Library Crates                              │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐ │
-│  │ dscode-core  │ │  dscode-lsp  │ │    dscode-dap        │ │
-│  │ TextBuffer   │ │  LspClient   │ │    DebugAdapter      │ │
-│  │ AppDirs      │ │  LspManager  │ │    DebugManager      │ │
-│  │ CoreError    │ │  LspPool     │ │    DapPool           │ │
-│  └──────────────┘ └──────────────┘ └──────────────────────┘ │
-│  ┌──────────────────────┐ ┌──────────────┐                 │
-│  │ dscode-extension-host │ │  dscode-term │                 │
-│  │ HostManager          │ │  TermManager │                 │
-│  │ IPC + Sandbox        │ │  PTY         │                 │
-│  │ Permissions + Rate   │ │  EventSender │                 │
-│  │ Secrets + Validator  │ │  TermError   │                 │
-│  └──────────────────────┘ └──────────────┘                 │
-│  ┌──────────────────────────────────────────────────────────┐ │
-│  │ dscode-session                                          │ │
-│  │ ConfigStore, ExtensionLifecycle, Workspace, Documents,  │ │
-│  │ Contributions, EventEmitter, SessionState                │ │
-│  └────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐  │
+│  │ dscode-core  │ │  dscode-lsp  │ │    dscode-dap        │  │
+│  │ TextBuffer   │ │  LspClient   │ │    DebugAdapter      │  │
+│  │ AppDirs      │ │  LspManager  │ │    DebugManager      │  │
+│  │ CoreError    │ │  LspPool     │ │    DapPool           │  │
+│  └──────────────┘ └──────────────┘ └──────────────────────┘  │
+│  ┌──────────────────────┐ ┌──────────────┐                   │
+│  │ dscode-extension-host│ │ dscode-term  │                   │
+│  │ HostManager          │ │ TermManager  │                   │
+│  │ IPC + Sandbox        │ │ PTY          │                   │
+│  │ Permissions + Rate   │ │ EventSender  │                   │
+│  │ Secrets + Validator  │ │ TermError    │                   │
+│  └──────────────────────┘ └──────────────┘                   │
+│  ┌──────────────────────────────────────────────────────────┐│
+│  │ dscode-session                                           ││
+│  │ ConfigStore, ExtensionLifecycle, Workspace, Documents,   ││
+│  │ Contributions, EventEmitter, SessionState                ││
+│  └──────────────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────────┘
               │ NNG IPC (nanomsg, serde_json)
    ┌──────────┴────────────┬─────────────┐
    │                       │             │
-  ┌▼──────────┐     ┌─────▼────┐   ┌────▼───┐
-  │ Extension │     │   LSP    │   │ Debug  │
-  │   Host    │     │ Server  │   │  DAP    │
-  │ (Node.js) │     │         │   │ Server │
-  └───────────┘     └─────────┘   └────────┘
+ ┌─▼─────────┐     ┌──────▼────┐  ┌────▼────┐
+ │ Extension │     │    LSP    │  │  Debug  │
+ │   Host    │     │  Server   │  │   DAP   │
+ │ (Node.js) │     │           │  │  Server │
+ └───────────┘     └───────────┘  └─────────┘
 ```
 
-## Core Technologies
+### Stack at a glance
 
-### Frontend
+**Frontend** — Svelte 4, Monaco Editor, xterm.js, lucide-svelte, CSS custom properties for VS Code theme compatibility.
 
-- **UI Framework**: [Svelte 4](https://svelte.dev/) - Reactive component system
-- **Editor**: [Monaco Editor](https://microsoft.github.io/monaco-editor/) - VS Code's editor
-- **Terminal**: [xterm.js](https://xtermjs.org/) - Terminal emulator
-- **Icons**: [lucide-svelte](https://lucide.dev/) - Icon library
-- **Styling**: CSS Custom Properties with VS Code theme compatibility
+**Backend (Rust)** — Tauri 2.1, Tauri Commands + [NNG](https://nng.nanomsg.org/) for out-of-process IPC, [ropey](https://github.com/cessen/ropey) text buffers, [tree-sitter](https://tree-sitter.github.io/) parsing, [tower-lsp](https://github.com/ebkalderon/tower-lsp), [git2](https://github.com/rust-lang/git2-rs), [portable-pty](https://github.com/wez/wezterm/tree/main/pty), [tracing](https://github.com/tokio-rs/tracing), [thiserror](https://github.com/dtolnay/thiserror), ripgrep-based search.
 
-### Backend (Rust)
+**Extension runtime** — a real Node.js process, NNG REQ/REP IPC with worker threads, full `vscode.*` API surface, OS-keyring-backed `SecretStorage`, deny-by-default sandbox.
 
-- **Framework**: [Tauri 2.1](https://tauri.app/) - Rust desktop app framework
-- **IPC**: Tauri Commands + [NNG](https://nng.nanomsg.org/) for extension host/LSP communication
-- **Serialization**: [serde_json](https://github.com/serde-rs/json) for all IPC
-- **Text Processing**: [ropey](https://github.com/cessen/ropey) - Rope-based text storage
-- **Syntax**: [tree-sitter](https://tree-sitter.github.io/) - Incremental parsing
-- **LSP**: [tower-lsp](https://github.com/ebkalderon/tower-lsp) - Language Server Protocol
-- **Git**: [git2](https://github.com/rust-lang/git2-rs) - libgit2 bindings
-- **Terminal**: [portable-pty](https://github.com/wez/wezterm/tree/main/pty) - PTY support
-- **Logging**: [tracing](https://github.com/tokio-rs/tracing) - Structured logging
-- **Errors**: [thiserror](https://github.com/dtolnay/thiserror) - Typed error enums
-- **Search**: ripgrep-based (ignore + grep crates)
+---
 
-### Extension Runtime
-
-- **Runtime**: Full **Node.js** process (separate from Tauri)
-- **Communication**: NNG REQ/REP IPC with worker threads
-- **API**: vscode.\* API implementation
-- **Security**: Deny-by-default sandbox (macOS: sandbox-exec, Linux: bwrap, Windows: Job Objects)
-- **Secrets**: OS keyring integration via SecretStorage API
-
-## Project Structure
-
-```
-dscode/
-├── Cargo.toml                     # Workspace root
-├── crates/
-│   ├── dscode-core/               # TextBuffer, AppDirectories
-│   ├── dscode-lsp/                 # LSP client, manager, pool
-│   ├── dscode-dap/                 # Debug Adapter Protocol
-│   ├── dscode-extension-host/      # Extension host management
-│   ├── dscode-terminal/            # Terminal manager
-│   └── dscode-session/            # Session management
-├── src-tauri/                     # Tauri binary crate
-│   ├── src/
-│   │   ├── main.rs                # App entry point
-│   │   ├── bootstrap.rs           # App initialization
-│   │   ├── session/               # SessionManager + IPC
-│   │   ├── commands/              # 45 Tauri command modules
-│   │   └── ...
-│   └── Cargo.toml
-├── monaco-wasm/                   # Monaco WASM bindings
-├── extension-host/                # Node.js extension runtime
-├── src/                           # Svelte frontend
-│   ├── components/                # 38 Svelte components
-│   ├── stores/                    # State management
-│   └── lib/                       # Shared logic
-└── docs/                          # Documentation
-```
-
-## Getting Started
+## Quickstart
 
 ### Prerequisites
 
-- Rust 1.75+ (with cargo)
-- Node.js 20+ and npm
+- Rust 1.75+ with `cargo`
+- Node.js 20+ and `npm`
 - Platform-specific dependencies:
-  - **Linux**: `libwebkit2gtk-4.1-dev`, `libssl-dev`, `libgtk-3-dev`, `librsvg2-dev`, `patchelf`
-  - **macOS**: Xcode Command Line Tools
-  - **Windows**: Microsoft Visual C++ Build Tools
+  - **Linux:** `libwebkit2gtk-4.1-dev`, `libssl-dev`, `libgtk-3-dev`, `librsvg2-dev`, `patchelf`
+  - **macOS:** Xcode Command Line Tools
+  - **Windows:** Microsoft Visual C++ Build Tools
 
-### Building from Source
+### Build and run
 
 ```bash
-# Clone the repository
 git clone https://github.com/dipankar/dscode.git
 cd dscode
-
-# Install frontend dependencies
 npm install
 
-# Development mode (hot reload)
-npm run tauri:dev
-
-# Build for production
-npm run tauri:build
+npm run tauri:dev        # development with hot reload
+npm run tauri:build      # production bundle
 ```
 
-### Running Tests
+Production artefacts land in:
+
+- **macOS:** `src-tauri/target/release/bundle/macos/DSCode.app`
+- **Linux:** `src-tauri/target/release/bundle/deb/dscode_*_amd64.deb`
+- **Windows:** `src-tauri/target/release/bundle/msi/DSCode_*_x64.msi`
+
+### Test and lint
 
 ```bash
-# All workspace tests
-cargo test --workspace
-
-# Specific crate tests
-cargo test -p dscode-core
-cargo test -p dscode-lsp
-
-# Clippy lint
-cargo clippy --workspace -- -D warnings
+cargo test --workspace                       # all crate tests
+cargo test -p dscode-core                    # one crate
+cargo clippy --workspace -- -D warnings      # lint
 ```
 
-### Running
+---
 
-```bash
-# Development
-npm run tauri:dev
+## Project layout
 
-# Production build
-npm run tauri:build
-
-# Then run the binary:
-# macOS: src-tauri/target/release/bundle/macos/DSCode.app
-# Linux: src-tauri/target/release/bundle/deb/dscode_*_amd64.deb
-# Windows: src-tauri/target/release/bundle/msi/DSCode_*_x64.msi
+```
+dscode/
+├── Cargo.toml                # workspace root
+├── crates/
+│   ├── dscode-core/          # TextBuffer, AppDirectories
+│   ├── dscode-lsp/           # LSP client, manager, pool
+│   ├── dscode-dap/           # Debug Adapter Protocol
+│   ├── dscode-extension-host/# Extension host management
+│   ├── dscode-terminal/      # Terminal manager
+│   └── dscode-session/       # Session management
+├── src-tauri/                # Tauri binary (the default app)
+│   └── src/
+│       ├── main.rs
+│       ├── bootstrap.rs
+│       ├── session/          # SessionManager + IPC
+│       └── commands/         # 45 Tauri command modules
+├── monaco-wasm/              # Monaco WASM bindings
+├── extension-host/           # Node.js extension runtime
+├── src/                      # Svelte frontend (38 components)
+├── packages/                 # npm and pypi bindings
+└── docs/                     # Documentation
 ```
 
-## Extension Compatibility
+---
 
-DSCode's extension host is not a compatibility shim — it is a **full Node.js runtime** that speaks the same IPC protocol as VS Code. Extensions are first-class citizens, but they are also fully sandboxed and observable.
+## Extension compatibility
 
-### Supported Extension Types
+DSCode's extension host isn't a compatibility shim — it's a **full Node.js runtime** speaking the same IPC protocol as VS Code. Extensions are first-class citizens, but they're also sandboxed and observable.
 
-| Type                       | Compatibility | Notes                           |
-| -------------------------- | ------------- | ------------------------------- |
-| Pure JavaScript/TypeScript | Full          | ESLint, Prettier, GitLens, etc. |
-| Native Node Modules        | Full          | Python extension, C/C++ tools   |
-| Language Providers         | Full          | 18+ provider types via IPC      |
-| Webview Extensions         | Partial       | Tauri webview API               |
-| Electron API Users         | Partial       | Shim layer for common APIs      |
-| Proprietary (Microsoft)    | Reimplement   | Copilot, IntelliCode            |
+| Extension type | Compatibility | Notes |
+|---|---|---|
+| Pure JavaScript / TypeScript | Full | ESLint, Prettier, GitLens, etc. |
+| Native Node modules | Full | Python extension, C/C++ tools |
+| Language providers | Full | 18+ provider types via IPC |
+| Webview extensions | Partial | Tauri webview API |
+| Electron API users | Partial | Shim layer for common APIs |
+| Proprietary (Microsoft) | Reimplement | Copilot, IntelliCode |
 
-### Language Provider Support
+**Language providers supported with full two-way IPC:** Hover, Completion, Diagnostics, SignatureHelp, Rename, CodeLens, CodeActions, Formatting, DocumentHighlights, FoldingRanges, SemanticTokens, DocumentSymbols, WorkspaceSymbols, Definitions, References, DocumentLinks, ColorPresentations, InlineCompletions.
 
-The extension host supports full two-way IPC for: Hover, Completion, Diagnostics, SignatureHelp, Rename, CodeLens, CodeActions, Formatting, DocumentHighlights, FoldingRanges, SemanticTokens, DocumentSymbols, WorkspaceSymbols, Definitions, References, DocumentLinks, ColorPresentations, and InlineCompletions.
+**Extras DSCode adds on top of the VS Code API:**
 
-### Writing Extensions for DSCode
+- **Sandbox declarations** — extensions declare filesystem, network, and shell permissions in `package.json`. Denied by default.
+- **Rate limiting** — built-in per-extension quota.
+- **OS keyring access** — `vscode.SecretStorage` is backed by the OS-native keyring.
+- **Hot reload** — extensions reload without restarting the editor.
 
-Extensions use the standard VS Code `package.json` + `vscode` API. DSCode adds a few extra capabilities:
-
-- **Sandbox declarations**: Extensions declare permissions in `package.json` (filesystem, network, shell). Denied by default.
-- **Rate limiting**: Built-in per-extension quota system.
-- **OS keyring access**: Secure credential storage via `vscode.SecretStorage`.
-- **Hot reload**: Extensions can be reloaded without restarting the editor.
+---
 
 ## Security
 
-- **Deny-by-default sandbox**: Extensions start with no permissions
-- **Path validation**: All filesystem access validated against workspace allowlist
-- **Zip Slip prevention**: VSIX extraction validates paths
-- **VSIX manifest verification**: SHA256 hash check + package.json cross-validation
-- **OS keyring**: Extension secrets stored via OS-native keyring
-- **Platform sandboxes**: macOS (sandbox-exec), Linux (bubblewrap), Windows (Job Objects)
-- **Crash recovery**: Extension host restarts with exponential backoff (max 3 attempts)
-- **Stale IPC cleanup**: Orphaned socket files and pending requests cleaned up automatically
-- **Node.js verification**: Binary hash verification on startup
+- **Deny-by-default sandbox** — extensions start with no permissions.
+- **Platform sandboxes** — macOS `sandbox-exec`, Linux `bubblewrap`, Windows Job Objects.
+- **Path validation** — all filesystem access is checked against the workspace allowlist.
+- **VSIX hardening** — Zip-Slip prevention, SHA256 hash check, `package.json` cross-validation.
+- **OS keyring** — extension secrets are stored via the OS-native keyring.
+- **Crash recovery** — extension host restarts with exponential backoff (max 3 attempts).
+- **Stale IPC cleanup** — orphaned socket files and pending requests are reaped automatically.
+- **Node.js verification** — bundled Node binary is hash-verified on startup.
+
+See [SECURITY.md](SECURITY.md) for the disclosure process.
+
+---
 
 ## Documentation
 
@@ -318,55 +309,32 @@ Extensions use the standard VS Code `package.json` + `vscode` API. DSCode adds a
 - [Extension System](docs/architecture/extension-system.md)
 - [UI System](docs/architecture/ui-system.md)
 - [LSP Integration](docs/architecture/lsp-integration.md)
+- [Library Guide](docs/library-guide.md)
 - [Roadmap](docs/roadmap.md)
 
-## Hackability
-
-DSCode is designed to be disassembled and reassembled. Every major subsystem is a separate crate with a minimal public API. You are not just a user — you are a co-author.
-
-### Replace Anything
-
-| Subsystem | Default Implementation | Swap For |
-|-----------|----------------------|----------|
-| **Editor** | Monaco Editor (via `monaco-wasm`) | Your own WebGL renderer, Vim mode, or a lightweight textarea |
-| **Extension Host** | Node.js + NNG IPC | A Wasm runtime, a Lua engine, or nothing at all |
-| **Terminal** | xterm.js + portable-pty | Alacritty, your own ANSI parser, or a remote SSH session |
-| **UI Framework** | Svelte 4 | React, Solid, Vue, or raw DOM |
-| **Session State** | `dscode-session` (Tauri) | `dscode-session` without Tauri for headless CI |
-| **Text Storage** | `ropey` (via `dscode-core::TextBuffer`) | Your own gap buffer, piece table, or CRDT |
-| **LSP Client** | `dscode-lsp::LspManager` | Direct `LspClient` usage, or a custom protocol handler |
-
-### Common Recipes
-
-- **Headless CI runner**: Use `dscode-session` without the `tauri` feature to scan workspaces, run extensions, and export diagnostics as JSON.
-- **Custom terminal UI**: Implement `TerminalEventSender` from `dscode-terminal` to forward PTY output to a web socket, log file, or custom UI.
-- **Embed in your own Tauri app**: Import `dscode-session` with the `tauri` feature to get the full IDE session in your application.
-- **Write a new LSP client**: `dscode-lsp` exposes `LspClient` directly if you want to build your own manager instead of using `LspManager`.
-- **Build a VS Code theme editor**: Use `dscode-core::AppDirectories` and the CSS custom property system to preview themes in real time.
-
-See [docs/library-guide.md](docs/library-guide.md) for concrete code examples.
+---
 
 ## Contributing
 
-DSCode is a community project. Contributions are welcome — whether you are fixing a bug, adding a feature, or replacing an entire subsystem.
+DSCode is a community project. Contributions are welcome — whether you're fixing a bug, adding a feature, or replacing an entire subsystem.
 
-### Adding a New Crate
+**Adding a new crate**
 
 1. Create `crates/my-crate/` with a `Cargo.toml` that inherits `[workspace.package]`.
-2. Add `"crates/my-crate"` to the `[workspace].members` array in root `Cargo.toml`.
+2. Add `"crates/my-crate"` to `[workspace].members` in the root `Cargo.toml`.
 3. Write a `README.md` with badges, install instructions, and a usage example.
 4. Add an `examples/` directory with at least one runnable example.
-5. Open a PR. CI will check formatting, clippy, tests, docs, and `cargo publish --dry-run`.
+5. Open a PR. CI checks formatting, clippy, tests, docs, and `cargo publish --dry-run`.
 
-### Replacing a Subsystem
-
-If you want to replace Monaco, the extension host, or any other component:
+**Replacing a subsystem**
 
 1. Open an issue describing your use case.
-2. We will help you identify the minimal API surface you need to implement.
-3. Submit a PR. We prioritize hackability over backwards compatibility in pre-1.0 releases.
+2. We'll help you identify the minimal API surface to implement.
+3. Submit a PR. Hackability beats backwards compatibility in pre-1.0 releases.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines including workspace build instructions, code style, and PR process.
+Full guidelines in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
 
 ## License
 
