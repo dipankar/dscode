@@ -28,6 +28,7 @@
       "icons/icon.ico"
     ],
     "resources": [
+      "../bin/allowed-hashes.json",
       "../extension-host/dist/**/*",
       "../extension-host/package.json"
     ],

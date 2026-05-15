@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import * as monaco from 'monaco-editor';
-  import { AlertCircle, AlertTriangle, Info, X } from 'lucide-svelte';
+  import { AlertCircle, AlertTriangle, Info } from 'lucide-svelte';
   import { problemCountsStore } from '../stores/problems';
 
   export let visible = true;
@@ -28,7 +28,7 @@
 
     const allMarkers = monaco.editor.getModelMarkers({});
     const model = editor.getModel();
-    const currentUri = model ? model.uri.toString() : null;
+    const _currentUri = model ? model.uri.toString() : null;
 
     problems = allMarkers.map((marker) => ({
       severity: marker.severity,

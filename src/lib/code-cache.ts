@@ -17,7 +17,7 @@ export async function warmupJIT() {
   const startTime = performance.now();
 
   // Trigger array operations (common in Monaco)
-  const warmup = Array.from({ length: 10000 }, (_, i) => i)
+  const _warmup = Array.from({ length: 10000 }, (_, i) => i)
     .map(x => x * 2)
     .filter(x => x % 2 === 0)
     .reduce((a, b) => a + b, 0);

@@ -269,7 +269,7 @@
     if (!rootPath) return;
 
     try {
-      const diff = await invoke<{
+      const _diff = await invoke<{
         old_path: string;
         new_path: string;
         diff_text: string;

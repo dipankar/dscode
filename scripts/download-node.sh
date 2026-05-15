@@ -53,6 +53,31 @@ download_and_extract() {
 
     rm -rf "$tmp_dir"
 
+    # Compute SHA256 hash and record it for binary verification at startup
+    local hash
+    if command -v shasum &>/dev/null; then
+        hash=$(shasum -a 256 "$target_dir/$binary_name" | awk '{print $1}')
+    elif command -v sha256sum &>/dev/null; then
+        hash=$(sha256sum "$target_dir/$binary_name" | awk '{print $1}')
+    else
+        hash=""
+    fi
+
+    if [ -n "$hash" ]; then
+        local hashes_file="$BIN_DIR/allowed-hashes.json"
+        local tmp_hashes="$BIN_DIR/.allowed-hashes.tmp"
+        if [ -f "$hashes_file" ]; then
+            # Merge: dedupe and add new hash
+            jq --arg h "$hash" '. + [$h] | unique' "$hashes_file" > "$tmp_hashes" 2>/dev/null || echo "[\"$hash\"]" > "$tmp_hashes"
+        else
+            echo "[\"$hash\"]" > "$tmp_hashes"
+        fi
+        mv "$tmp_hashes" "$hashes_file"
+        echo "[download-node.sh] SHA256 hash recorded for ${os}-${arch}"
+    else
+        echo "[download-node.sh] WARNING: No SHA256 tool found, hash not recorded"
+    fi
+
     echo "[download-node.sh] Node.js v${NODE_VERSION} ${os}-${arch} -> $target_dir/$binary_name"
 }
 

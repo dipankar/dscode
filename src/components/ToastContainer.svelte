@@ -1,7 +1,7 @@
 <script lang="ts">
   import { toastStore, type Toast } from '../lib/error-handler';
   import { AlertCircle, CheckCircle, Info, AlertTriangle, X } from 'lucide-svelte';
-  import { fade, fly } from 'svelte/transition';
+  import {  fly } from 'svelte/transition';
 
   $: toasts = $toastStore;
 

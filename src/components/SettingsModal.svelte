@@ -83,7 +83,7 @@
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div class="settings-overlay" on:click={onClose} use:focusTrap={{ onEscape: onClose }}>
     <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div bind:this={modalContainer} class="settings-modal" on:click|stopPropagation role="dialog" aria-modal="true" aria-label="Settings">
       <div class="settings-header">
         <h2>Settings</h2>

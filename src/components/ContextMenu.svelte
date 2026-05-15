@@ -249,7 +249,7 @@
     {#if menuItems.length === 0}
       <div class="context-menu-empty" role="menuitem">No actions available</div>
     {:else}
-      {#each Array.from(groupedItems.entries()) as [groupName, items], groupIndex}
+      {#each Array.from(groupedItems.entries()) as [_groupName, items], groupIndex}
         {#if groupIndex > 0}
           <div class="context-menu-separator" role="separator"></div>
         {/if}

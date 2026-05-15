@@ -37,7 +37,7 @@ export class GitDecorationService {
 
       const decorations = this.parseDiffToDecorations(diff as any);
       this.applyDecorations(decorations);
-    } catch (e) {
+    } catch {
       // File might not be in a git repo or has no changes
       this.clearDecorations();
     }

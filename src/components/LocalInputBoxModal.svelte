@@ -40,8 +40,8 @@
 <svelte:window on:keydown={handleKeydown} />
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-no-static-element-interactions -->
 <div class="input-overlay" on:click={handleCancel} role="presentation" tabindex="-1" use:focusTrap={{ onEscape: handleCancel }}>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="input-modal" role="dialog" aria-modal="true" on:click|stopPropagation>
     <div class="input-header">
       <h2>{request.prompt}</h2>

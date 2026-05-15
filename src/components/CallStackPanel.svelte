@@ -26,14 +26,14 @@
     console.log('[CallStack] Selected frame:', frame);
   }
 
-  function getFrameLabel(frame: StackFrame): string {
+  function _getFrameLabel(frame: StackFrame): string {
     if (frame.source?.name) {
       return `${frame.name} (${frame.source.name}:${frame.line})`;
     }
     return frame.name;
   }
 
-  function getFrameLocation(frame: StackFrame): string {
+  function _getFrameLocation(frame: StackFrame): string {
     if (frame.source?.path) {
       return `${frame.source.path}:${frame.line}:${frame.column}`;
     }

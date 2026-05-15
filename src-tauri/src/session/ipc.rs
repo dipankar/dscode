@@ -17,6 +17,11 @@ use uuid::Uuid;
 /// Maximum age for a pending request before it's considered stale (5 minutes).
 const STALE_REQUEST_TIMEOUT_SECS: u64 = 300;
 
+/// Maximum time a blocking file I/O operation is allowed to run.
+/// Prevents hung filesystems (NFS, FUSE) from blocking a tokio worker thread
+/// indefinitely.
+const FILE_IO_TIMEOUT_SECS: u64 = 30;
+
 /// Remove orphaned dscode-*.sock files from /tmp that belong to previous sessions.
 pub fn cleanup_stale_sockets() {
     #[cfg(target_family = "unix")]
@@ -67,6 +72,7 @@ impl SessionManager {
     pub fn start_pending_request_cleanup(&self) {
         let pending_message = Arc::clone(&self.pending_message_requests);
         let pending_quick_pick = Arc::clone(&self.pending_quick_pick_requests);
+        let pending_execute_cmd = Arc::clone(&self.pending_execute_command_requests);
         let pending_input = Arc::clone(&self.pending_input_requests);
 
         tokio::spawn(async move {
@@ -114,6 +120,27 @@ impl SessionManager {
                         }
                     }
                     warn!("Cleaned up stale pending quick pick requests");
+                }
+
+                // Clean up execute command requests
+                let stale_execute_cmd_ids: Vec<String> = {
+                    let pending = pending_execute_cmd.read().await;
+                    if pending.len() > 100 {
+                        pending.keys().cloned().collect()
+                    } else {
+                        Vec::new()
+                    }
+                };
+
+                if !stale_execute_cmd_ids.is_empty() {
+                    let mut pending = pending_execute_cmd.write().await;
+                    for id in stale_execute_cmd_ids {
+                        if let Some(sender) = pending.remove(&id) {
+                            drop(sender);
+                            debug!("Cleaned up stale execute command request: {}", id);
+                        }
+                    }
+                    warn!("Cleaned up stale pending execute command requests");
                 }
 
                 // Clean up input requests
@@ -204,6 +231,7 @@ impl SessionManager {
             status_bar_items: Arc::clone(&self.status_bar_items),
             pending_message_requests: Arc::clone(&self.pending_message_requests),
             pending_quick_pick_requests: Arc::clone(&self.pending_quick_pick_requests),
+            pending_execute_command_requests: Arc::clone(&self.pending_execute_command_requests),
             pending_input_requests: Arc::clone(&self.pending_input_requests),
             status_messages: Arc::clone(&self.status_messages),
             output_channels: Arc::clone(&self.output_channels),
@@ -420,7 +448,9 @@ impl SessionManager {
                     "logs": logs_dir.to_string_lossy().to_string(),
                 }))
             }
-            "registerTreeDataProvider" => Ok(json!({"success": true})),
+            "registerTreeDataProvider" => {
+                Err("NotSupported: Dynamic tree data provider registration is not yet implemented. Use extension contributes instead.".to_string())
+            }
             "updateStatusBarItem" => {
                 let id = payload
                     .get("id")
@@ -630,10 +660,14 @@ impl SessionManager {
                     payload.get("endOfLine").and_then(|v| v.as_i64()).map(|v| v as i32);
 
                 let path_clone = path.to_string();
-                let original = tokio::task::spawn_blocking(move || fs::read_to_string(&path_clone))
-                    .await
-                    .map_err(|e| format!("Task failed: {}", e))?
-                    .map_err(|e| format!("Failed to read document {}: {}", path, e))?;
+                let original = tokio::time::timeout(
+                    Duration::from_secs(FILE_IO_TIMEOUT_SECS),
+                    tokio::task::spawn_blocking(move || fs::read_to_string(&path_clone)),
+                )
+                .await
+                .map_err(|_| format!("Failed to read document {}: read timed out", path))?
+                .map_err(|e| format!("Task failed: {}", e))?
+                .map_err(|e| format!("Failed to read document {}: {}", path, e))?;
                 let updated = Self::apply_text_edits(&original, &mut edits, end_of_line)?;
                 let version = self.persist_document(path, &updated).await?;
 
@@ -654,10 +688,14 @@ impl SessionManager {
                     .collect();
 
                 let path_clone = path.to_string();
-                let original = tokio::task::spawn_blocking(move || fs::read_to_string(&path_clone))
-                    .await
-                    .map_err(|e| format!("Task failed: {}", e))?
-                    .map_err(|e| format!("Failed to read document {}: {}", path, e))?;
+                let original = tokio::time::timeout(
+                    Duration::from_secs(FILE_IO_TIMEOUT_SECS),
+                    tokio::task::spawn_blocking(move || fs::read_to_string(&path_clone)),
+                )
+                .await
+                .map_err(|_| format!("Failed to read document {}: read timed out", path))?
+                .map_err(|e| format!("Task failed: {}", e))?
+                .map_err(|e| format!("Failed to read document {}: {}", path, e))?;
                 let updated = Self::apply_text_edits(&original, &mut edits, None)?;
                 let version = self.persist_document(path, &updated).await?;
 
@@ -940,7 +978,7 @@ impl SessionManager {
                 let (tx, rx) = oneshot::channel();
                 let request_id = format!("cmd_{}", uuid::Uuid::new_v4());
                 {
-                    let mut pending = self.pending_quick_pick_requests.write().await;
+                    let mut pending = self.pending_execute_command_requests.write().await;
                     pending.insert(request_id.clone(), tx);
                 }
 
@@ -964,7 +1002,7 @@ impl SessionManager {
                 };
 
                 {
-                    let mut pending = self.pending_quick_pick_requests.write().await;
+                    let mut pending = self.pending_execute_command_requests.write().await;
                     pending.remove(&request_id_key);
                 }
 
@@ -1086,15 +1124,19 @@ impl SessionManager {
                 }
 
                 let path_for_read = validated_path.clone();
-                let contents = tokio::task::spawn_blocking(move || std::fs::read(&path_for_read))
-                    .await
-                    .map_err(|e| format!("Unavailable: {}", e))?
-                    .map_err(|e| {
-                        fs_error(
-                            classify_io_error(&e),
-                            &PathValidator::sanitize_error(&format!("{}", e)),
-                        )
-                    })?;
+                let contents = tokio::time::timeout(
+                    Duration::from_secs(FILE_IO_TIMEOUT_SECS),
+                    tokio::task::spawn_blocking(move || std::fs::read(&path_for_read)),
+                )
+                .await
+                .map_err(|_| "Unavailable: File read timed out".to_string())?
+                .map_err(|e| format!("Unavailable: {}", e))?
+                .map_err(|e| {
+                    fs_error(
+                        classify_io_error(&e),
+                        &PathValidator::sanitize_error(&format!("{}", e)),
+                    )
+                })?;
 
                 Ok(json!({ "data": contents }))
             }
@@ -1110,16 +1152,19 @@ impl SessionManager {
                     })?;
 
                 let path_for_stat = validated_path.clone();
-                let metadata =
-                    tokio::task::spawn_blocking(move || std::fs::metadata(&path_for_stat))
-                        .await
-                        .map_err(|e| format!("Unavailable: {}", e))?
-                        .map_err(|e| {
-                            fs_error(
-                                classify_io_error(&e),
-                                &PathValidator::sanitize_error(&format!("{}", e)),
-                            )
-                        })?;
+                let metadata = tokio::time::timeout(
+                    Duration::from_secs(FILE_IO_TIMEOUT_SECS),
+                    tokio::task::spawn_blocking(move || std::fs::metadata(&path_for_stat)),
+                )
+                .await
+                .map_err(|_| "Unavailable: File stat timed out".to_string())?
+                .map_err(|e| format!("Unavailable: {}", e))?
+                .map_err(|e| {
+                    fs_error(
+                        classify_io_error(&e),
+                        &PathValidator::sanitize_error(&format!("{}", e)),
+                    )
+                })?;
 
                 let file_type = if metadata.is_file() {
                     1
@@ -1166,33 +1211,37 @@ impl SessionManager {
                     })?;
 
                 let path_for_readdir = validated_path.clone();
-                let entries = tokio::task::spawn_blocking(move || {
-                    let mut result: Vec<(String, u8)> = Vec::new();
-                    let dir_entries = match std::fs::read_dir(&path_for_readdir) {
-                        Ok(e) => e,
-                        Err(e) => {
-                            return Err(fs_error(
-                                classify_io_error(&e),
-                                &PathValidator::sanitize_error(&format!("{}", e)),
-                            ))
-                        }
-                    };
-                    for entry in dir_entries.flatten() {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        let ft = if entry.path().is_file() {
-                            1
-                        } else if entry.path().is_dir() {
-                            2
-                        } else if entry.path().is_symlink() {
-                            64
-                        } else {
-                            0
+                let entries = tokio::time::timeout(
+                    Duration::from_secs(FILE_IO_TIMEOUT_SECS),
+                    tokio::task::spawn_blocking(move || {
+                        let mut result: Vec<(String, u8)> = Vec::new();
+                        let dir_entries = match std::fs::read_dir(&path_for_readdir) {
+                            Ok(e) => e,
+                            Err(e) => {
+                                return Err(fs_error(
+                                    classify_io_error(&e),
+                                    &PathValidator::sanitize_error(&format!("{}", e)),
+                                ))
+                            }
                         };
-                        result.push((name, ft));
-                    }
-                    Ok(result)
-                })
+                        for entry in dir_entries.flatten() {
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            let ft = if entry.path().is_file() {
+                                1
+                            } else if entry.path().is_dir() {
+                                2
+                            } else if entry.path().is_symlink() {
+                                64
+                            } else {
+                                0
+                            };
+                            result.push((name, ft));
+                        }
+                        Ok(result)
+                    }),
+                )
                 .await
+                .map_err(|_| "Unavailable: Directory read timed out".to_string())?
                 .map_err(|e| format!("Unavailable: {}", e))??;
 
                 Ok(json!({ "entries": entries }))
@@ -1209,15 +1258,19 @@ impl SessionManager {
                     })?;
 
                 let path_for_mkdir = validated_path.clone();
-                tokio::task::spawn_blocking(move || std::fs::create_dir_all(&path_for_mkdir))
-                    .await
-                    .map_err(|e| format!("Unavailable: {}", e))?
-                    .map_err(|e| {
-                        fs_error(
-                            classify_io_error(&e),
-                            &PathValidator::sanitize_error(&format!("{}", e)),
-                        )
-                    })?;
+                tokio::time::timeout(
+                    Duration::from_secs(FILE_IO_TIMEOUT_SECS),
+                    tokio::task::spawn_blocking(move || std::fs::create_dir_all(&path_for_mkdir)),
+                )
+                .await
+                .map_err(|_| "Unavailable: Directory creation timed out".to_string())?
+                .map_err(|e| format!("Unavailable: {}", e))?
+                .map_err(|e| {
+                    fs_error(
+                        classify_io_error(&e),
+                        &PathValidator::sanitize_error(&format!("{}", e)),
+                    )
+                })?;
 
                 Ok(json!({ "success": true }))
             }
@@ -1250,15 +1303,19 @@ impl SessionManager {
                 }
 
                 let path_for_write = validated_path.clone();
-                tokio::task::spawn_blocking(move || std::fs::write(&path_for_write, bytes))
-                    .await
-                    .map_err(|e| format!("Unavailable: {}", e))?
-                    .map_err(|e| {
-                        fs_error(
-                            classify_io_error(&e),
-                            &PathValidator::sanitize_error(&format!("{}", e)),
-                        )
-                    })?;
+                tokio::time::timeout(
+                    Duration::from_secs(FILE_IO_TIMEOUT_SECS),
+                    tokio::task::spawn_blocking(move || std::fs::write(&path_for_write, bytes)),
+                )
+                .await
+                .map_err(|_| "Unavailable: File write timed out".to_string())?
+                .map_err(|e| format!("Unavailable: {}", e))?
+                .map_err(|e| {
+                    fs_error(
+                        classify_io_error(&e),
+                        &PathValidator::sanitize_error(&format!("{}", e)),
+                    )
+                })?;
 
                 Ok(json!({ "success": true }))
             }
@@ -1279,18 +1336,22 @@ impl SessionManager {
                     })?;
 
                 let path_for_delete = validated_path.clone();
-                tokio::task::spawn_blocking(move || {
-                    if path_for_delete.is_dir() {
-                        if recursive {
-                            std::fs::remove_dir_all(&path_for_delete)
+                tokio::time::timeout(
+                    Duration::from_secs(FILE_IO_TIMEOUT_SECS),
+                    tokio::task::spawn_blocking(move || {
+                        if path_for_delete.is_dir() {
+                            if recursive {
+                                std::fs::remove_dir_all(&path_for_delete)
+                            } else {
+                                std::fs::remove_dir(&path_for_delete)
+                            }
                         } else {
-                            std::fs::remove_dir(&path_for_delete)
+                            std::fs::remove_file(&path_for_delete)
                         }
-                    } else {
-                        std::fs::remove_file(&path_for_delete)
-                    }
-                })
+                    }),
+                )
                 .await
+                .map_err(|_| "Unavailable: File deletion timed out".to_string())?
                 .map_err(|e| format!("Unavailable: {}", e))?
                 .map_err(|e| {
                     fs_error(
@@ -1322,15 +1383,19 @@ impl SessionManager {
 
                 let old_path = old_validated.clone();
                 let new_path = new_validated.clone();
-                tokio::task::spawn_blocking(move || std::fs::rename(&old_path, &new_path))
-                    .await
-                    .map_err(|e| format!("Unavailable: {}", e))?
-                    .map_err(|e| {
-                        fs_error(
-                            classify_io_error(&e),
-                            &PathValidator::sanitize_error(&format!("{}", e)),
-                        )
-                    })?;
+                tokio::time::timeout(
+                    Duration::from_secs(FILE_IO_TIMEOUT_SECS),
+                    tokio::task::spawn_blocking(move || std::fs::rename(&old_path, &new_path)),
+                )
+                .await
+                .map_err(|_| "Unavailable: File rename timed out".to_string())?
+                .map_err(|e| format!("Unavailable: {}", e))?
+                .map_err(|e| {
+                    fs_error(
+                        classify_io_error(&e),
+                        &PathValidator::sanitize_error(&format!("{}", e)),
+                    )
+                })?;
 
                 Ok(json!({ "success": true }))
             }
@@ -1355,9 +1420,13 @@ impl SessionManager {
 
                 let src = source_validated.clone();
                 let dst = dest_validated.clone();
-                tokio::task::spawn_blocking(move || std::fs::copy(&src, &dst))
-                    .await
-                    .map_err(|e| format!("Unavailable: {}", e))?
+                tokio::time::timeout(
+                    Duration::from_secs(FILE_IO_TIMEOUT_SECS),
+                    tokio::task::spawn_blocking(move || std::fs::copy(&src, &dst)),
+                )
+                .await
+                .map_err(|_| "Unavailable: File copy timed out".to_string())?
+                .map_err(|e| format!("Unavailable: {}", e))?
                     .map_err(|e| {
                         fs_error(
                             classify_io_error(&e),
@@ -1367,40 +1436,16 @@ impl SessionManager {
 
                 Ok(json!({ "success": true }))
             }
-            "startProgress" => {
-                let _location = payload.get("location");
-                let _title = payload.get("title");
-                let _cancellable = payload.get("cancellable");
-
-                let progress_id = uuid::Uuid::new_v4().to_string();
-                Ok(json!({ "progressId": progress_id }))
-            }
+            "startProgress" => Err("NotSupported: Progress API is not yet implemented".to_string()),
             "updateProgress" => {
-                let _progress_id = payload.get("progressId");
-                let _message = payload.get("message");
-                let _increment = payload.get("increment");
-                Ok(json!({ "success": true }))
+                Err("NotSupported: Progress API is not yet implemented".to_string())
             }
-            "endProgress" => {
-                let _progress_id = payload.get("progressId");
-                Ok(json!({ "success": true }))
-            }
+            "endProgress" => Err("NotSupported: Progress API is not yet implemented".to_string()),
             "createFileSystemWatcher" => {
-                let _glob_pattern = payload.get("globPattern");
-                let _ignore_create =
-                    payload.get("ignoreCreateEvents").and_then(|v| v.as_bool()).unwrap_or(false);
-                let _ignore_change =
-                    payload.get("ignoreChangeEvents").and_then(|v| v.as_bool()).unwrap_or(false);
-                let _ignore_delete =
-                    payload.get("ignoreDeleteEvents").and_then(|v| v.as_bool()).unwrap_or(false);
-
-                let watcher_id = uuid::Uuid::new_v4().to_string();
-
-                Ok(json!({ "watcherId": watcher_id }))
+                Err("NotSupported: Per-extension file watchers are not yet implemented. Use workspace.registerWatcher() instead.".to_string())
             }
             "disposeFileSystemWatcher" => {
-                let _watcher_id = payload.get("watcherId");
-                Ok(json!({ "success": true }))
+                Err("NotSupported: Per-extension file watchers are not yet implemented".to_string())
             }
             "registerCompletionProvider"
             | "registerHoverProvider"
@@ -1569,14 +1614,30 @@ impl SessionManager {
                 self.open_text_document(uri).await?;
                 Ok(json!({"success": true}))
             }
-            "registerDebugConfigurationProvider"
+            "registerDebugConfigurationProvider" => {
+                let provider_id = payload
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                Ok(json!({ "providerId": provider_id }))
+            }
             | "registerDebugAdapterDescriptorFactory"
             | "registerDebugAdapterTrackerFactory"
             | "registerTaskProvider"
             | "registerAuthProvider"
             | "registerTextDocumentContentProvider"
             | "registerNotebookContentProvider"
-            | "registerWebviewSerializer" => Ok(json!({"success": true})),
+            | "registerWebviewSerializer" => {
+                warn!(
+                    "[SessionManager] Extension API not yet implemented: {}",
+                    msg_type
+                );
+                Err(format!(
+                    "NotSupported: The '{}' API is not yet implemented",
+                    msg_type
+                ))
+            }
             _ => {
                 warn!("[SessionManager] Unhandled request type: {}", msg_type);
                 Ok(json!({"success": true}))

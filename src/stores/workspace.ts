@@ -83,7 +83,7 @@ interface WorkspaceState {
 }
 
 function createWorkspaceStore() {
-  const { subscribe, set, update } = writable<WorkspaceState>({
+  const { subscribe, update } = writable<WorkspaceState>({
     rootPath: null,
     fileTree: [],
     selectedFile: null,

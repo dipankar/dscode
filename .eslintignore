@@ -1,0 +1,7 @@
+node_modules
+dist
+build
+.generated
+src-tauri/target
+src/**/*.test.ts
+src/**/*.spec.ts

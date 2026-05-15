@@ -168,7 +168,7 @@
   function elementsEqual(a: any, b: any): boolean {
     try {
       return JSON.stringify(a) === JSON.stringify(b);
-    } catch (error) {
+    } catch {
       return false;
     }
   }

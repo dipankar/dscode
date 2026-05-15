@@ -33,9 +33,10 @@ monaco-wasm/target/
 extensions/
 !/extension-host/
 
-# Bundled Node.js binaries
+# Bundled Node.js binaries (but track the hash list for integrity checks)
 resources/node/
 bin/node-*
+!bin/allowed-hashes.json
 
 # OS files
 .DS_Store

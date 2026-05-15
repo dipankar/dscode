@@ -50,7 +50,7 @@ impl PyAppDirectories {
     #[new]
     fn new() -> PyResult<Self> {
         let dirs =
-            AppDirectories::resolve().map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+            AppDirectories::resolve().map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
         Ok(Self { inner: dirs })
     }
 

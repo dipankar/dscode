@@ -165,7 +165,7 @@
     }
   }
 
-  function toggleFileSelection(filePath: string) {
+  function _toggleFileSelection(filePath: string) {
     if (selectedFiles.has(filePath)) {
       selectedFiles.delete(filePath);
     } else {
@@ -174,7 +174,7 @@
     selectedFiles = selectedFiles; // Trigger reactivity
   }
 
-  function toggleAllFiles() {
+  function _toggleAllFiles() {
     if (selectedFiles.size === groupedResults.size) {
       selectedFiles.clear();
     } else {

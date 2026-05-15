@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, beforeUpdate } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import * as monaco from 'monaco-editor';
   import { settingsStore } from '../lib/settings-store';
 

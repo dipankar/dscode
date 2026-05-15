@@ -1,7 +1,5 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-// TODO(B5): Remove this and fix all dead code warnings
-#![allow(dead_code)]
 
 // Configure memory allocator
 #[cfg(feature = "jemalloc")]

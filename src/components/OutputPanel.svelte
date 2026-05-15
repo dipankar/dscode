@@ -78,7 +78,7 @@
         <p>No output yet</p>
       </div>
     {:else}
-      {#each currentChannel.lines as line, index}
+      {#each currentChannel.lines as line, _index}
         <div class="output-line">
           <span class="output-message">{line}</span>
         </div>

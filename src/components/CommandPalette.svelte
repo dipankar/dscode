@@ -193,6 +193,7 @@
       aria-label="Command palette"
     >
       <div class="search-container">
+        <!-- svelte-ignore a11y-autofocus -->
         <input
           bind:this={inputElement}
           bind:value={searchQuery}

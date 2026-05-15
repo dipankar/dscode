@@ -14,7 +14,7 @@ interface DebugState {
 }
 
 function createDebugStore() {
-  const { subscribe, set, update } = writable<DebugState>({
+  const { subscribe, update } = writable<DebugState>({
     breakpoints: new Map(),
     activeSessionId: null,
   });

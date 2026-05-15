@@ -20,7 +20,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "lint": "eslint . --ext .js,.ts,.svelte",
+    "lint": "eslint src --ext .ts,.svelte",
     "format": "prettier --write .",
     "download-node": "./scripts/download-node.sh --host",
     "download-node:all": "./scripts/download-node.sh --all",

@@ -74,7 +74,7 @@
       if (status && status.branch) {
         branch = status.branch;
       }
-    } catch (error) {
+    } catch {
       branch = '';
     }
   }

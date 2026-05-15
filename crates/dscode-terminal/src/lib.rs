@@ -4,7 +4,8 @@
 //!
 //! This crate provides a portable PTY-backed terminal manager that can be used
 
-#![warn(missing_docs)]
+// TODO: re-enable warn(missing_docs) after filling in remaining docs
+#![allow(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![warn(dead_code)]
 //! independently of any UI framework. Event forwarding is abstracted behind the

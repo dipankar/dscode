@@ -80,45 +80,6 @@ pub struct SessionState {
     pub status_bar_items: Vec<StatusBarItemState>,
 }
 
-/// Status bar item alignment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StatusBarAlignment {
-    /// Aligned to the left side of the status bar.
-    Left,
-    /// Aligned to the right side of the status bar.
-    Right,
-}
-
-impl StatusBarAlignment {
-    /// Converts an integer value to a `StatusBarAlignment`.
-    ///
-    /// `2` maps to `Right`; all other values map to `Left`.
-    pub fn from_i32(value: i32) -> Self {
-        match value {
-            2 => StatusBarAlignment::Right,
-            _ => StatusBarAlignment::Left,
-        }
-    }
-
-    /// Returns the string representation of the alignment.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            StatusBarAlignment::Left => "left",
-            StatusBarAlignment::Right => "right",
-        }
-    }
-
-    /// Returns a numeric sort value for ordering status bar items.
-    ///
-    /// Left-aligned items sort before right-aligned items.
-    pub fn sort_value(&self) -> i32 {
-        match self {
-            StatusBarAlignment::Left => 0,
-            StatusBarAlignment::Right => 1,
-        }
-    }
-}
-
 /// Status bar item state for serialization.
 ///
 /// Represents a single entry in the IDE status bar, including its

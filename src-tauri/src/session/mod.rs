@@ -452,6 +452,7 @@ pub struct SessionManager {
     status_bar_items: Arc<RwLock<HashMap<String, StatusBarEntry>>>,
     pending_message_requests: Arc<RwLock<HashMap<String, oneshot::Sender<Option<String>>>>>,
     pending_quick_pick_requests: Arc<RwLock<HashMap<String, oneshot::Sender<Option<Value>>>>>,
+    pending_execute_command_requests: Arc<RwLock<HashMap<String, oneshot::Sender<Option<Value>>>>>,
     pending_input_requests: Arc<RwLock<HashMap<String, oneshot::Sender<Option<String>>>>>,
     status_messages: Arc<RwLock<HashMap<String, StatusMessageEntry>>>,
     output_channels: Arc<RwLock<HashMap<String, OutputChannelEntry>>>,
@@ -518,6 +519,7 @@ impl SessionManager {
             status_bar_items: Arc::new(RwLock::new(HashMap::new())),
             pending_message_requests: Arc::new(RwLock::new(HashMap::new())),
             pending_quick_pick_requests: Arc::new(RwLock::new(HashMap::new())),
+            pending_execute_command_requests: Arc::new(RwLock::new(HashMap::new())),
             pending_input_requests: Arc::new(RwLock::new(HashMap::new())),
             status_messages: Arc::new(RwLock::new(HashMap::new())),
             output_channels: Arc::new(RwLock::new(HashMap::new())),
@@ -1097,7 +1099,7 @@ impl SessionManager {
         &self, request_id: &str, result: Option<Value>,
     ) -> Result<(), String> {
         let sender = {
-            let mut pending = self.pending_quick_pick_requests.write().await;
+            let mut pending = self.pending_execute_command_requests.write().await;
             pending.remove(request_id)
         };
 

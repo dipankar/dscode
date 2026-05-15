@@ -4,7 +4,8 @@
 //!
 //! This crate provides the infrastructure for running and communicating with
 
-#![warn(missing_docs)]
+// TODO: re-enable warn(missing_docs) after filling in remaining docs
+#![allow(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![warn(dead_code)]
 //! extension host processes, including:

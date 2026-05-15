@@ -109,7 +109,7 @@ function deriveTabDirty(tabs: EditorTab[], path: string, fileState: DocumentStat
 }
 
 function createEditorStore() {
-  const { subscribe, set, update } = writable<EditorState>({
+  const { subscribe, update } = writable<EditorState>({
     openFiles: new Map(),
     tabs: [],
     activeTabId: null,

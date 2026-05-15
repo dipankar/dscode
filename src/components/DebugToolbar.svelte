@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import { debugSession, debugState } from '../lib/stores';
+  import { debugSession } from '../lib/stores';
   import type { DebugSession } from '../lib/types';
 
   let sessionId: string | null = null;

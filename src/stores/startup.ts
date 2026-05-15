@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { canTransitionTo, isSplashVisible, type StartupPhase } from '../lib/startup/state';
+import { canTransitionTo, type StartupPhase } from '../lib/startup/state';
 
 /**
  * Startup Store
@@ -14,7 +14,7 @@ import { canTransitionTo, isSplashVisible, type StartupPhase } from '../lib/star
  */
 
 function createStartupStore() {
-  const { subscribe, set, update } = writable<StartupPhase>('Idle');
+  const { subscribe, update } = writable<StartupPhase>('Idle');
   const errorStore = writable<string | null>(null);
 
   /**

@@ -89,7 +89,7 @@ export function setTokenizerLanguage(language: string): void {
 /**
  * Convert WASM token array to Monaco-compatible format
  */
-export function convertToMonacoTokens(tokens: Uint32Array, text: string) {
+export function convertToMonacoTokens(tokens: Uint32Array, _text: string) {
   const result = [];
 
   for (let i = 0; i < tokens.length; i += 3) {

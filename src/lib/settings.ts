@@ -509,7 +509,7 @@ export class SettingsManager {
 
     try {
       settings = JSON.parse(json);
-    } catch (error) {
+    } catch {
       return { success: 0, failed: 0, errors: ['Invalid JSON'] };
     }
 

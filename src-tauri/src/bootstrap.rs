@@ -53,7 +53,28 @@ fn setup_app(app: &mut tauri::App<Wry>) -> SetupResult {
 
     let session_manager = register_session_manager(app, app_dirs.clone(), path_validator);
     register_feature_registries(app);
-    start_session_initialization(session_manager);
+    start_session_initialization(session_manager.clone());
+
+    // Trigger graceful session shutdown when the main window is closed.
+    // This prevents state leaks where the backend keeps running with
+    // pending UI requests after the webview is gone.
+    if let Some(window) = app.get_webview_window("main") {
+        let sm = session_manager;
+        window.on_window_event(move |event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                let sm = sm.clone();
+                tauri::async_runtime::spawn(async move {
+                    info!("[App] Main window destroyed, shutting down session");
+                    if let Err(e) = sm.shutdown().await {
+                        error!("[App] Session shutdown error: {e}");
+                    }
+                });
+            }
+        });
+    }
+
+    let lsp_manager = app.state::<tokio::sync::Mutex<LspManager>>().inner().clone();
+    register_defaults_async(lsp_manager);
 
     Ok(())
 }

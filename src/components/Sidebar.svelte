@@ -73,11 +73,11 @@
   let expandedPaths = new Set<string>();
   let flatRows: VirtualTreeRow[] = [];
 
-  $: {
-    const newFlatRows: VirtualTreeRow[] = [];
-    function walk(items: FileNode[], depth: number) {
-      for (const node of items) {
-        newFlatRows.push({
+  function flattenTree(items: FileNode[], expandedPaths: Set<string>): VirtualTreeRow[] {
+    const result: VirtualTreeRow[] = [];
+    function walk(nodes: FileNode[], depth: number) {
+      for (const node of nodes) {
+        result.push({
           id: node.path,
           node: node,
           depth,
@@ -88,9 +88,11 @@
         }
       }
     }
-    walk(fileTree, 0);
-    flatRows = newFlatRows;
+    walk(items, 0);
+    return result;
   }
+
+  $: flatRows = flattenTree(fileTree, expandedPaths);
 
   onMount(async () => {
     const handleRefreshWorkspace = () => {
